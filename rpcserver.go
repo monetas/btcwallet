@@ -1386,6 +1386,8 @@ var rpcHandlers = map[string]requestHandler{
 	// well, but with a different API (no account parameter).  It's listed
 	// here because it hasn't been update to use the reference
 	// implemenation's API.
+
+	"getdepositscript":        GetDepositScript,
 	"getunconfirmedbalance":   GetUnconfirmedBalance,
 	"listaddresstransactions": ListAddressTransactions,
 	"listalltransactions":     ListAllTransactions,
@@ -1768,6 +1770,19 @@ func GetAccountAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (int
 	}
 
 	return addr.EncodeAddress(), err
+}
+
+
+// GetDepositScript handles a getdepositscript extension request
+// by returning a P2SH address that could be deposited to
+func GetDepositScript(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	// Type assert icmd to access parameters.
+	_, ok := icmd.(*btcws.GetDepositScriptCmd)
+	if !ok {
+		return nil, btcjson.ErrInternal
+	}
+
+	return "someasyetunimplementedscript", nil
 }
 
 // GetUnconfirmedBalance handles a getunconfirmedbalance extension request
