@@ -24,13 +24,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/conformal/btcjson"
+	"github.com/monetas/btcjson"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/wallet"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwallet/wallet"
 	"github.com/conformal/btcwire"
-	"github.com/conformal/btcws"
+	"github.com/monetas/btcws"
 )
 
 func parseBlock(block *btcws.BlockDetails) (*txstore.Block, int, error) {

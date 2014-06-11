@@ -24,10 +24,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/conformal/btcjson"
+	"github.com/monetas/btcjson"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
-	"github.com/conformal/btcws"
+	"github.com/monetas/btcws"
 	"io"
 )
 
