@@ -33,6 +33,7 @@ import (
 	"github.com/monetas/btcwallet/chain"
 	"github.com/monetas/btcwallet/keystore"
 	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwallet/waddrmgr"
 	"github.com/monetas/btcwire"
 )
 
@@ -65,6 +66,9 @@ func networkDir(net *btcnet.Params) string {
 // complete wallet.  It contains the Armory-style key store
 // addresses and keys),
 type Wallet struct {
+	// TEMPORARY HD wallet manager
+	Manager *waddrmgr.Manager
+
 	// Data stores
 	KeyStore *keystore.Store
 	TxStore  *txstore.Store
@@ -113,6 +117,9 @@ type Wallet struct {
 // transaction stores.
 func newWallet(keys *keystore.Store, txs *txstore.Store) *Wallet {
 	return &Wallet{
+		// TEMPORARY until HD Wallet gets implemented
+		Manager: TempManager(),
+
 		KeyStore:            keys,
 		TxStore:             txs,
 		chainSvrLock:        new(sync.Mutex),
