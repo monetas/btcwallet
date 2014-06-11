@@ -24,6 +24,11 @@ interface. The functions are only exported while the tests are being run.
 package waddrmgr
 
 import (
+	"testing"
+
+	"github.com/monetas/bolt"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/snacl"
 )
 
@@ -60,4 +65,119 @@ func (m *Manager) TstCheckPublicPassphrase(pubPassphrase []byte) bool {
 	secretKey.Parameters = m.masterKeyPub.Parameters
 	err := secretKey.DeriveKey(&pubPassphrase)
 	return err == nil
+}
+
+type SeriesRow struct {
+	ReqSigs           uint32
+	PubKeysEncrypted  [][]byte
+	PrivKeysEncrypted [][]byte
+}
+
+func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
+	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
+}
+
+func (vp *VotingPool) TstEmptySeriesLookup() {
+	vp.seriesLookup = make(map[uint32]*seriesData)
+}
+
+func SerializeSeries(reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
+	row := &dbSeriesRow{
+		reqSigs:           reqSigs,
+		pubKeysEncrypted:  pubKeys,
+		privKeysEncrypted: privKeys,
+	}
+	return serializeSeriesRow(row)
+}
+
+func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
+	row, err := deserializeSeriesRow(serializedSeries)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &SeriesRow{
+		ReqSigs:           row.reqSigs,
+		PubKeysEncrypted:  row.pubKeysEncrypted,
+		PrivKeysEncrypted: row.privKeysEncrypted,
+	}, nil
+}
+
+func BranchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
+	return branchOrder(pks, branch)
+}
+
+func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
+	var exists bool
+	err := vp.manager.db.View(func(mtx *managerTx) error {
+		vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(vp.ID)
+		if vpBucket == nil {
+			exists = false
+			return nil
+		}
+		exists = vpBucket.Get(uint32ToBytes(seriesID)) != nil
+		return nil
+	})
+	if err != nil {
+		// If there was an error while retrieving the series, we should
+		// return an error, but we're too lazy for that.
+		return false
+	}
+	return exists
+}
+
+func (s *seriesData) TstGetPublicKeys() []*hdkeychain.ExtendedKey {
+	return s.publicKeys
+}
+
+func (s *seriesData) TstGetPrivateKeys() []*hdkeychain.ExtendedKey {
+	return s.privateKeys
+}
+
+func (s *seriesData) TstGetReqSigs() uint32 {
+	return s.reqSigs
+}
+
+func (vp *VotingPool) TstPutSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
+	return vp.putSeries(seriesID, inRawPubKeys, reqSigs)
+}
+
+func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
+	cryptoKey, err := newCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+	if _, err := decryptExtendedKey(cryptoKey, []byte{}); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(ManagerError)
+		wantErrCode := ErrorCode(ErrCrypto)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
+}
+
+func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
+	cryptoKey, err := newCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+
+	// the plaintext not being base58 encoded triggers the error
+	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
+	if err != nil {
+		t.Fatalf("Failed to encrypt plaintext: %v", err)
+	}
+
+	if _, err := decryptExtendedKey(cryptoKey, cipherText); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(ManagerError)
+		wantErrCode := ErrorCode(ErrKeyChain)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
 }
