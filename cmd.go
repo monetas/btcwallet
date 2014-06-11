@@ -17,9 +17,9 @@
 package main
 
 import (
-	"github.com/conformal/btcjson"
+	"github.com/monetas/btcjson"
 	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwallet/wallet"
+	"github.com/monetas/btcwallet/wallet"
 	"github.com/conformal/btcwire"
 	"io/ioutil"
 	"net"

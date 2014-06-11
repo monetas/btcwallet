@@ -18,7 +18,7 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/conformal/btcjson"
+	"github.com/monetas/btcjson"
 )
 
 // RawRPCResponse is a response to a JSON-RPC request with delayed

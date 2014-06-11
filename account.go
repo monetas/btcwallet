@@ -21,10 +21,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/conformal/btcjson"
+	"github.com/monetas/btcjson"
 	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/wallet"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwallet/wallet"
 	"github.com/conformal/btcwire"
 	"path/filepath"
 )
