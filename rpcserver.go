@@ -148,6 +148,7 @@ var rpcHandlers = map[string]cmdHandler{
 var wsHandlers = map[string]cmdHandler{
 	"exportwatchingwallet":    ExportWatchingWallet,
 	"getaddressbalance":       GetAddressBalance,
+	"getdepositscript":        GetDepositScript,
 	"getunconfirmedbalance":   GetUnconfirmedBalance,
 	"listaddresstransactions": ListAddressTransactions,
 	"listalltransactions":     ListAllTransactions,
@@ -677,6 +678,18 @@ func GetAddressBalance(icmd btcjson.Cmd) (interface{}, error) {
 	}
 
 	return a.CalculateAddressBalance(addr, int(cmd.Minconf)), nil
+}
+
+// GetDepositScript handles a getdepositscript extension request
+// by returning a P2SH address that could be deposited to
+func GetDepositScript(icmd btcjson.Cmd) (interface{}, error) {
+	// Type assert icmd to access parameters.
+	_, ok := icmd.(*btcws.GetDepositScriptCmd)
+	if !ok {
+		return nil, btcjson.ErrInternal
+	}
+
+	return "someasyetunimplementedscript", nil
 }
 
 // GetUnconfirmedBalance handles a getunconfirmedbalance extension request
