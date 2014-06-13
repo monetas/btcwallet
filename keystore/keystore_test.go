@@ -23,11 +23,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/conformal/btcec"
-	"github.com/conformal/btcnet"
-	"github.com/conformal/btcscript"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcec"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
 
 	"github.com/davecgh/go-spew/spew"
 )
