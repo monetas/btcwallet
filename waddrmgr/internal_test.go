@@ -24,7 +24,7 @@ interface. The functions are only exported while the tests are being run.
 package waddrmgr
 
 import (
-	"github.com/conformal/btcwallet/snacl"
+	"github.com/monetas/btcwallet/snacl"
 )
 
 // TstSetScryptParams allows the scrypt parameters to be set to much lower
