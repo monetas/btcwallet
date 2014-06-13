@@ -23,9 +23,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/conformal/bolt"
-	"github.com/conformal/btcwire"
-	"github.com/conformal/fastsha256"
+	"github.com/monetas/bolt"
+	"github.com/monetas/btcwire"
+	"github.com/monetas/fastsha256"
 )
 
 const (
