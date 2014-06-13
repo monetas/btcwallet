@@ -5,8 +5,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
 )
 
 func Test_addOutputs(t *testing.T) {

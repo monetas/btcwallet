@@ -23,9 +23,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/conformal/btcnet"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwallet/waddrmgr"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/waddrmgr"
 )
 
 // testContext is used to store context information about a running test which
