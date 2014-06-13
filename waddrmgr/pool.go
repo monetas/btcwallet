@@ -17,7 +17,7 @@
 package waddrmgr
 
 import (
-	"github.com/conformal/btcutil/hdkeychain"
+	"github.com/monetas/btcutil/hdkeychain"
 )
 
 type VotingPool struct {

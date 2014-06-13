@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/conformal/bolt"
-	"github.com/conformal/fastsha256"
+	"github.com/monetas/bolt"
+	"github.com/monetas/fastsha256"
 )
 
 var ErrNotImplemented = errors.New("not implemented")
