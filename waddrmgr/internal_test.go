@@ -47,7 +47,7 @@ func TstRunWithReplacedNewSecretKey(callback func()) {
 	callback()
 }
 
-// TstCheckPublicPassphrase return true if the provided public passphrase is
+// TstCheckPublicPassphrase returns true if the provided public passphrase is
 // correct for the manager.
 func (m *Manager) TstCheckPublicPassphrase(pubPassphrase []byte) bool {
 	secretKey := snacl.SecretKey{Key: &snacl.CryptoKey{}}
@@ -86,4 +86,44 @@ func TstRunWithFailingCryptoKeyPriv(m *Manager, callback func()) {
 	}()
 	m.cryptoKeyPriv = &failingCryptoKey{}
 	callback()
+}
+
+// SeriesRow mimics dbSeriesRow defined in db.go .
+type SeriesRow struct {
+	Version           uint32
+	Active            bool
+	ReqSigs           uint32
+	PubKeysEncrypted  [][]byte
+	PrivKeysEncrypted [][]byte
+}
+
+// SerializeSeries wraps serializeSeriesRow by passing it a freshly-built
+// dbSeriesRow.
+func SerializeSeries(version uint32, active bool, reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
+	row := &dbSeriesRow{
+		version:           version,
+		active:            active,
+		reqSigs:           reqSigs,
+		pubKeysEncrypted:  pubKeys,
+		privKeysEncrypted: privKeys,
+	}
+	return serializeSeriesRow(row)
+}
+
+// DeserializeSeries wraps deserializeSeriesRow and returns a freshly-built
+// SeriesRow.
+func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
+	row, err := deserializeSeriesRow(serializedSeries)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &SeriesRow{
+		Version:           row.version,
+		Active:            row.active,
+		ReqSigs:           row.reqSigs,
+		PubKeysEncrypted:  row.pubKeysEncrypted,
+		PrivKeysEncrypted: row.privKeysEncrypted,
+	}, nil
 }
