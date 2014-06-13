@@ -19,7 +19,7 @@ package waddrmgr
 import (
 	"sync"
 
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcwire"
 )
 
 const (
