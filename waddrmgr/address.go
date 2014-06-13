@@ -22,10 +22,10 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/conformal/btcec"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcutil/hdkeychain"
-	"github.com/conformal/btcwallet/snacl"
+	"github.com/monetas/btcec"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcutil/hdkeychain"
+	"github.com/monetas/btcwallet/snacl"
 )
 
 // zero sets all bytes in the passed slice to zero.  This is used to
