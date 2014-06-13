@@ -10,11 +10,11 @@
 package main
 
 import (
-	"github.com/conformal/btcscript"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwallet/tx"
-	"github.com/conformal/btcwallet/wallet"
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/tx"
+	"github.com/monetas/btcwallet/wallet"
+	"github.com/monetas/btcwire"
 	"testing"
 )
 

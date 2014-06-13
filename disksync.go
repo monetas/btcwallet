@@ -23,8 +23,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/conformal/btcnet"
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcwire"
 )
 
 // networkDir returns the directory name of a network directory to hold account

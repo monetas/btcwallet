@@ -37,16 +37,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/conformal/btcec"
-	"github.com/conformal/btcjson"
-	"github.com/conformal/btcrpcclient"
-	"github.com/conformal/btcscript"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/wallet"
-	"github.com/conformal/btcwire"
-	"github.com/conformal/btcws"
-	"github.com/conformal/websocket"
+	"github.com/monetas/btcec"
+	"github.com/monetas/btcjson"
+	"github.com/monetas/btcrpcclient"
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwallet/wallet"
+	"github.com/monetas/btcwire"
+	"github.com/monetas/btcws"
+	"github.com/monetas/websocket"
 )
 
 // Error types to simplify the reporting of specific categories of

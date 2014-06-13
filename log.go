@@ -18,9 +18,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/conformal/btclog"
-	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/seelog"
+	"github.com/monetas/btclog"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/seelog"
 	"os"
 )
 

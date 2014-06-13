@@ -19,8 +19,8 @@ package main
 import (
 	"sync"
 
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
 )
 
 // RescanMsg is the interface type for messages sent to the
