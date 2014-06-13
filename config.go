@@ -18,9 +18,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwire"
-	"github.com/conformal/go-flags"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
+	"github.com/monetas/go-flags"
 	"net"
 	"os"
 	"path/filepath"

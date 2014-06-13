@@ -24,8 +24,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwire"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
 )
 
 // All Store versions (both old and current).
