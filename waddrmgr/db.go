@@ -781,13 +781,18 @@ func (mtx *managerTx) ExistsAddress(addressID []byte) bool {
 func (mtx *managerTx) DeletePrivateKeys() error {
 	bucket := (*bolt.Tx)(mtx).Bucket(mainBucketName)
 
-	// Delete the master private key params and the crypto private key.
+	// Delete the master private key params and the crypto private and
+	// script keys.
 	if err := bucket.Delete(masterPrivKeyName); err != nil {
 		str := "failed to delete master private key parameters"
 		return managerError(ErrDatabase, str, err)
 	}
 	if err := bucket.Delete(cryptoPrivKeyName); err != nil {
-		str := "failed to delete private crypto key"
+		str := "failed to delete crypto private key"
+		return managerError(ErrDatabase, str, err)
+	}
+	if err := bucket.Delete(cryptoScriptKeyName); err != nil {
+		str := "failed to delete crypto script key"
 		return managerError(ErrDatabase, str, err)
 	}
 
