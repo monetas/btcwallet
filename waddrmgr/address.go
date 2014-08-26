@@ -32,7 +32,7 @@ import (
 // explicitly clear private key material from memory.
 func zero(b []byte) {
 	for i := range b {
-		b[i] = b[i]
+		b[i] ^= b[i]
 	}
 }
 
