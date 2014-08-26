@@ -55,18 +55,18 @@ that they divulge your addresses, and worse, some even expose the chain code
 which can be used by the attacker to know all future addresses that will be
 used.
 
-The account manager is also hardened against memory scrapers.  This is
-accomplished by typically having the account manager locked meaning no private
-keys or scripts are in memory.  Unlocking the account manager causes the crypto
+The address manager is also hardened against memory scrapers.  This is
+accomplished by typically having the address manager locked meaning no private
+keys or scripts are in memory.  Unlocking the address manager causes the crypto
 private and script keys to be decrypted and loaded in memory which in turn are
-used to decrypt private keys and scripts on demand.  Relocking the the account
+used to decrypt private keys and scripts on demand.  Relocking the address
 manager actively zeros all private material from memory.  In addition, temp
 private key material used internally is zeroed as soon as it's used.
 
 Locking and Unlocking
 
 As previously mentioned, this package provide facilities for locking and
-unlocking the account manager to protect access to private material and remove
+unlocking the address manager to protect access to private material and remove
 it from memory when locked.  The Lock, Unlock, and IsLocked functions are used
 for this purpose.
 
@@ -85,8 +85,8 @@ Opening an Existing Address Manager
 
 An existing address manager is opened via the Open function.  This function
 accepts the path to the existing database file, the public passphrase, and
-network.  The address manager is open locked as expected since the open function
-does not have the private passphrase to unlock it.
+network.  The address manager is opened locked as expected since the open
+function does not take the private passphrase to unlock it.
 
 Closing the Address Manager
 
@@ -97,7 +97,7 @@ memory.
 
 Managed Addresses
 
-Each address returned by the account manager satisifies the ManagedAddress
+Each address returned by the address manager satisifies the ManagedAddress
 interface as well as either the ManagedPubKeyAddress or ManagedScriptAddress
 interfaces.  These interfaces provide the means to obtain relevant information
 about the addresses such as their private keys and scripts.
@@ -105,11 +105,11 @@ about the addresses such as their private keys and scripts.
 Chained Addresses
 
 Most callers will make use of the chained addresses for normal operations.
-Internal addresses are intended for internal wallet uses change outputs, while
-external addresses are intended for uses such payment addresses that are shared.
-The NextInternalAddresses and NextExternalAddresses functions provide the means
-to acquire one or more of the next addresses that have not already been
-provided.  In addition, the LastInternalAddress and LastExternalAddress
+Internal addresses are intended for internal wallet uses such as change outputs,
+while external addresses are intended for uses such payment addresses that are
+shared.  The NextInternalAddresses and NextExternalAddresses functions provide
+the means to acquire one or more of the next addresses that have not already
+been provided.  In addition, the LastInternalAddress and LastExternalAddress
 functions can be used to get the most recently provided internal and external
 address, respectively.
 
