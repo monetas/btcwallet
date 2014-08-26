@@ -151,7 +151,7 @@ be contained in the Err field.
 
 Bitcoin Improvement Proposals
 
-This package includes changes outlined by the following BIPs:
+This package includes concepts outlined by the following BIPs:
 
 		BIP0032 (https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki)
 		BIP0043 (https://github.com/bitcoin/bips/blob/master/bip-0043.mediawiki)
