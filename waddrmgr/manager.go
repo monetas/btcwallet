@@ -1635,7 +1635,7 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 		return nil, managerError(ErrCrypto, str, err)
 	}
 
-	// Generate new crypto private, public, and script keys.  These keys are
+	// Generate new crypto public, private, and script keys.  These keys are
 	// used to protect the actual public and private data such as addresses,
 	// extended keys, and scripts.
 	cryptoKeyPub, err := snacl.GenerateCryptoKey()

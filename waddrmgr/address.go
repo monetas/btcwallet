@@ -39,7 +39,7 @@ func zero(b []byte) {
 // zeroBigInt sets all bytes in the passed big int to zero and then sets the
 // value to 0.  This differs from simply setting the value in that it
 // specifically clears the underlying bytes whereas simply setting the value
-// does not.  This is mostly useful to forcefully private keys.
+// does not.  This is mostly useful to forcefully clear private keys.
 func zeroBigInt(x *big.Int) {
 	// NOTE: This could make use of .Xor, however this is safer since the
 	// specific implementation of Xor could technically change in such a way
@@ -160,8 +160,7 @@ func (a *managedAddress) unlock(key *snacl.CryptoKey) ([]byte, error) {
 	return privKeyCopy, nil
 }
 
-// lock zeroes the associated clear text private key.  This function fails if
-// the address is not encrypted.
+// lock zeroes the associated clear text private key.
 func (a *managedAddress) lock() {
 	// Protect concurrent access to clear text private key.
 	a.privKeyMutex.Lock()
