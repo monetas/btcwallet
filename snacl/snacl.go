@@ -24,13 +24,9 @@ var (
 )
 
 // Zero out a byte slice.
-func zero(in []byte) {
-	if in == nil {
-		return
-	}
-	inlen := len(in)
-	for i := 0; i < inlen; i++ {
-		in[i] ^= in[i]
+func zero(b []byte) {
+	for i := range b {
+		b[i] ^= b[i]
 	}
 }
 
