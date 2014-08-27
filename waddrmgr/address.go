@@ -277,8 +277,8 @@ func (a *managedAddress) PrivKey() (*btcec.PrivateKey, error) {
 	return privKey, nil
 }
 
-// ExportPrivKey returns the private key associated with the address serialized
-// as Wallet Import Format (WIF).
+// ExportPrivKey returns the private key associated with the address in Wallet
+// Import Format (WIF).
 //
 // This is part of the ManagedPubKeyAddress interface implementation.
 func (a *managedAddress) ExportPrivKey() (*btcutil.WIF, error) {
@@ -423,8 +423,7 @@ func (a *scriptAddress) unlock(key *snacl.CryptoKey) ([]byte, error) {
 	return scriptCopy, nil
 }
 
-// lock zeroes the associated clear text private key.  This function fails if
-// the address is not encrypted.
+// lock zeroes the associated clear text private key.
 func (a *scriptAddress) lock() {
 	// Protect concurrent access to clear text script.
 	a.scriptMutex.Lock()
