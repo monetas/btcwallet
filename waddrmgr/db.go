@@ -828,9 +828,6 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 			return err
 		}
 
-		// The only addresses which current contain private keys are
-		// imported addresses, but a switch is used for easier future
-		// expansion should it be necessary.
 		switch row.addrType {
 		case atImport:
 			irow, err := mtx.deserializeImportedAddress(k, row)
@@ -845,6 +842,22 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 			err = bucket.Put(k, mtx.serializeAddressRow(row))
 			if err != nil {
 				str := "failed to delete imported private key"
+				return managerError(ErrDatabase, str, err)
+			}
+
+		case atScript:
+			srow, err := mtx.deserializeScriptAddress(k, row)
+			if err != nil {
+				return err
+			}
+
+			// Reserialize the script address without the script
+			// and store it.
+			row.rawData = mtx.serializeScriptAddress(
+				srow.encryptedHash, nil)
+			err = bucket.Put(k, mtx.serializeAddressRow(row))
+			if err != nil {
+				str := "failed to delete imported script"
 				return managerError(ErrDatabase, str, err)
 			}
 		}
