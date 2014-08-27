@@ -132,7 +132,7 @@ type managedAddress struct {
 }
 
 // Enforce mangedAddress satisfies the ManagedPubKeyAddress interface.
-var _ ManagedPubKeyAddress = &managedAddress{}
+var _ ManagedPubKeyAddress = (*managedAddress)(nil)
 
 // unlock decrypts and stores a pointer to the associated private key.  It will
 // fail if the key is invalid or the encrypted private key is not available.
@@ -396,8 +396,8 @@ type scriptAddress struct {
 	scriptMutex     sync.Mutex
 }
 
-// Enforce scriptAddress satisfies the ScriptAddress interface.
-var _ ManagedScriptAddress = &scriptAddress{}
+// Enforce scriptAddress satisfies the ManagedScriptAddress interface.
+var _ ManagedScriptAddress = (*scriptAddress)(nil)
 
 // unlock decrypts and stores the associated script.  It will fail if the key is
 // invalid or the encrypted script is not available.  The returned clear text
