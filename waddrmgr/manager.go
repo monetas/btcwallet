@@ -64,10 +64,6 @@ const (
 	//
 	// The branch is 0 for external addresses and 1 for internal addresses.
 
-	// coinTypeBitcoin is the child number to use when performing BIP0044
-	// style hierarchical deterministic key derivation.
-	coinTypeBitcoin = 0
-
 	// externalBranch is the child number to use when performing BIP0044
 	// style hierarchical deterministic key derivation for the external
 	// branch.
