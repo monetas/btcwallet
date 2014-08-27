@@ -33,9 +33,9 @@ func zero(b []byte) {
 const (
 	KeySize   = 32
 	NonceSize = 24
-	DefaultN  = 16384 //1048576 //16384 // 2^14
-	DefaultR  = 8     //16      // 8
-	DefaultP  = 1     //2       // 1
+	DefaultN  = 16384 // 2^14
+	DefaultR  = 8
+	DefaultP  = 1
 )
 
 // CryptoKey represents a secret key which can be used to encrypt and decrypt
