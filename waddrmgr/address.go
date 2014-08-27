@@ -471,7 +471,6 @@ func (a *scriptAddress) Imported() bool {
 // This is part of the ManagedAddress interface implementation.
 func (a *scriptAddress) Internal() bool {
 	return false
-
 }
 
 // Compressed returns false since script addresses are never compressed.
