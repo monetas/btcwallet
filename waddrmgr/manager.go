@@ -504,13 +504,7 @@ func (m *Manager) scriptAddressRowToManaged(row *dbScriptAddressRow) (ManagedAdd
 		return nil, managerError(ErrCrypto, str, err)
 	}
 
-	sa, err := newScriptAddress(m, row.account, scriptHash,
-		row.encryptedScript)
-	if err != nil {
-		return nil, err
-	}
-
-	return sa, nil
+	return newScriptAddress(m, row.account, scriptHash, row.encryptedScript)
 }
 
 // loadAndCacheAddress attempts to load the passed address from the database and
