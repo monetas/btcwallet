@@ -425,13 +425,11 @@ func (a *scriptAddress) unlock(key *snacl.CryptoKey) ([]byte, error) {
 
 // lock zeroes the associated clear text private key.
 func (a *scriptAddress) lock() {
-	// Protect concurrent access to clear text script.
+	// Zero and nil the clear text script associated with this address.
 	a.scriptMutex.Lock()
-	defer a.scriptMutex.Unlock()
-
-	// Zero and nil the clear text script associated with this  address.
 	zero(a.scriptCT)
 	a.scriptCT = nil
+	a.scriptMutex.Unlock()
 }
 
 // Account returns the account the address is associated with.  This will always
