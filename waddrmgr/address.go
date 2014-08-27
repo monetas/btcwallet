@@ -508,12 +508,7 @@ func (a *scriptAddress) Script() ([]byte, error) {
 	// Decrypt the script as needed.  Also, make sure it's a copy since the
 	// script stored in memory can be cleared at any time.  Otherwise,
 	// the returned script could be invalidated from under the caller.
-	scriptCopy, err := a.unlock(a.manager.cryptoKeyScript)
-	if err != nil {
-		return nil, err
-	}
-
-	return scriptCopy, nil
+	return a.unlock(a.manager.cryptoKeyScript)
 }
 
 // newScriptAddress initializes and returns a new pay-to-script-hash address.
