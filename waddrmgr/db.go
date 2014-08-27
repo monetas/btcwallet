@@ -413,15 +413,13 @@ func (mtx *managerTx) PutAccountInfo(account uint32, row *dbAccountRow) error {
 func (mtx *managerTx) FetchNumAccounts() (uint32, error) {
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
 
-	var numAccounts uint32
 	val := bucket.Get(acctNumAcctsName)
 	if val == nil {
 		str := "required num accounts not stored in database"
 		return 0, managerError(ErrDatabase, str, nil)
 	}
-	numAccounts = binary.LittleEndian.Uint32(val)
 
-	return numAccounts, nil
+	return binary.LittleEndian.Uint32(val), nil
 }
 
 // PutNumAccounts stores the number of accounts that have been created to the
