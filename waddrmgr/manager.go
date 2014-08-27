@@ -161,36 +161,22 @@ type Manager struct {
 	// to generate deterministic chained keys for each created account.
 	acctInfo map[uint32]*accountInfo
 
-	// masterKeyPub is the secret key used to secure the cryptoKeyPub key.
-	// This approach is used because it makes changing the password much
-	// simpler as it then becomes just changing this one key.  It also
-	// provides future flexibility.
-	//
-	// NOTE: This is not the same thing as BIP0032 master node extended
-	// key.
-	masterKeyPub *snacl.SecretKey
-
-	// masterKeyPriv is the secret key used to secure the cryptoKeyPriv key.
-	// This approach is used because it makes changing the password much
-	// simpler as it then becomes just changing this one key.  It also
+	// masterKeyPub is the secret key used to secure the cryptoKeyPub key
+	// and masterKeyPriv is the secret key used to secure the cryptoKeyPriv
+	// key.  This approach is used because it makes changing the passwords
+	// much simpler as it then becomes just changing these keys.  It also
 	// provides future flexibility.
 	//
 	// NOTE: This is not the same thing as BIP0032 master node extended
 	// key.
 	//
-	// The underlying key will be zeroed when the address manager is locked.
+	// The underlying master private key will be zeroed when the address
+	// manager is locked.
+	masterKeyPub  *snacl.SecretKey
 	masterKeyPriv *snacl.SecretKey
 
 	// cryptoKeyPub is the key used to encrypt public extended keys and
 	// addresses.
-	//
-	// NOTE: This is currently intentionally a hard coded value which
-	// provides no additional security benefit (the code is open source thus
-	// the hard coded value is readily available), but it has been included
-	// here to make it easier in the future to support user-specified (or
-	// potentially derived) password protection of public key data.  Since
-	// this only protects public key data, it is not locked on a timeout
-	// like the secret key that protects private key.
 	cryptoKeyPub *snacl.CryptoKey
 
 	// cryptoKeyPriv is the key used to encrypt private data such as the
