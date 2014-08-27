@@ -162,14 +162,12 @@ func (a *managedAddress) unlock(key *snacl.CryptoKey) ([]byte, error) {
 
 // lock zeroes the associated clear text private key.
 func (a *managedAddress) lock() {
-	// Protect concurrent access to clear text private key.
-	a.privKeyMutex.Lock()
-	defer a.privKeyMutex.Unlock()
-
 	// Zero and nil the clear text private key associated with this
 	// address.
+	a.privKeyMutex.Lock()
 	zero(a.privKeyCT)
 	a.privKeyCT = nil
+	a.privKeyMutex.Unlock()
 }
 
 // Account returns the account number the address is associated with.
