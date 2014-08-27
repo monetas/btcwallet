@@ -275,6 +275,7 @@ func (a *managedAddress) PrivKey() (*btcec.PrivateKey, error) {
 	}
 
 	privKey, _ := btcec.PrivKeyFromBytes(btcec.S256(), privKeyCopy)
+	zero(privKeyCopy)
 	return privKey, nil
 }
 
