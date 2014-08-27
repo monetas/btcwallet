@@ -168,8 +168,6 @@ type Manager struct {
 	//
 	// NOTE: This is not the same thing as BIP0032 master node extended
 	// key.
-	//
-	// The underlying key will be zeroed when the address manager is locked.
 	masterKeyPub *snacl.SecretKey
 
 	// masterKeyPriv is the secret key used to secure the cryptoKeyPriv key.
