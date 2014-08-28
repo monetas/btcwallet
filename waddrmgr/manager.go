@@ -67,12 +67,12 @@ const (
 	// externalBranch is the child number to use when performing BIP0044
 	// style hierarchical deterministic key derivation for the external
 	// branch.
-	externalBranch = 0
+	externalBranch uint32 = 0
 
 	// internalBranch is the child number to use when performing BIP0044
 	// style hierarchical deterministic key derivation for the internal
 	// branch.
-	internalBranch = 1
+	internalBranch uint32 = 1
 )
 
 // BlockStamp defines a block (by height and a unique hash) and is
@@ -353,11 +353,7 @@ func (m *Manager) loadAccountInfo(account uint32) (*accountInfo, error) {
 	err := m.db.View(func(tx *managerTx) error {
 		var err error
 		row, err = tx.FetchAccountInfo(account)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -398,7 +394,7 @@ func (m *Manager) loadAccountInfo(account uint32) (*accountInfo, error) {
 
 		acctKeyPriv, err := hdkeychain.NewKeyFromString(string(decrypted))
 		if err != nil {
-			str := fmt.Sprintf("failed to create extendd private "+
+			str := fmt.Sprintf("failed to create extended private "+
 				"key for account %d", account)
 			return nil, managerError(ErrKeyChain, str, err)
 		}
@@ -406,7 +402,7 @@ func (m *Manager) loadAccountInfo(account uint32) (*accountInfo, error) {
 	}
 
 	// Derive and cache the managed address for the last external address.
-	branch, index := uint32(externalBranch), row.nextExternalIndex
+	branch, index := externalBranch, row.nextExternalIndex
 	if index > 0 {
 		index--
 	}
@@ -421,7 +417,7 @@ func (m *Manager) loadAccountInfo(account uint32) (*accountInfo, error) {
 	acctInfo.lastExternalAddr = lastExtAddr
 
 	// Derive and cache the managed address for the last internal address.
-	branch, index = uint32(internalBranch), row.nextExternalIndex
+	branch, index = internalBranch, row.nextInternalIndex
 	if index > 0 {
 		index--
 	}
@@ -517,11 +513,7 @@ func (m *Manager) loadAndCacheAddress(address btcutil.Address) (ManagedAddress, 
 	err := m.db.View(func(tx *managerTx) error {
 		var err error
 		rowInterface, err = tx.FetchAddress(address.ScriptAddress())
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -533,25 +525,19 @@ func (m *Manager) loadAndCacheAddress(address btcutil.Address) (ManagedAddress, 
 	switch row := rowInterface.(type) {
 	case *dbChainAddressRow:
 		managedAddr, err = m.chainAddressRowToManaged(row)
-		if err != nil {
-			return nil, err
-		}
 
 	case *dbImportedAddressRow:
 		managedAddr, err = m.importedAddressRowToManaged(row)
-		if err != nil {
-			return nil, err
-		}
 
 	case *dbScriptAddressRow:
 		managedAddr, err = m.scriptAddressRowToManaged(row)
-		if err != nil {
-			return nil, err
-		}
 
 	default:
 		str := fmt.Sprintf("unsupported address type %T", row)
-		return nil, managerError(ErrDatabase, str, nil)
+		err = managerError(ErrDatabase, str, nil)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	// Cache and return the new managed address.
@@ -637,12 +623,7 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 				return err
 			}
 
-			err = tx.PutMasterKeyParams(nil, newKeyParams)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return tx.PutMasterKeyParams(nil, newKeyParams)
 		})
 		if err != nil {
 			return err
@@ -669,12 +650,7 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 				return err
 			}
 
-			err = tx.PutMasterKeyParams(newKeyParams, nil)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return tx.PutMasterKeyParams(newKeyParams, nil)
 		})
 		if err != nil {
 			return err
@@ -718,12 +694,7 @@ func (m *Manager) ExportWatchingOnly(newDbPath string, pubPassphrase []byte) (*M
 			return err
 		}
 
-		if err := tx.PutWatchingOnly(true); err != nil {
-			return err
-		}
-
-		return nil
-
+		return tx.PutWatchingOnly(true)
 	})
 	if err != nil {
 		return nil, err
@@ -790,8 +761,8 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 
 	// Prevent duplicates.
 	serializedPubKey := wif.SerializePubKey()
-	scriptAddress := btcutil.Hash160(serializedPubKey)
-	alreadyExists, err := m.existsAddress(scriptAddress)
+	pubKeyHash := btcutil.Hash160(serializedPubKey)
+	alreadyExists, err := m.existsAddress(pubKeyHash)
 	if err != nil {
 		return nil, err
 	}
@@ -806,18 +777,18 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 	if err != nil {
 		str := fmt.Sprintf("failed to encrypt private key for %x",
 			serializedPubKey)
-		return nil, managerError(ErrCrypto, str, nil)
+		return nil, managerError(ErrCrypto, str, err)
 	}
 	encryptedPubKey, err := m.cryptoKeyPub.Encrypt(serializedPubKey)
 	if err != nil {
 		str := fmt.Sprintf("failed to encrypt public key for %x",
 			serializedPubKey)
-		return nil, managerError(ErrCrypto, str, nil)
+		return nil, managerError(ErrCrypto, str, err)
 	}
 
 	// Save the new imported address to the db in a single transaction.
 	err = m.db.Update(func(tx *managerTx) error {
-		return tx.PutImportedAddress(scriptAddress, ImportedAddrAccount,
+		return tx.PutImportedAddress(pubKeyHash, ImportedAddrAccount,
 			ssNone, encryptedPubKey, encryptedPrivKey)
 	})
 	if err != nil {
@@ -838,7 +809,7 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 	return managedAddr, nil
 }
 
-// ImportScript imports a a user-provided script into the account manager.  The
+// ImportScript imports a user-provided script into the account manager.  The
 // imported script will act as a pay-to-script-hash address.
 //
 // This function will return an error if the address manager is watching-only,
@@ -974,7 +945,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 		}
 
 		str := "failed to derive master private key"
-		return managerError(ErrCrypto, str, nil)
+		return managerError(ErrCrypto, str, err)
 	}
 
 	// Use the master private key to decrypt the crypto private key.
@@ -982,7 +953,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 	if err != nil {
 		m.lock()
 		str := "failed to decrypt crypto private key"
-		return managerError(ErrCrypto, str, nil)
+		return managerError(ErrCrypto, str, err)
 	}
 	copy(m.cryptoKeyPriv[:], decryptedKey)
 	zero(decryptedKey)
@@ -995,7 +966,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 			m.lock()
 			str := fmt.Sprintf("failed to decrypt account %d "+
 				"private key", account)
-			return managerError(ErrCrypto, str, nil)
+			return managerError(ErrCrypto, str, err)
 		}
 
 		acctKeyPriv, err := hdkeychain.NewKeyFromString(string(decrypted))
@@ -1004,7 +975,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 			m.lock()
 			str := fmt.Sprintf("failed to regenerate account %d "+
 				"extended key", account)
-			return managerError(ErrKeyChain, str, nil)
+			return managerError(ErrKeyChain, str, err)
 		}
 		acctInfo.acctKeyPriv = acctKeyPriv
 	}
@@ -1015,6 +986,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 		addressKey, err := m.deriveKeyFromPath(info.managedAddr.account,
 			info.branch, info.index, true)
 		if err != nil {
+			m.lock()
 			return err
 		}
 
@@ -1028,9 +1000,10 @@ func (m *Manager) Unlock(passphrase []byte) error {
 		privKeyEncrypted, err := m.cryptoKeyPriv.Encrypt(privKeyBytes)
 		zeroBigInt(privKey.D)
 		if err != nil {
+			m.lock()
 			str := fmt.Sprintf("failed to encrypt private key for "+
 				"address %s", info.managedAddr.Address())
-			return managerError(ErrCrypto, str, nil)
+			return managerError(ErrCrypto, str, err)
 		}
 		info.managedAddr.privKeyEncrypted = privKeyEncrypted
 		info.managedAddr.privKeyCT = privKeyBytes
@@ -1069,8 +1042,7 @@ func (m *Manager) nextAddresses(account uint32, numAddresses uint32, internal bo
 
 	// Choose the branch key and index depending on whether or not this
 	// is an internal address.
-	branchNum := uint32(externalBranch)
-	nextIndex := acctInfo.nextExternalIndex
+	branchNum, nextIndex := externalBranch, acctInfo.nextExternalIndex
 	if internal {
 		branchNum = internalBranch
 		nextIndex = acctInfo.nextInternalIndex
@@ -1388,12 +1360,7 @@ func deriveAccountKey(masterNode *hdkeychain.ExtendedKey, coinType uint32,
 	}
 
 	// Derive the account key as a child of the coin type key.
-	acctKey, err := coinTypeKey.Child(account + hdkeychain.HardenedKeyStart)
-	if err != nil {
-		return nil, err
-	}
-
-	return acctKey, nil
+	return coinTypeKey.Child(account + hdkeychain.HardenedKeyStart)
 }
 
 // checkBranchKeys ensures deriving the extended keys for the internal and
@@ -1413,11 +1380,8 @@ func checkBranchKeys(acctKey *hdkeychain.ExtendedKey) error {
 	}
 
 	// Derive the external branch as the second child of the account key.
-	if _, err := acctKey.Child(internalBranch); err != nil {
-		return err
-	}
-
-	return nil
+	_, err := acctKey.Child(internalBranch)
+	return err
 }
 
 // loadManager returns a new account manager that results from loading it from
@@ -1446,11 +1410,7 @@ func loadManager(db *managerDB, pubPassphrase []byte, net *btcnet.Params) (*Mana
 		// Load the crypto keys from the db.
 		cryptoKeyPubEnc, cryptoKeyPrivEnc, cryptoKeyScriptEnc, err =
 			tx.FetchCryptoKeys()
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -1507,7 +1467,7 @@ func loadManager(db *managerDB, pubPassphrase []byte, net *btcnet.Params) (*Mana
 // public information such as addresses.  This is important since access to
 // BIP0032 extended keys means it is possible to generate all future addresses.
 //
-// a ManagerError with an error code of ErrNoExist will be returned if the
+// A ManagerError with an error code of ErrNoExist will be returned if the
 // passed database does not exist.
 func Open(dbPath string, pubPassphrase []byte, net *btcnet.Params) (*Manager, error) {
 	// Return an error if the specified database does not exist.
@@ -1648,12 +1608,12 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 	// Encrypt the default account keys with the associated crypto keys.
 	acctPubEnc, err := cryptoKeyPub.Encrypt([]byte(acctKeyPub.String()))
 	if err != nil {
-		str := "failed to  encrypt crypto public key"
+		str := "failed to  encrypt public key for account 0"
 		return nil, managerError(ErrCrypto, str, err)
 	}
 	acctPrivEnc, err := cryptoKeyPriv.Encrypt([]byte(acctKeyPriv.String()))
 	if err != nil {
-		str := "failed to encrypt public key for account 0"
+		str := "failed to encrypt private key for account 0"
 		return nil, managerError(ErrCrypto, str, err)
 	}
 
@@ -1694,12 +1654,7 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 			return err
 		}
 
-		err = tx.PutNumAccounts(1)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return tx.PutNumAccounts(1)
 	})
 	if err != nil {
 		return nil, err
