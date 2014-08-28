@@ -23,7 +23,10 @@ import (
 	"fmt"
 	"time"
 
+	"code.google.com/p/go.crypto/nacl/secretbox"
+
 	"github.com/monetas/bolt"
+	"github.com/monetas/btcwallet/snacl"
 	"github.com/monetas/fastsha256"
 )
 
@@ -34,7 +37,7 @@ const (
 	lastestDbVersion = 1
 )
 
-// syncStatus represents a address synchronization status stored in the
+// syncstatus represents a address synchronization status stored in the
 // database.
 type syncStatus uint8
 
@@ -63,6 +66,16 @@ const (
 	actBIP0044 accountType = 0 // not iota as they need to be stable for db
 )
 
+// These constants define the serialized length for a given encrypted extended
+//  public or private key.
+const (
+	// We can calculate the encrypted extended key length this way:
+	// secretbox.Overhead == overhead for encrypting (16)
+	// actual base58 extended key length = (111)
+	// snacl.NonceSize == nonce size used for encryption (24)
+	keyLength = secretbox.Overhead + 111 + snacl.NonceSize
+)
+
 // dbAccountRow houses information stored about an account in the database.
 type dbAccountRow struct {
 	acctType accountType
@@ -78,6 +91,12 @@ type dbBIP0044AccountRow struct {
 	nextExternalIndex uint32
 	nextInternalIndex uint32
 	name              string
+}
+
+type dbSeriesRow struct {
+	reqSigs           uint32
+	pubKeysEncrypted  [][]byte
+	privKeysEncrypted [][]byte
 }
 
 // dbAddressRow houses common information stored about an address in the
@@ -121,6 +140,7 @@ var (
 	addrBucketName        = []byte("addr")
 	mainBucketName        = []byte("main")
 	addrAcctIdxBucketName = []byte("addracctidx")
+	votingPoolBucketName  = []byte("votingpool")
 
 	// Db related key names (main bucket).
 	dbVersionName    = []byte("dbver")
@@ -293,12 +313,132 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 	return nil
 }
 
-// accountKey returns the account key to use in the database for a given account
+// uint32ToBytes returns the account key to use in the database for a given account
 // number.
-func accountKey(account uint32) []byte {
+func uint32ToBytes(number uint32) []byte {
 	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, account)
+	binary.LittleEndian.PutUint32(buf, number)
 	return buf
+}
+
+func bytesToUint32(encoded []byte) uint32 {
+	return binary.LittleEndian.Uint32(encoded)
+}
+
+// serializeSeriesRow serializes the passed in series information.
+func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
+	// The serialized series format is:
+	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN><reqSigs>
+	//
+	// 4 bytes number of pub keys + keyLength * number of pub keys +
+	// 4 bytes number of priv keys + keyLength * number of priv keys +
+	// 4 bytes number of required sigs
+
+	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
+	for _, pubKeyEncrypted := range row.pubKeysEncrypted {
+		// check that the encrypted length is correct
+		if len(pubKeyEncrypted) != keyLength {
+			str := fmt.Sprintf("Encrypted Public Key the incorrect length: %v",
+				pubKeyEncrypted)
+			// TODO: get the correct error number
+			return nil, managerError(0, str, nil)
+		}
+		serialized = append(serialized, pubKeyEncrypted...)
+	}
+	serialized = append(serialized, uint32ToBytes(uint32(len(row.privKeysEncrypted)))...)
+	for _, privKeyEncrypted := range row.privKeysEncrypted {
+		// check that the encrypted length is correct
+		if len(privKeyEncrypted) != keyLength {
+			str := fmt.Sprintf("Encrypted Private Key the incorrect length: %v",
+				privKeyEncrypted)
+			// TODO: get the correct error number
+			return nil, managerError(0, str, nil)
+		}
+		serialized = append(serialized, privKeyEncrypted...)
+	}
+	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
+
+	return serialized, nil
+}
+
+// deserializeSeriesRow deserializes
+func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
+	// The serialized series format is:
+	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN><reqSigs>
+	//
+	// 4 bytes number of pub keys + keyLength * number of pub keys +
+	// 4 bytes number of priv keys + keyLength * number of priv keys +
+	// 4 bytes number of required sigs
+
+	// given the above, the length of the serialized series should be
+	//  at minimum the length of the constants
+	if len(serializedSeries) < 12 {
+		str := fmt.Sprintf("malformed serialized series - too short: %v",
+			serializedSeries)
+		// TODO: put the correct error code into DB
+		return nil, managerError(0, str, nil)
+	}
+
+	// maximum number of public keys is 15 and the same for public keys
+	//  this gives us an upper bound
+	if len(serializedSeries) > 12+30*keyLength {
+		str := fmt.Sprintf("malformed serialized series - too long: %v",
+			serializedSeries)
+		return nil, managerError(0, str, nil)
+	}
+
+	// keeps track of the next set of bytes to serialize
+	current := 0
+
+	// number of pub keys (4 bytes)
+	nPubKeys := bytesToUint32(serializedSeries[current : current+4])
+	current += 4
+
+	// the pubkeys themselves (keyLength * nPubKeys)
+	row := dbSeriesRow{}
+	row.pubKeysEncrypted = make([][]byte, nPubKeys)
+	for i := 0; i < int(nPubKeys); i++ {
+		if len(serializedSeries) < current+keyLength*(i+1) {
+			str := fmt.Sprintf("malformed serialized series - "+
+				"not enough pubkeys: want %d pubkeys in %v", nPubKeys,
+				serializedSeries)
+			return nil, managerError(0, str, nil)
+		}
+		row.pubKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
+	}
+	current += keyLength * int(nPubKeys)
+
+	// number of priv keys (4 bytes)
+	if len(serializedSeries) < current+4 {
+		str := fmt.Sprintf("malformed serialized series - "+
+			"no priv key length: %v", serializedSeries)
+		return nil, managerError(0, str, nil)
+	}
+	nPrivKeys := bytesToUint32(serializedSeries[current : current+4])
+	current += 4
+
+	// the privkeys themselves (keyLength * nPrivKeys)
+	row.privKeysEncrypted = make([][]byte, nPrivKeys)
+	for i := 0; i < int(nPrivKeys); i++ {
+		if len(serializedSeries) < current+keyLength*(i+1) {
+			str := fmt.Sprintf("malformed serialized series - "+
+				"not enough priv keys: want %d privkeys in %v", nPrivKeys,
+				serializedSeries)
+			return nil, managerError(0, str, nil)
+		}
+		row.privKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
+	}
+	current += keyLength * int(nPrivKeys)
+
+	// number of required signatures (4 bytes)
+	if len(serializedSeries) < current+4 {
+		str := fmt.Sprintf("malformed serialized series - "+
+			"no number of required sigs: %v", serializedSeries)
+		return nil, managerError(0, str, nil)
+	}
+	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
+
+	return &row, nil
 }
 
 // deserializeAccountRow deserializes the passed serialized account information.
@@ -423,7 +563,7 @@ func serializeBIP0044AccountRow(encryptedPubKey,
 func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
 
-	accountID := accountKey(account)
+	accountID := uint32ToBytes(account)
 	serializedRow := bucket.Get(accountID)
 	if serializedRow == nil {
 		str := fmt.Sprintf("account %d not found", account)
@@ -444,13 +584,76 @@ func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	return nil, managerError(ErrDatabase, str, nil)
 }
 
+func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
+	_, err := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).CreateBucket(votingPoolID)
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	return nil
+}
+
+func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRow, error) {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	c := bucket.Cursor()
+	allSeries := make(map[uint32]*dbSeriesRow)
+	for id, seriesData := c.First(); id != nil; id, seriesData = c.Next() {
+		seriesID := binary.LittleEndian.Uint32(id)
+		series, err := deserializeSeriesRow(seriesData)
+		if err != nil {
+			return nil, managerError(0, "FIXME", err)
+		}
+		allSeries[seriesID] = series
+	}
+	return allSeries, nil
+}
+
+func (mtx *managerTx) ExistsSeries(votingPoolID []byte, ID uint32) bool {
+	vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	if vpBucket == nil {
+		return false
+	}
+	return vpBucket.Get(uint32ToBytes(ID)) != nil
+}
+
+func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	return bucket != nil
+}
+
+// TODO: check parameter order consistency
+func (mtx *managerTx) PutSeries(votingPoolID []byte, ID, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
+	row := &dbSeriesRow{
+		reqSigs:           reqSigs,
+		pubKeysEncrypted:  pubKeysEncrypted,
+		privKeysEncrypted: privKeysEncrypted,
+	}
+	return mtx.putSeriesRow(votingPoolID, ID, row)
+}
+
+func (mtx *managerTx) putSeriesRow(votingPoolID []byte, ID uint32, row *dbSeriesRow) error {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
+	vpBucket, err := bucket.CreateBucketIfNotExists(votingPoolID)
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	serialized, err := serializeSeriesRow(row)
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	err = vpBucket.Put(uint32ToBytes(ID), serialized)
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	return nil
+}
+
 // putAccountRow stores the provided account information to the database.  This
 // is used a common base for storing the various account types.
 func (mtx *managerTx) putAccountRow(account uint32, row *dbAccountRow) error {
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
 
 	// Write the serialized value keyed by the account number.
-	err := bucket.Put(accountKey(account), serializeAccountRow(row))
+	err := bucket.Put(uint32ToBytes(account), serializeAccountRow(row))
 	if err != nil {
 		str := fmt.Sprintf("failed to store account %d", account)
 		return managerError(ErrDatabase, str, err)
@@ -765,12 +968,13 @@ func (mtx *managerTx) PutChainedAddress(addressID []byte, account uint32,
 
 	// Update the next index for the appropriate internal or external
 	// branch.
-	accountID := accountKey(account)
+	accountID := uint32ToBytes(account)
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
 	serializedAccount := bucket.Get(accountID)
 
 	// Deserialize the account row.
 	row, err := deserializeAccountRow(accountID, serializedAccount)
+
 	if err != nil {
 		return err
 	}
@@ -1079,6 +1283,12 @@ func openOrCreateDB(dbPath string) (*managerDB, error) {
 		_, err = tx.CreateBucketIfNotExists(addrAcctIdxBucketName)
 		if err != nil {
 			str := "failed to create address index bucket"
+			return managerError(ErrDatabase, str, err)
+		}
+
+		_, err = tx.CreateBucketIfNotExists(votingPoolBucketName)
+		if err != nil {
+			str := "failed to create voting pool bucket"
 			return managerError(ErrDatabase, str, err)
 		}
 
