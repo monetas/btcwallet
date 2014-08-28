@@ -17,17 +17,33 @@
 package waddrmgr
 
 import (
+	"fmt"
+	"sort"
+
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
 	"github.com/monetas/btcutil/hdkeychain"
 )
 
-type VotingPool struct {
-	id []byte
+type seriesData struct {
+	id uint32
+	publicKeys []*hdkeychain.ExtendedKey
+	requiredSigs uint32
 }
 
+type VotingPool struct {
+	id []byte
+	seriesLookup map[uint32]*seriesData
+	manager *Manager
+}
+
+
 func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
-	// TODO(salgado): Load from db
+	// TODO(salgado): Insert into db
 	return &VotingPool{
 		id: poolID,
+		seriesLookup: make(map[uint32]*seriesData),
+		manager: m,
 	}, nil
 }
 
@@ -38,20 +54,119 @@ func (m *Manager) VotingPool(poolID []byte) (*VotingPool, error) {
 	}, nil
 }
 
-func (vp *VotingPool) CreateSeries(seriesID uint32, publicKeys []*hdkeychain.ExtendedKey, requiredSigs uint32) error {
-	// TODO(jimmy): Ensure extended keys are public (.IsPrivate)
+func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, requiredSigs uint32) error {
 
-	return ErrNotImplemented
+	keys := make([]*hdkeychain.ExtendedKey, len(rawkeys))
+	sort.Sort(sort.StringSlice(rawkeys))
+
+	for i, rawkey := range rawkeys {
+		key, err := hdkeychain.NewKeyFromString(rawkey)
+		keys[i] = key
+		if err != nil {
+			str := fmt.Sprintf("Invalid extended public key %v", rawkey)
+			return managerError(0, str, err)			
+		}
+		if keys[i].IsPrivate() {
+			return managerError(0, "Please only use public extended keys", nil)
+		}
+	}
+
+	if _, ok := vp.seriesLookup[seriesID]; ok {
+		// TODO: define error codes
+		str := fmt.Sprintf("Series #%d already exists", seriesID)
+		return managerError(0, str, nil)
+	}
+
+	vp.seriesLookup[seriesID] = &seriesData{
+		id: seriesID,
+		publicKeys: keys,
+		requiredSigs: requiredSigs,
+	}
+
+	return nil
 }
 
-func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.ExtendedKey, requiredSigs uint32) error {
+func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.ExtendedKey, requiredSSigs uint32) error {
 	// TODO(lars): !
 	return ErrNotImplemented
 }
 
+// Change the order of the pubkeys based on branch number
+//  For 3 pubkeys ABC, this would mean:
+// branch 0 - CBA (reversed)
+// branch 1 - ABC (first key priority)
+// branch 2 - BAC (second key priority)
+// branch 3 - CAB (third key priority)
+func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
+	//change the order of pks based on branch number.
+	if branch == 0 {
+		// reverse pk
+		for i, j := 0, len(pks)-1; i < j; i, j = i+1, j-1 {
+			pks[i], pks[j] = pks[j], pks[i]
+		}
+		return pks
+	} else {
+		tmp := make([]*btcutil.AddressPubKey, len(pks))
+		tmp[0] = pks[branch-1]
+		j := 1
+		for i := 0; i< len(pks); i++ {
+			if i != int(branch-1) {
+				tmp[j] = pks[i]
+				j++
+			}
+		}
+		return tmp
+	}
+}
+
 func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) (ManagedScriptAddress, error) {
-	// TODO(jimmy): git'r'done
-	return nil, ErrNotImplemented
+
+	series, ok := vp.seriesLookup[seriesID]
+	if !ok {
+		str := fmt.Sprintf("Series #%d does not exist", seriesID)
+		return nil, managerError(0, str, nil)
+	}
+
+	pks := make([]*btcutil.AddressPubKey, len(series.publicKeys))
+
+	for i, key := range series.publicKeys {
+		child, err := key.Child(index)
+		// implement getting the next index until we find a valid one in case
+		// there is a hdkeychain.ErrInvalidChild
+		if err != nil {
+			str := fmt.Sprintf("Child #%d for this pubkey %d does not exist", index, i)
+			return nil, managerError(0, str, err)
+		}
+		pubkey, err := child.ECPubKey()
+		if err != nil {
+			str := fmt.Sprintf("Child #%d for this pubkey %d does not exist", index, i)
+			return nil, managerError(0, str, err)
+		}
+		pks[i], err = btcutil.NewAddressPubKey(pubkey.SerializeCompressed(), vp.manager.net)
+
+		if err != nil {
+			str := fmt.Sprintf("Child #%d for this pubkey %d could not be converted to an address", index, i)
+			return nil, managerError(0, str, err)
+		}
+	}
+
+	pks = branchOrder(pks, branch)
+
+	script, err := btcscript.MultiSigScript(pks, int(series.requiredSigs))
+	if err != nil {
+		str := fmt.Sprintf("error while making multisig script hash, %d", len(pks))
+		return nil, managerError(0, str, err)
+	}
+
+	encryptedScript, err := vp.manager.cryptoKeyScript.Encrypt(script)
+	if err != nil {
+		str := fmt.Sprintf("error while encrypting multisig script hash")
+		return nil, managerError(0, str, err)
+	}
+
+	scriptHash := btcutil.Hash160(script)
+
+	return newScriptAddress(vp.manager, ImportedAddrAccount, scriptHash, encryptedScript)
 }
 
 func (vp *VotingPool) EmpowerBranch(seriesID, branch uint32, key *hdkeychain.ExtendedKey) error {
