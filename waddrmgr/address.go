@@ -149,7 +149,7 @@ func (a *managedAddress) unlock(key *snacl.CryptoKey) ([]byte, error) {
 		if err != nil {
 			str := fmt.Sprintf("failed to decrypt private key for "+
 				"%s", a.address)
-			return nil, managerError(ErrCrypto, str, nil)
+			return nil, managerError(ErrCrypto, str, err)
 		}
 
 		a.privKeyCT = privKey
@@ -412,7 +412,7 @@ func (a *scriptAddress) unlock(key *snacl.CryptoKey) ([]byte, error) {
 		if err != nil {
 			str := fmt.Sprintf("failed to decrypt script for %s",
 				a.address)
-			return nil, managerError(ErrCrypto, str, nil)
+			return nil, managerError(ErrCrypto, str, err)
 		}
 
 		a.scriptCT = script
