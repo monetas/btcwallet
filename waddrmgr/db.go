@@ -281,9 +281,9 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 // accountKey returns the account key to use in the database for a given account
 // number.
 func accountKey(account uint32) []byte {
-	var buf [4]byte
-	binary.LittleEndian.PutUint32(buf[:], account)
-	return buf[:]
+	buf := make([]byte, 4)
+	binary.LittleEndian.PutUint32(buf, account)
+	return buf
 }
 
 // FetchAccountInfo loads information about the passed account from the
