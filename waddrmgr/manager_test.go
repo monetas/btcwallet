@@ -17,13 +17,11 @@
 package waddrmgr_test
 
 import (
-	"bytes"
 	"os"
 	"reflect"
 	"testing"
 
 	"github.com/monetas/btcnet"
-	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/waddrmgr"
 )
 
@@ -127,45 +125,75 @@ func testNextInternalAddresses(tc *testContext) bool {
 
 func testCreateVotingPool(tc *testContext) bool {
 	tests := []struct {
-		in      []string
-		series  uint32
-		reqSigs uint32
-		address string
-		err     error
+		in        []string
+		series    uint32
+		reqSigs   uint32
+		// map of branch:address (we only check the branch index at 0)
+		addresses map[uint32]string
+		err       error
 	}{
 		{
-			in:      []string{"xpub"},
+			in: []string{
+				"xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7",
+				"xpub661MyMwAqRbcEotETSnT7BtrWLinsdkAprqbYjULb7kVyXC8CexgyjZrVxysVWwDbyULYNqGCxDmhJKJeBENn3nHQ6mgH9WUE7VRxaydAgL",
+				"xpub661MyMwAqRbcGG19VCptBTADTPoJU4AfqwxqjdS1VUGMW1R2VQC7ei3xhZv59ZhuaRvEz6wyuxtCgmuP1Vutf52QFWkmPF3ei2QBX1cfufP"},
 			series:  0,
 			reqSigs: 2,
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrInvalidAccount},
+			addresses: map[uint32]string{
+				0:"3DyBsdJrgNNbgKdWkuKknE88Uckcp11j7M",
+				1:"38AUX6WQub5sH5WB9jrmW1JQWgNkoKSgRT",
+				2:"36Q1ZLMMvVpoQLeEG1XTYGBpgqr5PqrqXW",
+				3:"3Lp9hwpLJ5VAajLy2jUnykofmoQP62PCpm",
+			},
+			err:     nil,
 		},
-		// Errors..
-		{
-			in:  []string{"xpub"},
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrInvalidAccount},
-		},
+		// // Errors..
+		// {
+		// 	in:  []string{"xpub"},
+		// 	err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrInvalidAccount},
+		// },
 	}
+
+	pool, err := tc.manager.CreateVotingPool([]byte{0x00, 0x10, 0x20})
+	if err != nil {
+		tc.t.Errorf("Voting Pool creation failed")
+		return false
+	}
+	tc.pool = pool
 
 	tc.t.Logf("Running %d tests", len(tests))
 	for i, test := range tests {
-		// Convert in to hdkeychain.ExtendedKey
-		var keys []*hdkeychain.ExtendedKey
-		err := tc.pool.CreateSeries(test.series, keys, test.reqSigs)
-		if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
-			tc.t.Errorf("ImportExtendedPubKeys #%d wrong error type "+
-				"got: %v <%T>, want: %T", i, err, err, test.err)
-			continue
+		err := tc.pool.CreateSeries(test.series, test.in, test.reqSigs)
+		if err != nil {
+			if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
+				tc.t.Errorf("CreateSeries #%d wrong error type "+
+					"got: %v <%T>, want: %T", i, err, err, test.err)
+				continue
+			}
+			rerr := err.(waddrmgr.ManagerError)
+			trerr := test.err.(waddrmgr.ManagerError)
+			if rerr.ErrorCode != trerr.ErrorCode {
+				tc.t.Errorf("CreateSeries #%d wrong "+
+					"error code got: %v, want: %v", i,
+					rerr.ErrorCode, trerr.ErrorCode)
+				continue
+			}
+		} else {
+			for branch, address := range test.addresses {
+				addr, err := tc.pool.DepositScript(test.series, branch, 0)
+				if err != nil {
+					tc.t.Errorf("CreateSeries #%d wrong "+
+						"error %v", i, err)
+					continue
+				}
+				got := addr.Address().EncodeAddress()
+				if address != got {
+					tc.t.Errorf("CreateSeries #%d returned "+
+						"the wrong deposit script got: %v, want: %v",
+						i, got, address)
+				}
+			}
 		}
-		rerr := err.(waddrmgr.ManagerError)
-		trerr := test.err.(waddrmgr.ManagerError)
-		if rerr.ErrorCode != trerr.ErrorCode {
-			tc.t.Errorf("ImportExtendedPubKeys #%d wrong "+
-				"error code got: %v, want: %v", i,
-				rerr.ErrorCode, trerr.ErrorCode)
-			continue
-		}
-
-		//
 
 	}
 
@@ -283,27 +311,4 @@ func TestOpen(t *testing.T) {
 		manager: mgr,
 		account: 0,
 	})
-}
-
-func TestThing(t *testing.T) {
-	tests := []struct {
-		name     string
-		in       []byte
-		expected []byte
-		err      error
-	}{
-		{name: "zero", in: []byte{0x01, 0x02}, expected: []byte{0x00, 0x00}},
-		{name: "zero3", in: []byte{0x01, 0x02, 0x03}, expected: []byte{0x00, 0x00, 0x00}},
-	}
-
-	t.Logf("Running %d tests", len(tests))
-	for i, test := range tests {
-		buf := make([]byte, len(test.in))
-		copy(buf, test.in)
-		waddrmgr.TstZero(buf)
-		if !bytes.Equal(buf, test.expected) {
-			t.Errorf("Zero: %d (%s) unexpected zero - got %x", i,
-				test.name, buf)
-		}
-	}
 }
