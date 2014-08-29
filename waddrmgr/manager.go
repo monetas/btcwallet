@@ -349,14 +349,21 @@ func (m *Manager) loadAccountInfo(account uint32) (*accountInfo, error) {
 
 	// The account is either invalid or just wasn't cached, so attempt to
 	// load the information from the database.
-	var row *dbAccountRow
+	var rowInterface interface{}
 	err := m.db.View(func(tx *managerTx) error {
 		var err error
-		row, err = tx.FetchAccountInfo(account)
+		rowInterface, err = tx.FetchAccountInfo(account)
 		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Ensure the account type is a BIP0044 account.
+	row, ok := rowInterface.(*dbBIP0044AccountRow)
+	if !ok {
+		str := fmt.Sprintf("unsupported account type %T", row)
+		err = managerError(ErrDatabase, str, nil)
 	}
 
 	// Use the crypto public key to decrypt the account public extended key.
@@ -519,8 +526,8 @@ func (m *Manager) loadAndCacheAddress(address btcutil.Address) (ManagedAddress, 
 		return nil, err
 	}
 
-	// Create a new managed address for the specific type of address.
-	// based on type and clean this nonsense up.
+	// Create a new managed address for the specific type of address based
+	// on type.
 	var managedAddr ManagedAddress
 	switch row := rowInterface.(type) {
 	case *dbChainAddressRow:
@@ -1642,14 +1649,8 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 		}
 
 		// Save the information for the default account to the database.
-		acctInfo := dbAccountRow{
-			pubKeyEncrypted:   acctPubEnc,
-			privKeyEncrypted:  acctPrivEnc,
-			nextExternalIndex: 0,
-			nextInternalIndex: 0,
-			name:              "",
-		}
-		err = tx.PutAccountInfo(defaultAccountNum, &acctInfo)
+		err = tx.PutAccountInfo(defaultAccountNum, acctPubEnc,
+			acctPrivEnc, 0, 0, "")
 		if err != nil {
 			return err
 		}

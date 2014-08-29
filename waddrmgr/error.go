@@ -91,6 +91,10 @@ const (
 	// the account manager.
 	ErrAddressNotFound
 
+	// ErrAccountNotFound indicates the requested account is not known to
+	// the account manager.
+	ErrAccountNotFound
+
 	// ErrDuplicate indicates an address already exists.
 	ErrDuplicate
 
@@ -119,6 +123,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrWatchingOnly:      "ErrWatchingOnly",
 	ErrInvalidAccount:    "ErrInvalidAccount",
 	ErrAddressNotFound:   "ErrAddressNotFound",
+	ErrAccountNotFound:   "ErrAccountNotFound",
 	ErrDuplicate:         "ErrDuplicate",
 	ErrTooManyAddresses:  "ErrTooManyAddresses",
 	ErrWrongPassphrase:   "ErrWrongPassphrase",
