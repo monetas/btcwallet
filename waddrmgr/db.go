@@ -80,6 +80,12 @@ type dbBIP0044AccountRow struct {
 	name              string
 }
 
+type dbSeriesRow struct {
+	seriesID          uint32
+	pubKeysEncrypted  [][]byte
+	privKeysEncrypted [][]byte
+}
+
 // dbAddressRow houses common information stored about an address in the
 // database.
 type dbAddressRow struct {
@@ -121,6 +127,7 @@ var (
 	addrBucketName        = []byte("addr")
 	mainBucketName        = []byte("main")
 	addrAcctIdxBucketName = []byte("addracctidx")
+	votingPoolBucketName  = []byte("votingpool")
 
 	// Db related key names (main bucket).
 	dbVersionName    = []byte("dbver")
@@ -295,9 +302,9 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 	return nil
 }
 
-// accountKey returns the account key to use in the database for a given account
+// uint32ToBytes returns the account key to use in the database for a given account
 // number.
-func accountKey(account uint32) []byte {
+func uint32ToBytes(account uint32) []byte {
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, account)
 	return buf
@@ -327,6 +334,11 @@ func (mtx *managerTx) deserializeAccountRow(accountID []byte, serializedAccount 
 	copy(row.rawData, serializedAccount[5:5+rdlen])
 
 	return &row, nil
+}
+
+func (mtx *managerTx) serializeSeriesRow(row *dbSeriesRow) []byte {
+	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN>
+	return []byte("NOT IMPLEMENTED")
 }
 
 // serializeAccountRow returns the serialization of the passed account row.
@@ -425,7 +437,7 @@ func (mtx *managerTx) serializeBIP0044AccountRow(encryptedPubKey,
 func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
 
-	accountID := accountKey(account)
+	accountID := uint32ToBytes(account)
 	serializedRow := bucket.Get(accountID)
 	if serializedRow == nil {
 		str := fmt.Sprintf("account %d not found", account)
@@ -446,13 +458,40 @@ func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	return nil, managerError(ErrDatabase, str, nil)
 }
 
+func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
+	_, err := bucket.CreateBucket(votingPoolID)
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	return nil
+}
+
+func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	return bucket != nil
+}
+
+func (mtx *managerTx) putSeriesRow(votingPoolID []byte, row *dbSeriesRow) error {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
+	vpBucket, err := bucket.CreateBucketIfNotExists(votingPoolID)
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	err = vpBucket.Put(uint32ToBytes(row.seriesID), mtx.serializeSeriesRow(row))
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	return nil
+}
+
 // putAccountRow stores the provided account information to the database.  This
 // is used a common base for storing the various account types.
 func (mtx *managerTx) putAccountRow(account uint32, row *dbAccountRow) error {
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
 
 	// Write the serialized value keyed by the account number.
-	err := bucket.Put(accountKey(account), mtx.serializeAccountRow(row))
+	err := bucket.Put(uint32ToBytes(account), mtx.serializeAccountRow(row))
 	if err != nil {
 		str := fmt.Sprintf("failed to store account %d", account)
 		return managerError(ErrDatabase, str, err)
@@ -768,7 +807,7 @@ func (mtx *managerTx) PutChainedAddress(addressID []byte, account uint32,
 	// Update the next index for the appropriate internal or external
 	// branch.
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
-	bucket, err := bucket.CreateBucketIfNotExists(accountKey(account))
+	bucket, err := bucket.CreateBucketIfNotExists(uint32ToBytes(account))
 	if err != nil {
 		str := fmt.Sprintf("failed to create account %d bucket", account)
 		return managerError(ErrDatabase, str, err)
@@ -1066,6 +1105,12 @@ func openOrCreateDB(dbPath string) (*managerDB, error) {
 		_, err = tx.CreateBucketIfNotExists(addrAcctIdxBucketName)
 		if err != nil {
 			str := "failed to create address index bucket"
+			return managerError(ErrDatabase, str, err)
+		}
+
+		_, err = tx.CreateBucketIfNotExists(votingPoolBucketName)
+		if err != nil {
+			str := "failed to create voting pool bucket"
 			return managerError(ErrDatabase, str, err)
 		}
 

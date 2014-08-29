@@ -17,6 +17,7 @@
 package waddrmgr_test
 
 import (
+	"bytes"
 	"os"
 	"reflect"
 	"testing"
@@ -123,11 +124,11 @@ func testNextInternalAddresses(tc *testContext) bool {
 	return true
 }
 
-func testCreateVotingPool(tc *testContext) bool {
+func testDepositScriptAddress(tc *testContext) bool {
 	tests := []struct {
-		in        []string
-		series    uint32
-		reqSigs   uint32
+		in      []string
+		series  uint32
+		reqSigs uint32
 		// map of branch:address (we only check the branch index at 0)
 		addresses map[uint32]string
 		err       error
@@ -140,12 +141,12 @@ func testCreateVotingPool(tc *testContext) bool {
 			series:  0,
 			reqSigs: 2,
 			addresses: map[uint32]string{
-				0:"3DyBsdJrgNNbgKdWkuKknE88Uckcp11j7M",
-				1:"38AUX6WQub5sH5WB9jrmW1JQWgNkoKSgRT",
-				2:"36Q1ZLMMvVpoQLeEG1XTYGBpgqr5PqrqXW",
-				3:"3Lp9hwpLJ5VAajLy2jUnykofmoQP62PCpm",
+				0: "3DyBsdJrgNNbgKdWkuKknE88Uckcp11j7M",
+				1: "38AUX6WQub5sH5WB9jrmW1JQWgNkoKSgRT",
+				2: "36Q1ZLMMvVpoQLeEG1XTYGBpgqr5PqrqXW",
+				3: "3Lp9hwpLJ5VAajLy2jUnykofmoQP62PCpm",
 			},
-			err:     nil,
+			err: nil,
 		},
 		// // Errors..
 		// {
@@ -154,7 +155,7 @@ func testCreateVotingPool(tc *testContext) bool {
 		// },
 	}
 
-	pool, err := tc.manager.CreateVotingPool([]byte{0x00, 0x10, 0x20})
+	pool, err := tc.manager.CreateVotingPool([]byte{0x00, 0x10, 0x21})
 	if err != nil {
 		tc.t.Errorf("Voting Pool creation failed")
 		return false
@@ -180,7 +181,7 @@ func testCreateVotingPool(tc *testContext) bool {
 			}
 		} else {
 			for branch, address := range test.addresses {
-				addr, err := tc.pool.DepositScript(test.series, branch, 0)
+				addr, err := tc.pool.DepositScriptAddress(test.series, branch, 0)
 				if err != nil {
 					tc.t.Errorf("CreateSeries #%d wrong "+
 						"error %v", i, err)
@@ -200,7 +201,22 @@ func testCreateVotingPool(tc *testContext) bool {
 	return true
 }
 
-func testVotingPool(tc *testContext) bool {
+func testCreateVotingPool(tc *testContext) bool {
+	pool, err := tc.manager.CreateVotingPool([]byte{0x00, 0x10, 0x20})
+	if err != nil {
+		tc.t.Errorf("Voting Pool creation failed")
+		return false
+	}
+
+	pool2, err := tc.manager.LoadVotingPool([]byte{0x00, 0x10, 0x20})
+	if pool2 == nil {
+		tc.t.Errorf("Voting Pool doesn't seem to be in the DB")
+		return false
+	}
+	if !bytes.Equal(pool2.ID, pool.ID) {
+		tc.t.Errorf("Voting pool obtained from DB does not match the created one")
+		return false
+	}
 	return true
 }
 
@@ -212,28 +228,23 @@ func testReplaceSeries(tc *testContext) bool {
 	return true
 }
 
-func testDepositScript(tc *testContext) bool {
-	return true
-}
-
 func testEmpowerBranch(tc *testContext) bool {
 	return true
 }
 
 func testManagerAPI(tc *testContext) {
-	testNextExternalAddresses(tc)
+	//testNextExternalAddresses(tc)
 
 	if !testCreateVotingPool(tc) {
 		return
 	}
-	testVotingPool(tc)
 
 	if !testCreateSeries(tc) {
 		return
 	}
 
 	testReplaceSeries(tc)
-	testDepositScript(tc)
+	testDepositScriptAddress(tc)
 	testEmpowerBranch(tc)
 }
 
