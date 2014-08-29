@@ -17,6 +17,7 @@
 package waddrmgr
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -49,13 +50,29 @@ type addressType uint8
 
 // These constants define the various supported address types.
 const (
-	atChain  addressType = 0 // not iota as they need to be stable for db
-	atImport addressType = 1
-	atScript addressType = 2
+	adtChain  addressType = 0 // not iota as they need to be stable for db
+	adtImport addressType = 1
+	adtScript addressType = 2
+)
+
+// accountType represents a type of address stored in the database.
+type accountType uint8
+
+// These constants define the various supported account types.
+const (
+	actBIP0044 accountType = 0 // not iota as they need to be stable for db
 )
 
 // dbAccountRow houses information stored about an account in the database.
 type dbAccountRow struct {
+	acctType accountType
+	rawData  []byte // Varies based on account type field.
+}
+
+// dbBIP0044AccountRow houses additional information stored about a BIP0044
+// account in the database.
+type dbBIP0044AccountRow struct {
+	dbAccountRow
 	pubKeyEncrypted   []byte
 	privKeyEncrypted  []byte
 	nextExternalIndex uint32
@@ -117,17 +134,17 @@ var (
 	cryptoScriptKeyName = []byte("cscript")
 	watchingOnlyName    = []byte("watchonly")
 
-	// Account related key names (account && account->accountNum bucket).
+	// Account related key names (account bucket).
 	acctNumAcctsName      = []byte("numaccts")
-	acctPrivKeyName       = []byte("priv")
-	acctPubKeyName        = []byte("pub")
 	acctExternalIndexName = []byte("extidx")
 	acctInternalIndexName = []byte("intidx")
-	acctNameName          = []byte("name")
 )
 
 // managerTx represents a database transaction on which all database reads and
-// writes occur.
+// writes occur.  Note that fetched bytes are only valid during the bolt
+// transaction, however they are safe to use after a manager transation has
+// been terminated.  This is why the code make copies of the data fetched from
+// bolt buckets.
 type managerTx bolt.Tx
 
 // FetchMasterKeyParams loads the master key parameters needed to derive them
@@ -286,126 +303,176 @@ func accountKey(account uint32) []byte {
 	return buf
 }
 
+// deserializeAccountRow deserializes the passed serialized account information.
+// This is used as a common base for the various account types to deserialize
+// the common parts.
+func (mtx *managerTx) deserializeAccountRow(accountID []byte, serializedAccount []byte) (*dbAccountRow, error) {
+	// The serialized account format is:
+	//   <acctType><rdlen><rawdata>
+	//
+	// 1 byte acctType + 4 bytes raw data length + raw data
+
+	// Given the above, the length of the entry must be at a minimum
+	// the constant value sizes.
+	if len(serializedAccount) < 5 {
+		str := fmt.Sprintf("malformed serialized account for key %x",
+			accountID)
+		return nil, managerError(ErrDatabase, str, nil)
+	}
+
+	row := dbAccountRow{}
+	row.acctType = accountType(serializedAccount[0])
+	rdlen := binary.LittleEndian.Uint32(serializedAccount[1:5])
+	row.rawData = make([]byte, rdlen)
+	copy(row.rawData, serializedAccount[5:5+rdlen])
+
+	return &row, nil
+}
+
+// serializeAccountRow returns the serialization of the passed account row.
+func (mtx *managerTx) serializeAccountRow(row *dbAccountRow) []byte {
+	// The serialized account format is:
+	//   <acctType><rdlen><rawdata>
+	//
+	// 1 byte acctType + 4 bytes raw data length + raw data
+	rdlen := len(row.rawData)
+	buf := make([]byte, 5+rdlen)
+	buf[0] = byte(row.acctType)
+	binary.LittleEndian.PutUint32(buf[1:5], uint32(rdlen))
+	copy(buf[5:5+rdlen], row.rawData)
+	return buf
+}
+
+// deserializeBIP0044AccountRow deserializes the raw data from the passed
+// account row as a BIP0044 account.
+func (mtx *managerTx) deserializeBIP0044AccountRow(accountID []byte, row *dbAccountRow) (*dbBIP0044AccountRow, error) {
+	// The serialized account format is:
+	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey><nextextidx>
+	//   <nextintidx><namelen><name>
+	//
+	// 4 bytes encrypted pubkey len + encrypted pubkey + 4 bytes encrypted
+	// privkey len + encrypted privkey + 4 bytes next external index +
+	// 4 bytes next internal index + 4 bytes name len + name
+
+	// Given the above, the length of the entry must be at a minimum
+	// the constant value sizes.
+	if len(row.rawData) < 20 {
+		str := fmt.Sprintf("malformed serialized bip0044 account for "+
+			"key %x", accountID)
+		return nil, managerError(ErrDatabase, str, nil)
+	}
+
+	retRow := dbBIP0044AccountRow{
+		dbAccountRow: *row,
+	}
+
+	pubLen := binary.LittleEndian.Uint32(row.rawData[0:4])
+	retRow.pubKeyEncrypted = make([]byte, pubLen)
+	copy(retRow.pubKeyEncrypted, row.rawData[4:4+pubLen])
+	offset := 4 + pubLen
+	privLen := binary.LittleEndian.Uint32(row.rawData[offset : offset+4])
+	offset += 4
+	retRow.privKeyEncrypted = make([]byte, privLen)
+	copy(retRow.privKeyEncrypted, row.rawData[offset:offset+privLen])
+	offset += privLen
+	retRow.nextExternalIndex = binary.LittleEndian.Uint32(row.rawData[offset : offset+4])
+	offset += 4
+	retRow.nextInternalIndex = binary.LittleEndian.Uint32(row.rawData[offset : offset+4])
+	offset += 4
+	nameLen := binary.LittleEndian.Uint32(row.rawData[offset : offset+4])
+	offset += 4
+	retRow.name = string(row.rawData[offset : offset+nameLen])
+
+	return &retRow, nil
+}
+
+// serializeBIP0044AccountRow returns the serialization of the raw data field
+// for a BIP0044 account.
+func (mtx *managerTx) serializeBIP0044AccountRow(encryptedPubKey,
+	encryptedPrivKey []byte, nextExternalIndex, nextInternalIndex uint32,
+	name string) []byte {
+
+	// The serialized account format is:
+	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey><nextextidx>
+	//   <nextintidx><namelen><name>
+	//
+	// 4 bytes encrypted pubkey len + encrypted pubkey + 4 bytes encrypted
+	// privkey len + encrypted privkey + 4 bytes next external index +
+	// 4 bytes next internal index + 4 bytes name len + name
+	pubLen := uint32(len(encryptedPubKey))
+	privLen := uint32(len(encryptedPrivKey))
+	nameLen := uint32(len(name))
+	rawData := make([]byte, 20+pubLen+privLen+nameLen)
+	binary.LittleEndian.PutUint32(rawData[0:4], pubLen)
+	copy(rawData[4:4+pubLen], encryptedPubKey)
+	offset := 4 + pubLen
+	binary.LittleEndian.PutUint32(rawData[offset:offset+4], privLen)
+	offset += 4
+	copy(rawData[offset:offset+privLen], encryptedPrivKey)
+	offset += privLen
+	binary.LittleEndian.PutUint32(rawData[offset:offset+4], nextExternalIndex)
+	offset += 4
+	binary.LittleEndian.PutUint32(rawData[offset:offset+4], nextInternalIndex)
+	offset += 4
+	binary.LittleEndian.PutUint32(rawData[offset:offset+4], nameLen)
+	offset += 4
+	copy(rawData[offset:offset+nameLen], name)
+	return rawData
+}
+
 // FetchAccountInfo loads information about the passed account from the
 // database.
-func (mtx *managerTx) FetchAccountInfo(account uint32) (*dbAccountRow, error) {
-	// The returned bytes are only valid during the bolt transaction, so
-	// make a copy of the data that is returned.
-
+func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
-	bucket = bucket.Bucket(accountKey(account))
-	if bucket == nil {
-		str := fmt.Sprintf("account %d is invalid", account)
-		return nil, managerError(ErrInvalidAccount, str, nil)
+
+	accountID := accountKey(account)
+	serializedRow := bucket.Get(accountID)
+	if serializedRow == nil {
+		str := fmt.Sprintf("account %d not found", account)
+		return nil, managerError(ErrAccountNotFound, str, nil)
 	}
 
-	// Load the encrypted public key for the account.
-	var info dbAccountRow
-	val := bucket.Get(acctPubKeyName)
-	if val == nil {
-		str := fmt.Sprintf("required account %d encrypted public key "+
-			"  not stored in database", account)
-		return nil, managerError(ErrDatabase, str, nil)
-	}
-	info.pubKeyEncrypted = make([]byte, len(val))
-	copy(info.pubKeyEncrypted, val)
-
-	// Load the encrypted private key for the account.  It is not required
-	// (watching-only mode).
-	val = bucket.Get(acctPrivKeyName)
-	if val != nil {
-		info.privKeyEncrypted = make([]byte, len(val))
-		copy(info.privKeyEncrypted, val)
+	row, err := mtx.deserializeAccountRow(accountID, serializedRow)
+	if err != nil {
+		return nil, err
 	}
 
-	val = bucket.Get(acctExternalIndexName)
-	if val == nil {
-		str := fmt.Sprintf("required account %d external index not "+
-			"stored in database", account)
-		return nil, managerError(ErrDatabase, str, nil)
+	switch row.acctType {
+	case actBIP0044:
+		return mtx.deserializeBIP0044AccountRow(accountID, row)
 	}
-	info.nextExternalIndex = binary.LittleEndian.Uint32(val)
 
-	val = bucket.Get(acctInternalIndexName)
-	if val == nil {
-		str := fmt.Sprintf("required account %d internal index not "+
-			"stored in database", account)
-		return nil, managerError(ErrDatabase, str, nil)
+	str := fmt.Sprintf("unsupported account type '%d'", row.acctType)
+	return nil, managerError(ErrDatabase, str, nil)
+}
+
+// putAccountRow stores the provided account information to the database.  This
+// is used a common base for storing the various account types.
+func (mtx *managerTx) putAccountRow(account uint32, row *dbAccountRow) error {
+	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
+
+	// Write the serialized value keyed by the account number.
+	err := bucket.Put(accountKey(account), mtx.serializeAccountRow(row))
+	if err != nil {
+		str := fmt.Sprintf("failed to store account %d", account)
+		return managerError(ErrDatabase, str, err)
 	}
-	info.nextInternalIndex = binary.LittleEndian.Uint32(val)
-
-	val = bucket.Get(acctNameName)
-	if val == nil {
-		str := fmt.Sprintf("required account %d name not stored in "+
-			"database", account)
-		return nil, managerError(ErrDatabase, str, nil)
-	}
-	info.name = string(val)
-
-	return &info, nil
+	return nil
 }
 
 // PutAccountInfo stores the provided account information to the database.
-func (mtx *managerTx) PutAccountInfo(account uint32, row *dbAccountRow) error {
-	// Get existing bucket for the account or create one if needed.
-	tx := (*bolt.Tx)(mtx)
-	bucket := tx.Bucket(acctBucketName).Bucket(accountKey(account))
-	if bucket == nil {
-		bucket = tx.Bucket(acctBucketName)
-		newB, err := bucket.CreateBucket(accountKey(account))
-		if err != nil {
-			str := fmt.Sprintf("failed to create account bucket %d",
-				account)
-			return managerError(ErrDatabase, str, err)
-		}
-		bucket = newB
-	}
+func (mtx *managerTx) PutAccountInfo(account uint32, encryptedPubKey,
+	encryptedPrivKey []byte, nextExternalIndex, nextInternalIndex uint32,
+	name string) error {
 
-	// Save the public encrypted key.
-	err := bucket.Put(acctPubKeyName, row.pubKeyEncrypted)
-	if err != nil {
-		str := fmt.Sprintf("failed to store account %d encrypted "+
-			"public key", account)
-		return managerError(ErrDatabase, str, err)
-	}
+	rawData := mtx.serializeBIP0044AccountRow(encryptedPubKey,
+		encryptedPrivKey, nextExternalIndex, nextInternalIndex, name)
 
-	// Only write the private key if it's non-nil.
-	if row.privKeyEncrypted != nil {
-		err := bucket.Put(acctPrivKeyName, row.privKeyEncrypted)
-		if err != nil {
-			str := fmt.Sprintf("failed to store account %d "+
-				"encrypted private key", account)
-			return managerError(ErrDatabase, str, err)
-		}
+	acctRow := dbAccountRow{
+		acctType: actBIP0044,
+		rawData:  rawData,
 	}
-
-	// Save the last external index.
-	var val [4]byte
-	binary.LittleEndian.PutUint32(val[:], row.nextExternalIndex)
-	err = bucket.Put(acctExternalIndexName, val[:])
-	if err != nil {
-		str := fmt.Sprintf("failed to store account %d external index",
-			account)
-		return managerError(ErrDatabase, str, err)
-	}
-
-	// Save the last internal index.
-	binary.LittleEndian.PutUint32(val[:], row.nextInternalIndex)
-	err = bucket.Put(acctInternalIndexName, val[:])
-	if err != nil {
-		str := fmt.Sprintf("failed to store account %d internal index",
-			account)
-		return managerError(ErrDatabase, str, err)
-	}
-
-	// Save the account name.
-	err = bucket.Put(acctNameName, []byte(row.name))
-	if err != nil {
-		str := fmt.Sprintf("failed to store account %d name", account)
-		return managerError(ErrDatabase, str, err)
-	}
-
-	return nil
+	return mtx.putAccountRow(account, &acctRow)
 }
 
 // FetchNumAccounts loads the number of accounts that have been created from
@@ -653,11 +720,11 @@ func (mtx *managerTx) FetchAddress(addressID []byte) (interface{}, error) {
 	}
 
 	switch row.addrType {
-	case atChain:
+	case adtChain:
 		return mtx.deserializeChainedAddress(addressID, row)
-	case atImport:
+	case adtImport:
 		return mtx.deserializeImportedAddress(addressID, row)
-	case atScript:
+	case adtScript:
 		return mtx.deserializeScriptAddress(addressID, row)
 	}
 
@@ -688,7 +755,7 @@ func (mtx *managerTx) PutChainedAddress(addressID []byte, account uint32,
 	status syncStatus, branch, index uint32) error {
 
 	addrRow := dbAddressRow{
-		addrType:   atChain,
+		addrType:   adtChain,
 		account:    account,
 		addTime:    uint64(time.Now().Unix()),
 		syncStatus: status,
@@ -728,17 +795,13 @@ func (mtx *managerTx) PutImportedAddress(addressID []byte, account uint32,
 
 	rawData := mtx.serializeImportedAddress(encryptedPubKey, encryptedPrivKey)
 	addrRow := dbAddressRow{
-		addrType:   atImport,
+		addrType:   adtImport,
 		account:    account,
 		addTime:    uint64(time.Now().Unix()),
 		syncStatus: status,
 		rawData:    rawData,
 	}
-	if err := mtx.putAddress(addressID, &addrRow); err != nil {
-		return err
-	}
-
-	return nil
+	return mtx.putAddress(addressID, &addrRow)
 }
 
 // PutScriptAddress stores the provided script address information to the
@@ -748,7 +811,7 @@ func (mtx *managerTx) PutScriptAddress(addressID []byte, account uint32,
 
 	rawData := mtx.serializeScriptAddress(encryptedHash, encryptedScript)
 	addrRow := dbAddressRow{
-		addrType:   atScript,
+		addrType:   adtScript,
 		account:    account,
 		addTime:    uint64(time.Now().Unix()),
 		syncStatus: status,
@@ -798,15 +861,36 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 	bucket = (*bolt.Tx)(mtx).Bucket(acctBucketName)
 	cursor := bucket.Cursor()
 	for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
-		// Skip non-buckets.
-		if v != nil {
+		// Skip buckets.
+		if v == nil || bytes.Equal(k, acctNumAcctsName) {
 			continue
 		}
 
-		aBucket := bucket.Bucket(k)
-		if err := aBucket.Delete(acctPrivKeyName); err != nil {
-			str := "failed to delete account private extended key"
-			return managerError(ErrDatabase, str, err)
+		// Deserialize the address row first to determine the field
+		// values.
+		row, err := mtx.deserializeAccountRow(k, v)
+		if err != nil {
+			return err
+		}
+
+		switch row.acctType {
+		case actBIP0044:
+			arow, err := mtx.deserializeBIP0044AccountRow(k, row)
+			if err != nil {
+				return err
+			}
+
+			// Reserialize the imported address without the private
+			// key and store it.
+			row.rawData = mtx.serializeBIP0044AccountRow(
+				arow.pubKeyEncrypted, nil,
+				arow.nextExternalIndex, arow.nextInternalIndex,
+				arow.name)
+			err = bucket.Put(k, mtx.serializeAccountRow(row))
+			if err != nil {
+				str := "failed to delete account private key"
+				return managerError(ErrDatabase, str, err)
+			}
 		}
 	}
 
@@ -814,7 +898,7 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 	bucket = (*bolt.Tx)(mtx).Bucket(addrBucketName)
 	cursor = bucket.Cursor()
 	for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
-		// Skip buckets
+		// Skip buckets.
 		if v == nil {
 			continue
 		}
@@ -827,7 +911,7 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 		}
 
 		switch row.addrType {
-		case atImport:
+		case adtImport:
 			irow, err := mtx.deserializeImportedAddress(k, row)
 			if err != nil {
 				return err
@@ -843,7 +927,7 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 				return managerError(ErrDatabase, str, err)
 			}
 
-		case atScript:
+		case adtScript:
 			srow, err := mtx.deserializeScriptAddress(k, row)
 			if err != nil {
 				return err
