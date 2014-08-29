@@ -26,9 +26,9 @@ import (
 )
 
 type seriesData struct {
-	id           uint32
-	publicKeys   []*hdkeychain.ExtendedKey
-	requiredSigs uint32
+	id         uint32
+	publicKeys []*hdkeychain.ExtendedKey
+	reqSigs    uint32
 }
 
 type VotingPool struct {
@@ -72,7 +72,8 @@ func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 	}, nil
 }
 
-func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, requiredSigs uint32) error {
+// TODO: rawkeys -> rawPubKeys
+func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, reqSigs uint32) error {
 
 	keys := make([]*hdkeychain.ExtendedKey, len(rawkeys))
 	sort.Sort(sort.StringSlice(rawkeys))
@@ -95,18 +96,45 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, requiredSi
 		return managerError(0, str, nil)
 	}
 
+	// TODO: put the real pubKeysEncrypted here
+	// vp.manager.cryptoKeyPub.Encrypt()
+	encryptedKeys := [][]byte{{0x00}, {0x00}, {0x00}}
+	err := vp.manager.db.Update(func(tx *managerTx) error {
+		// TODO: check error
+		tx.PutSeries(vp.ID, seriesID, reqSigs, encryptedKeys, nil)
+		return nil
+	})
+	if err != nil {
+		str := fmt.Sprintf("Cannot put series #%d", seriesID)
+		return managerError(0, str, nil)
+	}
+
 	vp.seriesLookup[seriesID] = &seriesData{
-		id:           seriesID,
-		publicKeys:   keys,
-		requiredSigs: requiredSigs,
+		id:         seriesID,
+		publicKeys: keys,
+		reqSigs:    reqSigs,
 	}
 
 	return nil
 }
 
-func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.ExtendedKey, requiredSSigs uint32) error {
+func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.ExtendedKey, reqSigs uint32) error {
 	// TODO(lars): !
 	return ErrNotImplemented
+}
+
+func (vp *VotingPool) ExistsSeries(seriesID uint32) bool {
+	var exists bool
+	err := vp.manager.db.View(func(tx *managerTx) error {
+		exists = tx.ExistsSeries(vp.ID, seriesID)
+		return nil
+	})
+	if err != nil {
+		// If there was an error while retrieving the series, we should
+		// return an error, but we're too lazy for that.
+		return false
+	}
+	return exists
 }
 
 // Change the order of the pubkeys based on branch number
@@ -170,7 +198,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 
 	pks = branchOrder(pks, branch)
 
-	script, err := btcscript.MultiSigScript(pks, int(series.requiredSigs))
+	script, err := btcscript.MultiSigScript(pks, int(series.reqSigs))
 	if err != nil {
 		str := fmt.Sprintf("error while making multisig script hash, %d", len(pks))
 		return nil, managerError(0, str, err)

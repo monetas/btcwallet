@@ -82,6 +82,7 @@ type dbBIP0044AccountRow struct {
 
 type dbSeriesRow struct {
 	seriesID          uint32
+	reqSigs           uint32
 	pubKeysEncrypted  [][]byte
 	privKeysEncrypted [][]byte
 }
@@ -465,9 +466,28 @@ func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	return nil
 }
 
+func (mtx *managerTx) ExistsSeries(votingPoolID []byte, seriesID uint32) bool {
+	vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	if vpBucket == nil {
+		return false
+	}
+	return vpBucket.Get(uint32ToBytes(seriesID)) != nil
+}
+
 func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
 	return bucket != nil
+}
+
+// TODO: check parameter order consistency
+func (mtx *managerTx) PutSeries(votingPoolID []byte, seriesID, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
+	row := &dbSeriesRow{
+		seriesID:          seriesID,
+		reqSigs:           reqSigs,
+		pubKeysEncrypted:  pubKeysEncrypted,
+		privKeysEncrypted: privKeysEncrypted,
+	}
+	return mtx.putSeriesRow(votingPoolID, row)
 }
 
 func (mtx *managerTx) putSeriesRow(votingPoolID []byte, row *dbSeriesRow) error {

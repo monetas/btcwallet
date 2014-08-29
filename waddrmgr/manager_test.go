@@ -217,10 +217,43 @@ func testCreateVotingPool(tc *testContext) bool {
 		tc.t.Errorf("Voting pool obtained from DB does not match the created one")
 		return false
 	}
+	tc.pool = pool2
 	return true
 }
 
 func testCreateSeries(tc *testContext) bool {
+	tests := []struct {
+		in      []string
+		series  uint32
+		reqSigs uint32
+		err     error
+	}{
+		{
+			in: []string{
+				"xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7",
+				"xpub661MyMwAqRbcEotETSnT7BtrWLinsdkAprqbYjULb7kVyXC8CexgyjZrVxysVWwDbyULYNqGCxDmhJKJeBENn3nHQ6mgH9WUE7VRxaydAgL",
+				"xpub661MyMwAqRbcGG19VCptBTADTPoJU4AfqwxqjdS1VUGMW1R2VQC7ei3xhZv59ZhuaRvEz6wyuxtCgmuP1Vutf52QFWkmPF3ei2QBX1cfufP"},
+			series:  0,
+			reqSigs: 2,
+			err:     nil,
+		},
+		// // Errors..
+		// {
+		// 	in:  []string{"xpub"},
+		// 	err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrInvalidAccount},
+		// },
+	}
+	for _, test := range tests {
+		err := tc.pool.CreateSeries(test.series, test.in, test.reqSigs)
+		if err != nil {
+			tc.t.Errorf("Cannot create series %d", test.series)
+			return false
+		}
+		if !tc.pool.ExistsSeries(test.series) {
+			tc.t.Errorf("Series %d not in database", test.series)
+			return false
+		}
+	}
 	return true
 }
 
