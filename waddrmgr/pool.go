@@ -26,31 +26,49 @@ import (
 )
 
 type seriesData struct {
-	id uint32
-	publicKeys []*hdkeychain.ExtendedKey
+	id           uint32
+	publicKeys   []*hdkeychain.ExtendedKey
 	requiredSigs uint32
 }
 
 type VotingPool struct {
-	id []byte
+	ID           []byte
 	seriesLookup map[uint32]*seriesData
-	manager *Manager
+	manager      *Manager
 }
 
-
 func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
-	// TODO(salgado): Insert into db
+	err := m.db.Update(func(tx *managerTx) error {
+		return tx.PutVotingPool(poolID)
+	})
+	if err != nil {
+		// TODO: This should be a managerError()
+		return nil, err
+	}
 	return &VotingPool{
-		id: poolID,
+		ID:           poolID,
 		seriesLookup: make(map[uint32]*seriesData),
-		manager: m,
+		manager:      m,
 	}, nil
 }
 
-func (m *Manager) VotingPool(poolID []byte) (*VotingPool, error) {
-	// TODO(nicola): Load from db
+func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
+	err := m.db.View(func(tx *managerTx) error {
+		exists := tx.ExistsVotingPool(poolID)
+		if !exists {
+			return managerError(0, "FIXME", nil)
+		}
+		return nil
+	})
+	if err != nil {
+		// TODO: This should be a managerError()
+		return nil, err
+	}
 	return &VotingPool{
-		id: poolID,
+		ID: poolID,
+		// TODO: Load the series from the DB? Or do it lazily?
+		seriesLookup: make(map[uint32]*seriesData),
+		manager:      m,
 	}, nil
 }
 
@@ -64,7 +82,7 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, requiredSi
 		keys[i] = key
 		if err != nil {
 			str := fmt.Sprintf("Invalid extended public key %v", rawkey)
-			return managerError(0, str, err)			
+			return managerError(0, str, err)
 		}
 		if keys[i].IsPrivate() {
 			return managerError(0, "Please only use public extended keys", nil)
@@ -78,8 +96,8 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, requiredSi
 	}
 
 	vp.seriesLookup[seriesID] = &seriesData{
-		id: seriesID,
-		publicKeys: keys,
+		id:           seriesID,
+		publicKeys:   keys,
 		requiredSigs: requiredSigs,
 	}
 
@@ -109,7 +127,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 		tmp := make([]*btcutil.AddressPubKey, len(pks))
 		tmp[0] = pks[branch-1]
 		j := 1
-		for i := 0; i< len(pks); i++ {
+		for i := 0; i < len(pks); i++ {
 			if i != int(branch-1) {
 				tmp[j] = pks[i]
 				j++
@@ -119,7 +137,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 	}
 }
 
-func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) (ManagedScriptAddress, error) {
+func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (ManagedScriptAddress, error) {
 
 	series, ok := vp.seriesLookup[seriesID]
 	if !ok {
