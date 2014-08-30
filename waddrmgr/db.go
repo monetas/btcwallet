@@ -783,7 +783,6 @@ func (mtx *managerTx) PutChainedAddress(addressID []byte, account uint32,
 	// internal of external.
 	nextExternalIndex := arow.nextExternalIndex
 	nextInternalIndex := arow.nextInternalIndex
-	fmt.Println(nextExternalIndex, nextInternalIndex)
 	if branch == internalBranch {
 		nextInternalIndex = index + 1
 	} else {
