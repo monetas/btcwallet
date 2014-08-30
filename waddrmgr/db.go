@@ -135,9 +135,7 @@ var (
 	watchingOnlyName    = []byte("watchonly")
 
 	// Account related key names (account bucket).
-	acctNumAcctsName      = []byte("numaccts")
-	acctExternalIndexName = []byte("extidx")
-	acctInternalIndexName = []byte("intidx")
+	acctNumAcctsName = []byte("numaccts")
 )
 
 // managerTx represents a database transaction on which all database reads and
@@ -767,22 +765,39 @@ func (mtx *managerTx) PutChainedAddress(addressID []byte, account uint32,
 
 	// Update the next index for the appropriate internal or external
 	// branch.
+	accountID := accountKey(account)
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
-	bucket, err := bucket.CreateBucketIfNotExists(accountKey(account))
+	serializedAccount := bucket.Get(accountID)
+
+	// Deserialize the account row.
+	row, err := mtx.deserializeAccountRow(accountID, serializedAccount)
 	if err != nil {
-		str := fmt.Sprintf("failed to create account %d bucket", account)
-		return managerError(ErrDatabase, str, err)
+		return err
 	}
-	lastIndexName := acctExternalIndexName
+	arow, err := mtx.deserializeBIP0044AccountRow(accountID, row)
+	if err != nil {
+		return err
+	}
+
+	// Increment the appropriate next index depending on whether the branch
+	// internal of external.
+	nextExternalIndex := arow.nextExternalIndex
+	nextInternalIndex := arow.nextInternalIndex
+	fmt.Println(nextExternalIndex, nextInternalIndex)
 	if branch == internalBranch {
-		lastIndexName = acctInternalIndexName
+		nextInternalIndex = index + 1
+	} else {
+		nextExternalIndex = index + 1
 	}
-	var idx [4]byte
-	binary.LittleEndian.PutUint32(idx[:], index+1)
-	err = bucket.Put(lastIndexName, idx[:])
+
+	// Reserialize the account with the updated index and store it.
+	row.rawData = mtx.serializeBIP0044AccountRow(arow.pubKeyEncrypted,
+		arow.privKeyEncrypted, nextExternalIndex, nextInternalIndex,
+		arow.name)
+	err = bucket.Put(accountID, mtx.serializeAccountRow(row))
 	if err != nil {
-		str := fmt.Sprintf("failed to store address branch %d new "+
-			"index %d", branch, index+1)
+		str := fmt.Sprintf("failed to update next index for "+
+			"address %x, account %d", addressID, account)
 		return managerError(ErrDatabase, str, err)
 	}
 	return nil
@@ -866,8 +881,7 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 			continue
 		}
 
-		// Deserialize the address row first to determine the field
-		// values.
+		// Deserialize the account row first to determine the type.
 		row, err := mtx.deserializeAccountRow(k, v)
 		if err != nil {
 			return err
@@ -880,8 +894,8 @@ func (mtx *managerTx) DeletePrivateKeys() error {
 				return err
 			}
 
-			// Reserialize the imported address without the private
-			// key and store it.
+			// Reserialize the account without the private key and
+			// store it.
 			row.rawData = mtx.serializeBIP0044AccountRow(
 				arow.pubKeyEncrypted, nil,
 				arow.nextExternalIndex, arow.nextInternalIndex,
