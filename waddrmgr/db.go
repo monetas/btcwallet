@@ -344,7 +344,7 @@ func (mtx *managerTx) serializeAccountRow(row *dbAccountRow) []byte {
 // deserializeBIP0044AccountRow deserializes the raw data from the passed
 // account row as a BIP0044 account.
 func (mtx *managerTx) deserializeBIP0044AccountRow(accountID []byte, row *dbAccountRow) (*dbBIP0044AccountRow, error) {
-	// The serialized account format is:
+	// The serialized BIP0044 account raw data format is:
 	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey><nextextidx>
 	//   <nextintidx><namelen><name>
 	//
@@ -390,7 +390,7 @@ func (mtx *managerTx) serializeBIP0044AccountRow(encryptedPubKey,
 	encryptedPrivKey []byte, nextExternalIndex, nextInternalIndex uint32,
 	name string) []byte {
 
-	// The serialized account format is:
+	// The serialized BIP0044 account raw data format is:
 	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey><nextextidx>
 	//   <nextintidx><namelen><name>
 	//

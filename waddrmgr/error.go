@@ -28,6 +28,11 @@ var (
 	// ErrAlreadyExists error code.
 	errAlreadyExists = "the specified account manager already exists"
 
+	// errCoinTypeTooHigh is the common error description used for the
+	// ErrCoinTypeTooHigh error code.
+	errCoinTypeTooHigh = "coin type may not exceed " +
+		strconv.FormatUint(hdkeychain.HardenedKeyStart-1, 10)
+
 	// errAcctTooHigh is the common error description used for the
 	// ErrAccountNumTooHigh error code.
 	errAcctTooHigh = "account number may not exceed " +
@@ -71,8 +76,13 @@ const (
 	// ErrAlreadyExists indicates the specified database already exists.
 	ErrAlreadyExists
 
+	// ErrCoinTypeTooHigh indicates the coin type specified in the provided
+	// network parameters is higher than the max allowed value as defined
+	// by the maxCoinType constant.
+	ErrCoinTypeTooHigh
+
 	// ErrAccountNumTooHigh indicates the specified account number is higher
-	// than the max allowed value as defined by th MaxAccountNum constant.
+	// than the max allowed value as defined by the MaxAccountNum constant.
 	ErrAccountNumTooHigh
 
 	// ErrLocked indicates the an operation which requires the account

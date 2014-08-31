@@ -64,6 +64,12 @@ const (
 	//
 	// The branch is 0 for external addresses and 1 for internal addresses.
 
+	// maxCoinType is the maximum allowed coin type used when structuring
+	// the BIP0044 multi-account hierarchy.  This value is based on the
+	// limitation of the underlying hierarchical deterministic key
+	// derivation.
+	maxCoinType = hdkeychain.HardenedKeyStart - 1
+
 	// externalBranch is the child number to use when performing BIP0044
 	// style hierarchical deterministic key derivation for the external
 	// branch.
@@ -1340,6 +1346,12 @@ func fileExists(name string) bool {
 //   m/44'/<coin type>'/<account>'
 func deriveAccountKey(masterNode *hdkeychain.ExtendedKey, coinType uint32,
 	account uint32) (*hdkeychain.ExtendedKey, error) {
+
+	// Enforce maximum coin type.
+	if coinType > maxCoinType {
+		err := managerError(ErrCoinTypeTooHigh, errCoinTypeTooHigh, nil)
+		return nil, err
+	}
 
 	// Enforce maximum account number.
 	if account > MaxAccountNum {
