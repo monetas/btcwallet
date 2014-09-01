@@ -75,6 +75,12 @@ func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 // TODO: rawkeys -> rawPubKeys
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, reqSigs uint32) error {
 
+	if _, ok := vp.seriesLookup[seriesID]; ok {
+		// TODO: define error codes
+		str := fmt.Sprintf("Series #%d already exists", seriesID)
+		return managerError(0, str, nil)
+	}
+
 	keys := make([]*hdkeychain.ExtendedKey, len(rawkeys))
 	sort.Sort(sort.StringSlice(rawkeys))
 
@@ -88,12 +94,6 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, reqSigs ui
 		if keys[i].IsPrivate() {
 			return managerError(0, "Please only use public extended keys", nil)
 		}
-	}
-
-	if _, ok := vp.seriesLookup[seriesID]; ok {
-		// TODO: define error codes
-		str := fmt.Sprintf("Series #%d already exists", seriesID)
-		return managerError(0, str, nil)
 	}
 
 	// TODO: put the real pubKeysEncrypted here
