@@ -35,6 +35,11 @@ var (
 		0xb6, 0xc4, 0x40, 0xc0, 0x64,
 	}
 
+	pubKeys = []string{
+		"xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7",
+		"xpub661MyMwAqRbcEotETSnT7BtrWLinsdkAprqbYjULb7kVyXC8CexgyjZrVxysVWwDbyULYNqGCxDmhJKJeBENn3nHQ6mgH9WUE7VRxaydAgL",
+		"xpub661MyMwAqRbcGG19VCptBTADTPoJU4AfqwxqjdS1VUGMW1R2VQC7ei3xhZv59ZhuaRvEz6wyuxtCgmuP1Vutf52QFWkmPF3ei2QBX1cfufP"}
+
 	pubPassphrase  = []byte("pub")
 	privPassphrase = []byte("priv")
 )
@@ -134,10 +139,7 @@ func testDepositScriptAddress(tc *testContext) bool {
 		err       error
 	}{
 		{
-			in: []string{
-				"xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7",
-				"xpub661MyMwAqRbcEotETSnT7BtrWLinsdkAprqbYjULb7kVyXC8CexgyjZrVxysVWwDbyULYNqGCxDmhJKJeBENn3nHQ6mgH9WUE7VRxaydAgL",
-				"xpub661MyMwAqRbcGG19VCptBTADTPoJU4AfqwxqjdS1VUGMW1R2VQC7ei3xhZv59ZhuaRvEz6wyuxtCgmuP1Vutf52QFWkmPF3ei2QBX1cfufP"},
+			in:      pubKeys,
 			series:  0,
 			reqSigs: 2,
 			addresses: map[uint32]string{
@@ -229,10 +231,7 @@ func testCreateSeries(tc *testContext) bool {
 		err     error
 	}{
 		{
-			in: []string{
-				"xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7",
-				"xpub661MyMwAqRbcEotETSnT7BtrWLinsdkAprqbYjULb7kVyXC8CexgyjZrVxysVWwDbyULYNqGCxDmhJKJeBENn3nHQ6mgH9WUE7VRxaydAgL",
-				"xpub661MyMwAqRbcGG19VCptBTADTPoJU4AfqwxqjdS1VUGMW1R2VQC7ei3xhZv59ZhuaRvEz6wyuxtCgmuP1Vutf52QFWkmPF3ei2QBX1cfufP"},
+			in:      pubKeys,
 			series:  0,
 			reqSigs: 2,
 			err:     nil,
@@ -257,6 +256,46 @@ func testCreateSeries(tc *testContext) bool {
 	return true
 }
 
+func testSerialization(tc *testContext) bool {
+	pubKeyEncrypted, err := tc.manager.Encrypt([]byte(pubKeys[0]))
+	if err != nil {
+		tc.t.Errorf("Failed to encrypt public key %v", pubKeys[0])
+		return false
+	}
+
+	x := waddrmgr.SerializeSeries(1, [][]byte{pubKeyEncrypted}, [][]byte{})
+	row, err := waddrmgr.DeserializeSeries(x)
+
+	if err != nil {
+		tc.t.Errorf("Failed to deserialize %v", pubKeyEncrypted)
+		return false
+	}
+
+	if row.ReqSigs != 1 {
+		tc.t.Errorf("row reqSigs not 1: %d", row.ReqSigs)
+		return false
+	}
+
+	if len(row.PubKeysEncrypted) != 1 {
+		tc.t.Errorf("Expected exactly 1 pub key and got %d", len(row.PubKeysEncrypted))
+		return false
+	}
+
+	got := string(row.PubKeysEncrypted[0])
+	if got != string(pubKeyEncrypted) {
+		tc.t.Errorf("deserialization not the same: want:%v got:%v", string(pubKeyEncrypted), got)
+		return false
+	}
+
+	if len(row.PrivKeysEncrypted) != 0 {
+		tc.t.Errorf("deserialization added priv keys where there were none")
+		return false
+
+	}
+
+	return true
+}
+
 func testReplaceSeries(tc *testContext) bool {
 	return true
 }
@@ -267,6 +306,8 @@ func testEmpowerBranch(tc *testContext) bool {
 
 func testManagerAPI(tc *testContext) {
 	//testNextExternalAddresses(tc)
+
+	testSerialization(tc)
 
 	if !testCreateVotingPool(tc) {
 		return

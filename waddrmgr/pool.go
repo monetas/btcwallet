@@ -82,6 +82,7 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, reqSigs ui
 	}
 
 	keys := make([]*hdkeychain.ExtendedKey, len(rawkeys))
+	encryptedKeys := make([][]byte, len(keys))
 	sort.Sort(sort.StringSlice(rawkeys))
 
 	for i, rawkey := range rawkeys {
@@ -94,11 +95,14 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, reqSigs ui
 		if keys[i].IsPrivate() {
 			return managerError(0, "Please only use public extended keys", nil)
 		}
+		encryptedKeys[i], err = vp.manager.cryptoKeyPub.Encrypt([]byte(key.String()))
+		if err != nil {
+			str := fmt.Sprintf("Key %v failed encryption", rawkey)
+			return managerError(0, str, err)
+		}
+
 	}
 
-	// TODO: put the real pubKeysEncrypted here
-	// vp.manager.cryptoKeyPub.Encrypt()
-	encryptedKeys := [][]byte{{0x00}, {0x00}, {0x00}}
 	err := vp.manager.db.Update(func(tx *managerTx) error {
 		// TODO: check error
 		tx.PutSeries(vp.ID, seriesID, reqSigs, encryptedKeys, nil)

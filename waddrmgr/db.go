@@ -23,7 +23,10 @@ import (
 	"fmt"
 	"time"
 
+	"code.google.com/p/go.crypto/nacl/secretbox"
+
 	"github.com/monetas/bolt"
+	"github.com/monetas/btcwallet/snacl"
 	"github.com/monetas/fastsha256"
 )
 
@@ -81,7 +84,6 @@ type dbBIP0044AccountRow struct {
 }
 
 type dbSeriesRow struct {
-	seriesID          uint32
 	reqSigs           uint32
 	pubKeysEncrypted  [][]byte
 	privKeysEncrypted [][]byte
@@ -303,10 +305,60 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 
 // uint32ToBytes returns the account key to use in the database for a given account
 // number.
-func uint32ToBytes(account uint32) []byte {
+func uint32ToBytes(number uint32) []byte {
 	buf := make([]byte, 4)
-	binary.LittleEndian.PutUint32(buf, account)
+	binary.LittleEndian.PutUint32(buf, number)
 	return buf
+}
+
+func bytesToUint32(encoded []byte) uint32 {
+	return binary.LittleEndian.Uint32(encoded)
+}
+
+// serializeSeriesRow serializes the passed in series information.
+func serializeSeriesRow(row *dbSeriesRow) []byte {
+	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN><reqSigs>
+	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
+	for _, pubKeyEncrypted := range row.pubKeysEncrypted {
+		serialized = append(serialized, pubKeyEncrypted...)
+	}
+	serialized = append(serialized, uint32ToBytes(uint32(len(row.privKeysEncrypted)))...)
+	for _, privKeyEncrypted := range row.privKeysEncrypted {
+		serialized = append(serialized, privKeyEncrypted...)
+	}
+	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
+
+	return serialized
+}
+
+// deserializeSeriesRow deserializes
+func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
+
+	row := dbSeriesRow{}
+	current := 0
+	nPubKeys := bytesToUint32(serializedSeries[current : current+4])
+	current += 4
+	row.pubKeysEncrypted = make([][]byte, nPubKeys)
+
+	// secretbox.Overhead == overhead for encrypting
+	// 111 == extended pub key base-58 encoded length
+	// snacl.NonceSize == nonce size used for encryption
+	keyLength := secretbox.Overhead + 111 + snacl.NonceSize
+	for i := 0; i < int(nPubKeys); i++ {
+		row.pubKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
+	}
+	current += keyLength * int(nPubKeys)
+	nPrivKeys := bytesToUint32(serializedSeries[current : current+4])
+	current += 4
+	row.privKeysEncrypted = make([][]byte, nPrivKeys)
+	for i := 0; i < int(nPrivKeys); i++ {
+		row.privKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
+	}
+	current += keyLength * int(nPrivKeys)
+
+	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
+
+	return &row, nil
 }
 
 // deserializeAccountRow deserializes the passed serialized account information.
@@ -333,11 +385,6 @@ func (mtx *managerTx) deserializeAccountRow(accountID []byte, serializedAccount 
 	copy(row.rawData, serializedAccount[5:5+rdlen])
 
 	return &row, nil
-}
-
-func (mtx *managerTx) serializeSeriesRow(row *dbSeriesRow) []byte {
-	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN>
-	return []byte("NOT IMPLEMENTED")
 }
 
 // serializeAccountRow returns the serialization of the passed account row.
@@ -466,12 +513,12 @@ func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	return nil
 }
 
-func (mtx *managerTx) ExistsSeries(votingPoolID []byte, seriesID uint32) bool {
+func (mtx *managerTx) ExistsSeries(votingPoolID []byte, ID uint32) bool {
 	vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
 	if vpBucket == nil {
 		return false
 	}
-	return vpBucket.Get(uint32ToBytes(seriesID)) != nil
+	return vpBucket.Get(uint32ToBytes(ID)) != nil
 }
 
 func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
@@ -480,23 +527,22 @@ func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
 }
 
 // TODO: check parameter order consistency
-func (mtx *managerTx) PutSeries(votingPoolID []byte, seriesID, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
+func (mtx *managerTx) PutSeries(votingPoolID []byte, ID, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
 	row := &dbSeriesRow{
-		seriesID:          seriesID,
 		reqSigs:           reqSigs,
 		pubKeysEncrypted:  pubKeysEncrypted,
 		privKeysEncrypted: privKeysEncrypted,
 	}
-	return mtx.putSeriesRow(votingPoolID, row)
+	return mtx.putSeriesRow(votingPoolID, ID, row)
 }
 
-func (mtx *managerTx) putSeriesRow(votingPoolID []byte, row *dbSeriesRow) error {
+func (mtx *managerTx) putSeriesRow(votingPoolID []byte, ID uint32, row *dbSeriesRow) error {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
 	vpBucket, err := bucket.CreateBucketIfNotExists(votingPoolID)
 	if err != nil {
 		return managerError(0, "FIXME", err)
 	}
-	err = vpBucket.Put(uint32ToBytes(row.seriesID), mtx.serializeSeriesRow(row))
+	err = vpBucket.Put(uint32ToBytes(ID), serializeSeriesRow(row))
 	if err != nil {
 		return managerError(0, "FIXME", err)
 	}
