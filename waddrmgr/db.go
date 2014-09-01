@@ -824,9 +824,13 @@ func (mtx *managerTx) PutChainedAddress(addressID []byte, account uint32,
 
 	// Update the next index for the appropriate internal or external
 	// branch.
-	accountID := accountKey(account)
+	accountID := uint32ToBytes(account)
 	bucket := (*bolt.Tx)(mtx).Bucket(acctBucketName)
-	bucket, err := bucket.CreateBucketIfNotExists(uint32ToBytes(account))
+	serializedAccount := bucket.Get(accountID)
+
+	// Deserialize the account row.
+	row, err := mtx.deserializeAccountRow(accountID, serializedAccount)
+
 	if err != nil {
 		return err
 	}
