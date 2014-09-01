@@ -2,6 +2,10 @@
 
 package waddrmgr
 
+import (
+	"github.com/monetas/btcutil"
+)
+
 type SeriesRow struct {
 	ReqSigs           uint32
 	PubKeysEncrypted  [][]byte
@@ -29,4 +33,8 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 		PubKeysEncrypted:  row.pubKeysEncrypted,
 		PrivKeysEncrypted: row.privKeysEncrypted,
 	}, err
+}
+
+func BranchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
+	return branchOrder(pks, branch)
 }

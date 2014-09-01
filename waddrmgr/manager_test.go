@@ -22,7 +22,10 @@ import (
 	"reflect"
 	"testing"
 
+	"fmt"
 	"github.com/monetas/btcnet"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/waddrmgr"
 )
 
@@ -396,4 +399,112 @@ func TestOpen(t *testing.T) {
 		manager: mgr,
 		account: 0,
 	})
+}
+
+func reverse(inKeys []*btcutil.AddressPubKey) []*btcutil.AddressPubKey {
+	revKeys := make([]*btcutil.AddressPubKey, len(inKeys))
+	max := len(inKeys)
+	for i := range inKeys {
+		revKeys[i] = inKeys[max-i-1]
+	}
+	return revKeys
+}
+
+func TestBranchOrderZero(t *testing.T) {
+	// test change address branch (0) for 0-10 keys
+	for i := 0; i < 10; i++ {
+		inKeys := createTestPubKeys(i, 0)
+		wantKeys := reverse(inKeys)
+		resKeys := waddrmgr.BranchOrder(inKeys, 0)
+
+		if len(resKeys) != len(wantKeys) {
+			t.Errorf("BranchOrder failed: returned slice has different length than the argument. Got: %d Exp: %d", len(resKeys), len(inKeys))
+			return
+		}
+
+		for keyIdx := 0; i < len(inKeys); i++ {
+			if resKeys[keyIdx] != wantKeys[keyIdx] {
+				fmt.Printf("%p, %p\n", resKeys[i], wantKeys[i])
+				t.Errorf("BranchOrder(keys, 0) failed: Exp: %v, Got: %v", wantKeys[i], resKeys[i])
+			}
+		}
+	}
+}
+
+func TestBranchOrderNilKeys(t *testing.T) {
+	// Test branchorder with nil input and various branch numbers.
+	for i := 0; i < 10; i++ {
+		res := waddrmgr.BranchOrder(nil, uint32(i))
+		if res != nil {
+			t.Errorf("Tried to reorder a nil slice of public keys, but got something non-nil back")
+		}
+	}
+}
+
+func TestBranchOrderNonZero(t *testing.T) {
+	maxBranch := 5
+	maxTail := 4
+	// Test branch reordering branch > 0. We test all all branch
+	// values in [1,5] in a slice of up to 9 (maxBranch-1 + branch-pivot
+	// + maxTail) keys. Hopefully that covers all combinations and
+	// edge-cases.
+
+	// we test the case branch := 0 elsewhere
+	for branch := 1; branch <= maxBranch; branch++ {
+		for j := 0; j <= maxTail; j++ {
+			first := createTestPubKeys(branch-1, 0)
+			pivot := createTestPubKeys(1, branch)
+			last := createTestPubKeys(j, branch+1)
+
+			inKeys := append(append(first, pivot...), last...)
+
+			wantKeys := append(append(pivot, first...), last...)
+			resKeys := waddrmgr.BranchOrder(inKeys, uint32(branch))
+
+			if len(resKeys) != len(inKeys) {
+				t.Errorf("BranchOrder failed: returned slice has different length than the argument. Got: %d Exp: %d", len(resKeys), len(inKeys))
+			}
+
+			for idx := 0; idx < len(inKeys); idx++ {
+				if resKeys[idx] != wantKeys[idx] {
+					fmt.Printf("%p, %p\n", resKeys[idx], wantKeys[idx])
+					t.Errorf("BranchOrder(keys,%d) failed: Exp: %v, Got: %v", branch, wantKeys[idx], resKeys[idx])
+				}
+			}
+		}
+	}
+}
+
+func createTestPubKeys(number, offset int) []*btcutil.AddressPubKey {
+
+	net := &btcnet.TestNet3Params
+	xpubRaw := "xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7"
+	xpubKey, _ := hdkeychain.NewKeyFromString(xpubRaw)
+
+	keys := make([]*btcutil.AddressPubKey, number)
+	for i := uint32(0); i < uint32(len(keys)); i++ {
+		chPubKey, _ := xpubKey.Child(i + uint32(offset))
+		pubKey, _ := chPubKey.ECPubKey()
+		x, _ := btcutil.NewAddressPubKey(pubKey.SerializeCompressed(), net)
+		keys[i] = x
+	}
+	return keys
+}
+
+func TestReverse(t *testing.T) {
+	// this basically just tests that the utility function that
+	// reverses a bunch of public keys. 11 is a random number
+	for numKeys := 0; numKeys < 11; numKeys++ {
+		keys := createTestPubKeys(numKeys, 0)
+		revRevKeys := reverse(reverse(keys))
+		if len(keys) != len(revRevKeys) {
+			t.Errorf("Reverse twice the list of pubkeys changed the length. Exp: %d, Got: %d", len(keys), len(revRevKeys))
+		}
+
+		for i := 0; i < len(keys); i++ {
+			if keys[i] != revRevKeys[i] {
+				t.Errorf("Reverse failed: Reverse(Reverse(x)) != x. Exp: %v, Got: %v", keys[i], revRevKeys[i])
+			}
+		}
+	}
 }

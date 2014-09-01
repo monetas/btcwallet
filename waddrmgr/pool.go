@@ -148,13 +148,20 @@ func (vp *VotingPool) ExistsSeries(seriesID uint32) bool {
 // branch 2 - BAC (second key priority)
 // branch 3 - CAB (third key priority)
 func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
+	if pks == nil {
+		return nil
+	}
+
 	//change the order of pks based on branch number.
 	if branch == 0 {
+		numKeys := len(pks)
+		res := make([]*btcutil.AddressPubKey, numKeys)
+		copy(res, pks)
 		// reverse pk
-		for i, j := 0, len(pks)-1; i < j; i, j = i+1, j-1 {
-			pks[i], pks[j] = pks[j], pks[i]
+		for i, j := 0, numKeys-1; i < j; i, j = i+1, j-1 {
+			res[i], res[j] = res[j], res[i]
 		}
-		return pks
+		return res
 	} else {
 		tmp := make([]*btcutil.AddressPubKey, len(pks))
 		tmp[0] = pks[branch-1]
