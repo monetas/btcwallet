@@ -505,12 +505,27 @@ func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 }
 
 func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
-	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
-	_, err := bucket.CreateBucket(votingPoolID)
+	_, err := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).CreateBucket(votingPoolID)
 	if err != nil {
 		return managerError(0, "FIXME", err)
 	}
 	return nil
+}
+
+// TODO: Write a test that exercises this method.
+func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRow, error) {
+	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	c := bucket.Cursor()
+	allSeries := make(map[uint32]*dbSeriesRow)
+	for id, seriesData := c.First(); id != nil; id, seriesData = c.Next() {
+		seriesID := binary.LittleEndian.Uint32(id)
+		series, err := deserializeSeriesRow(seriesData)
+		if err != nil {
+			return nil, managerError(0, "FIXME", err)
+		}
+		allSeries[seriesID] = series
+	}
+	return allSeries, nil
 }
 
 func (mtx *managerTx) ExistsSeries(votingPoolID []byte, ID uint32) bool {

@@ -26,7 +26,6 @@ import (
 )
 
 type seriesData struct {
-	id         uint32
 	publicKeys []*hdkeychain.ExtendedKey
 	reqSigs    uint32
 }
@@ -61,15 +60,16 @@ func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 		return nil
 	})
 	if err != nil {
-		// TODO: This should be a managerError()
-		return nil, err
+		return nil, managerError(0, "FIXME", err)
 	}
-	return &VotingPool{
-		ID: poolID,
-		// TODO: Load the series from the DB? Or do it lazily?
-		seriesLookup: make(map[uint32]*seriesData),
-		manager:      m,
-	}, nil
+	vp := &VotingPool{
+		ID:      poolID,
+		manager: m,
+	}
+	if err = vp.LoadAllSeries(); err != nil {
+		return nil, managerError(0, "FIXME", err)
+	}
+	return vp, nil
 }
 
 // TODO: rawkeys -> rawPubKeys
@@ -113,8 +113,8 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawkeys []string, reqSigs ui
 		return managerError(0, str, nil)
 	}
 
+	vp.seriesLookup = make(map[uint32]*seriesData)
 	vp.seriesLookup[seriesID] = &seriesData{
-		id:         seriesID,
 		publicKeys: keys,
 		reqSigs:    reqSigs,
 	}
@@ -139,6 +139,38 @@ func (vp *VotingPool) ExistsSeries(seriesID uint32) bool {
 		return false
 	}
 	return exists
+}
+
+// TODO: Write a test that exercises this method.
+func (vp *VotingPool) LoadAllSeries() error {
+	var allSeries map[uint32]*dbSeriesRow
+	err := vp.manager.db.View(func(tx *managerTx) error {
+		var err error
+		allSeries, err = tx.LoadAllSeries(vp.ID)
+		return err
+	})
+	if err != nil {
+		return managerError(0, "FIXME", err)
+	}
+	for id, series := range allSeries {
+		keys := make([]*hdkeychain.ExtendedKey, len(series.pubKeysEncrypted))
+		for i, data := range series.pubKeysEncrypted {
+			decrypted, err := vp.manager.cryptoKeyPub.Decrypt(data)
+			if err != nil {
+				return managerError(0, "FIXME", err)
+			}
+			key, err := hdkeychain.NewKeyFromString(string(decrypted))
+			zero(decrypted)
+			if err != nil {
+				return managerError(0, "FIXME", err)
+			}
+			keys[i] = key
+		}
+		vp.seriesLookup[id] = &seriesData{
+			publicKeys: keys,
+			reqSigs:    series.reqSigs}
+	}
+	return nil
 }
 
 // Change the order of the pubkeys based on branch number
