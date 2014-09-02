@@ -58,24 +58,32 @@ var (
 	}
 )
 
-func TestDepositScriptAddress(t *testing.T) {
-	fmt.Println("Starting DepositScript test")
+func setUp(t *testing.T) (func(), *waddrmgr.Manager) {
 	// Create a new manager.
 	// we create the file and immediately delete it as the waddrmgr
 	//  needs to be doing the creating.
-	file, err := ioutil.TempDir("", "pool")
+	file, err := ioutil.TempDir("", "pool_test")
 	os.Remove(file)
 	mgr, err := waddrmgr.Create(file, seed, pubPassphrase, privPassphrase,
 		&btcnet.MainNetParams)
 	if err != nil {
 		t.Errorf("Create: %v", err)
-		return
+		return nil, nil
 	}
-	defer os.Remove(file)
-	defer mgr.Close()
+	f := func() {
+		defer os.Remove(file)
+		defer mgr.Close()
+	}
+	return f, mgr
+}
+
+func TestDepositScriptAddress(t *testing.T) {
+	fmt.Println("Starting DepositScript test")
+	tearDown, mgr := setUp(t)
+	defer tearDown()
 
 	// file is a unique string strictly to this test
-	pool, err := mgr.CreateVotingPool([]byte(file))
+	pool, err := mgr.CreateVotingPool([]byte{0x00})
 	if err != nil {
 		t.Errorf("Voting Pool creation failed")
 		return
