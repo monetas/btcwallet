@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/monetas/btcnet"
-	"github.com/monetas/btcutil"
 	"github.com/monetas/btcwallet/waddrmgr"
 )
 
@@ -201,13 +200,4 @@ func TestOpen(t *testing.T) {
 		manager: mgr,
 		account: 0,
 	})
-}
-
-func reverse(inKeys []*btcutil.AddressPubKey) []*btcutil.AddressPubKey {
-	revKeys := make([]*btcutil.AddressPubKey, len(inKeys))
-	max := len(inKeys)
-	for i := range inKeys {
-		revKeys[i] = inKeys[max-i-1]
-	}
-	return revKeys
 }
