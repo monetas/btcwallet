@@ -56,26 +56,29 @@ var (
 	}
 )
 
-func setUp(t *testing.T) (func(), *waddrmgr.Manager, *waddrmgr.VotingPool) {
+func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool) {
 	// Create a new manager.
 	// we create the file and immediately delete it as the waddrmgr
 	//  needs to be doing the creating.
 	file, err := ioutil.TempDir("", "pool_test")
+	if err != nil {
+		t.Fatalf("Failed to create db file: %v", err)
+	}
 	os.Remove(file)
-	mgr, err := waddrmgr.Create(file, seed, pubPassphrase, privPassphrase,
+	mgr, err = waddrmgr.Create(file, seed, pubPassphrase, privPassphrase,
 		&btcnet.MainNetParams)
 	if err != nil {
-		t.Errorf("Create: %v", err)
+		t.Fatalf("Failed to create Manager: %v", err)
 	}
-	pool, err := mgr.CreateVotingPool([]byte{0x00})
+	pool, err = mgr.CreateVotingPool([]byte{0x00})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
-	f := func() {
-		defer os.Remove(file)
-		defer mgr.Close()
+	tearDownFunc = func() {
+		os.Remove(file)
+		mgr.Close()
 	}
-	return f, mgr, pool
+	return tearDownFunc, mgr, pool
 }
 
 func TestDepositScriptAddress(t *testing.T) {
@@ -498,7 +501,18 @@ func TestEmpowerBranch(t *testing.T) {
 }
 
 func TestGetSeries(t *testing.T) {
-	// TODO
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+	err := pool.CreateSeries(0, pubKeys[:3], 2)
+	if err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+
+	series := pool.GetSeries(0)
+	if series == nil {
+		t.Fatal("GetSeries() returned nil")
+	}
+	// TODO: Must check that the series is really the one we expect
 }
 
 func TestLoadAllSeries(t *testing.T) {
