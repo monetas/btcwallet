@@ -80,12 +80,7 @@ func TestDepositScriptAddress(t *testing.T) {
 	tearDown, mgr := setUp(t)
 	defer tearDown()
 
-	pool, err := mgr.CreateVotingPool([]byte{0x00})
-	if err != nil {
-		t.Errorf("Voting Pool creation failed")
-		return
-	}
-
+	pool := createVotingPool(mgr, t)
 	tests := []struct {
 		in      []string
 		series  uint32
@@ -157,14 +152,11 @@ func TestCreateVotingPool(t *testing.T) {
 	tearDown, mgr := setUp(t)
 	defer tearDown()
 
-	pool, err := mgr.CreateVotingPool([]byte{0x00})
-	if err != nil {
-		t.Errorf("Voting Pool creation failed")
-	}
+	pool := createVotingPool(mgr, t)
 
-	pool2, err := mgr.LoadVotingPool([]byte{0x00})
-	if pool2 == nil {
-		t.Errorf("Voting Pool doesn't seem to be in the DB")
+	pool2, err := mgr.LoadVotingPool(pool.ID)
+	if err != nil {
+		t.Errorf("Error loading VotingPool: %v", err)
 	}
 	if !bytes.Equal(pool2.ID, pool.ID) {
 		t.Errorf("Voting pool obtained from DB does not match the created one")
@@ -175,10 +167,7 @@ func TestCreateSeries(t *testing.T) {
 	tearDown, mgr := setUp(t)
 	defer tearDown()
 
-	pool, err := mgr.CreateVotingPool([]byte{0x00})
-	if err != nil {
-		t.Errorf("Voting Pool creation failed")
-	}
+	pool := createVotingPool(mgr, t)
 
 	tests := []struct {
 		in      []string
@@ -503,145 +492,47 @@ func TestSerialization(t *testing.T) {
 	}
 }
 
-// func testReplaceSeries(t *testing.T) bool {
-// 	return true
-// }
+func TestReplaceSeries(t *testing.T) {
+	// TODO
+}
 
-// func testEmpowerBranch(t *testing.T) bool {
-// 	return true
-// }
+func TestEmpowerBranch(t *testing.T) {
+	// TODO
+}
 
-// func testGetSeries(t *testing.T) bool {
-// 	// TODO
-// 	return true
-// }
+func TestGetSeries(t *testing.T) {
+	// TODO
+}
 
-// func testLoadAllSeries(t *testing.T) bool {
-// 	pool := createVotingPool(tc)
-// 	err := pool.CreateSeries(0, pubKeys[:3], 2)
-// 	if err != nil {
-// 		t.Errorf("Failed to create series: %v", err)
-// 		return false
-// 	}
-// 	expectedSeries := pool.GetSeries(0)
+func TestLoadAllSeries(t *testing.T) {
+	tearDown, manager := setUp(t)
+	defer tearDown()
+	pool := createVotingPool(manager, t)
+	err := pool.CreateSeries(0, pubKeys[:3], 2)
+	if err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+	expectedSeries := pool.GetSeries(0)
 
-// 	// Ideally we should reset pool.seriesLookup and call LoadAllSeries() manually, but that
-// 	// is a private attribute so we just call LoadVotingPool, which calls LoadAllSeries.
-// 	pool2, err := mgr.LoadVotingPool(pool.ID)
-// 	if err != nil {
-// 		t.Errorf("Failed to load voting pool: %v", err)
-// 		return false
-// 	}
+	// Ideally we should reset pool.seriesLookup and call LoadAllSeries() manually, but that
+	// is a private attribute so we just call LoadVotingPool, which calls LoadAllSeries.
+	pool2, err := manager.LoadVotingPool(pool.ID)
+	if err != nil {
+		t.Fatalf("Failed to load voting pool: %v", err)
+	}
 
-// 	series := pool2.GetSeries(0)
-// 	expectedKeys := expectedSeries.GetPublicKeys()
-// 	keys := series.GetPublicKeys()
-// 	if len(keys) != len(expectedKeys) {
-// 		t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedKeys, keys)
-// 	}
-// 	for i, key := range keys {
-// 		if key.String() != expectedKeys[i].String() {
-// 			t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedSeries, series)
-// 			return false
-// 		}
-// 	}
-// 	return true
-// }
-
-// func testManagerAPI(t *testing.T) {
-// 	//testNextExternalAddresses(tc)
-
-// 	testSerialization(tc)
-
-// 	if !testCreateVotingPool(tc) {
-// 		return
-// 	}
-
-// 	if !testCreateSeries(tc) {
-// 		return
-// 	}
-
-// 	testLoadAllSeries(tc)
-// 	testReplaceSeries(tc)
-// 	testDepositScriptAddress(tc)
-// 	testEmpowerBranch(tc)
-// }
-
-// func TestCreate(t *testing.T) {
-// 	// Create a new manager.
-// 	mgrName := "mgrcreatetest.bin"
-// 	os.Remove(mgrName)
-// 	mgr, err := waddrmgr.Create(mgrName, seed, pubPassphrase, privPassphrase,
-// 		&btcnet.MainNetParams)
-// 	if err != nil {
-// 		t.Errorf("Create: %v", err)
-// 		return
-// 	}
-// 	defer os.Remove(mgrName)
-// 	defer mgr.Close()
-
-// 	// Ensure attempting to create an already existing manager gives error.
-// 	wantErr := waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrAlreadyExists}
-// 	_, err = waddrmgr.Create(mgrName, seed, pubPassphrase, privPassphrase,
-// 		&btcnet.MainNetParams)
-// 	merr, ok := err.(waddrmgr.ManagerError)
-// 	if !ok {
-// 		t.Errorf("Create: did not receive expected error type - "+
-// 			"got %T, want %T", err, wantErr)
-// 	} else if merr.ErrorCode != wantErr.ErrorCode {
-// 		t.Errorf("Create: did not receive expected error code - "+
-// 			"got %v, want %v", merr.ErrorCode, wantErr.ErrorCode)
-// 	}
-
-// 	// Perform all of the API tests against the created manager.
-// 	testManagerAPI(&testContext{
-// 		t:       t,
-// 		manager: mgr,
-// 		account: 0,
-// 	})
-// }
-
-// func TestOpen(t *testing.T) {
-// 	// Ensure attempting to open a nonexistent manager gives error.
-// 	mgrName := "mgropentest.bin"
-// 	wantErr := waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrNoExist}
-// 	os.Remove(mgrName)
-// 	_, err := waddrmgr.Open(mgrName, pubPassphrase, &btcnet.MainNetParams)
-// 	merr, ok := err.(waddrmgr.ManagerError)
-// 	if !ok {
-// 		t.Errorf("Open: did not receive expected error type - "+
-// 			"got %T, want %T", err, wantErr)
-// 	} else if merr.ErrorCode != wantErr.ErrorCode {
-// 		t.Errorf("Open: did not receive expected error code - "+
-// 			"got %v, want %v", merr.ErrorCode, wantErr.ErrorCode)
-// 	}
-
-// 	// Create a new manager and immediately close it.
-// 	os.Remove(mgrName)
-// 	mgr, err := waddrmgr.Create(mgrName, seed, pubPassphrase, privPassphrase,
-// 		&btcnet.MainNetParams)
-// 	if err != nil {
-// 		t.Errorf("Create: %v", err)
-// 		return
-// 	}
-// 	defer os.Remove(mgrName)
-// 	mgr.Close()
-
-// 	// Open existing manager and repeat all manager tests against it.
-// 	mgr, err = waddrmgr.Open(mgrName, pubPassphrase, &btcnet.MainNetParams)
-// 	if err != nil {
-// 		t.Errorf("Open: %v", err)
-// 		return
-// 	}
-// 	defer mgr.Close()
-
-// 	// Perform all of the API tests against the opened manager.
-// 	testManagerAPI(&testContext{
-// 		t:       t,
-// 		manager: mgr,
-// 		account: 0,
-// 	})
-// }
+	series := pool2.GetSeries(0)
+	expectedKeys := expectedSeries.GetPublicKeys()
+	keys := series.GetPublicKeys()
+	if len(keys) != len(expectedKeys) {
+		t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedKeys, keys)
+	}
+	for i, key := range keys {
+		if key.String() != expectedKeys[i].String() {
+			t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedSeries, series)
+		}
+	}
+}
 
 func reverse(inKeys []*btcutil.AddressPubKey) []*btcutil.AddressPubKey {
 	revKeys := make([]*btcutil.AddressPubKey, len(inKeys))
@@ -786,12 +677,4 @@ func createVotingPool(manager *waddrmgr.Manager, t *testing.T) *waddrmgr.VotingP
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
 	return pool
-}
-
-func createSeries(pool *waddrmgr.VotingPool, publicKeys []string, reqSigs uint32, t *testing.T) {
-	uniqueCounter++
-	err := pool.CreateSeries(uniqueCounter, publicKeys, reqSigs)
-	if err != nil {
-		t.Fatalf("Failed to create series: %v", err)
-	}
 }
