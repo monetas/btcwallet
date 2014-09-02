@@ -74,6 +74,11 @@ const (
 	// actual base58 extended key length = (111)
 	// snacl.NonceSize == nonce size used for encryption (24)
 	keyLength = secretbox.Overhead + 111 + snacl.NonceSize
+	// 4 bytes for number of keys, 4 bytes for required signatures
+	minSerial = 8
+	// 15 is the max number of keys in a voting pool, 1 each for
+	// pubkey and privkey
+	maxSerial = minSerial + 15*keyLength*2
 )
 
 // dbAccountRow houses information stored about an account in the database.
@@ -156,6 +161,9 @@ var (
 
 	// Account related key names (account bucket).
 	acctNumAcctsName = []byte("numaccts")
+
+	// string representing a non-existent private key
+	nullPrivKey = [keyLength]byte{}
 )
 
 // managerTx represents a database transaction on which all database reads and
@@ -328,14 +336,22 @@ func bytesToUint32(encoded []byte) uint32 {
 // serializeSeriesRow serializes the passed in series information.
 func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	// The serialized series format is:
-	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN><reqSigs>
+	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
 	//
-	// 4 bytes number of pub keys + keyLength * number of pub keys +
-	// 4 bytes number of priv keys + keyLength * number of priv keys +
-	// 4 bytes number of required sigs
+	// 4 bytes no. of keys
+	// + keyLength * 2 * number of keys (1 for priv, 1 for pub)
+	// + 4 bytes no. of required sigs
+
+	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
+		str := fmt.Sprintf("Number of pub keys and priv keys should be the same")
+		// TODO: get the correct error number
+		return nil, managerError(0, str, nil)
+	}
 
 	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
-	for _, pubKeyEncrypted := range row.pubKeysEncrypted {
+
+	var privKeyEncrypted []byte
+	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
 		// check that the encrypted length is correct
 		if len(pubKeyEncrypted) != keyLength {
 			str := fmt.Sprintf("Encrypted Public Key the incorrect length: %v",
@@ -344,18 +360,25 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 			return nil, managerError(0, str, nil)
 		}
 		serialized = append(serialized, pubKeyEncrypted...)
-	}
-	serialized = append(serialized, uint32ToBytes(uint32(len(row.privKeysEncrypted)))...)
-	for _, privKeyEncrypted := range row.privKeysEncrypted {
-		// check that the encrypted length is correct
-		if len(privKeyEncrypted) != keyLength {
+
+		if len(row.privKeysEncrypted) == 0 {
+			privKeyEncrypted = nullPrivKey[:]
+		} else {
+			privKeyEncrypted = row.privKeysEncrypted[i]
+		}
+
+		if privKeyEncrypted == nil {
+			serialized = append(serialized, nullPrivKey[:]...)
+		} else if len(privKeyEncrypted) != keyLength {
 			str := fmt.Sprintf("Encrypted Private Key the incorrect length: %v",
-				privKeyEncrypted)
+				len(privKeyEncrypted))
 			// TODO: get the correct error number
 			return nil, managerError(0, str, nil)
+		} else {
+			serialized = append(serialized, privKeyEncrypted...)
 		}
-		serialized = append(serialized, privKeyEncrypted...)
 	}
+
 	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
 
 	return serialized, nil
@@ -364,15 +387,15 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 // deserializeSeriesRow deserializes
 func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// The serialized series format is:
-	// <nPubKeys><pubKey1>...<pubkeyN><nPrivKeys><privKey1>...<privKeyN><reqSigs>
+	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
 	//
-	// 4 bytes number of pub keys + keyLength * number of pub keys +
-	// 4 bytes number of priv keys + keyLength * number of priv keys +
-	// 4 bytes number of required sigs
+	// 4 bytes no. of keys
+	// + keyLength * 2 * number of keys (1 for priv, 1 for pub)
+	// + 4 bytes no. of required sigs
 
 	// given the above, the length of the serialized series should be
 	//  at minimum the length of the constants
-	if len(serializedSeries) < 12 {
+	if len(serializedSeries) < minSerial {
 		str := fmt.Sprintf("malformed serialized series - too short: %v",
 			serializedSeries)
 		// TODO: put the correct error code into DB
@@ -381,7 +404,7 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 
 	// maximum number of public keys is 15 and the same for public keys
 	//  this gives us an upper bound
-	if len(serializedSeries) > 12+30*keyLength {
+	if len(serializedSeries) > maxSerial {
 		str := fmt.Sprintf("malformed serialized series - too long: %v",
 			serializedSeries)
 		return nil, managerError(0, str, nil)
@@ -390,53 +413,36 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// keeps track of the next set of bytes to serialize
 	current := 0
 
-	// number of pub keys (4 bytes)
-	nPubKeys := bytesToUint32(serializedSeries[current : current+4])
+	// number of keys (4 bytes)
+	nKeys := bytesToUint32(serializedSeries[current : current+4])
 	current += 4
 
-	// check to see if we have enough bytes to consume
-	if len(serializedSeries) < current+int(nPubKeys)*keyLength {
-		str := fmt.Sprintf("malformed serialized series - "+
-			"not enough pubkeys: want %d pubkeys in %v", nPubKeys,
-			serializedSeries)
-		return nil, managerError(0, str, nil)
-	}
-
-	// the pubkeys themselves (keyLength * nPubKeys)
-	row := dbSeriesRow{}
-	row.pubKeysEncrypted = make([][]byte, nPubKeys)
-	for i := 0; i < int(nPubKeys); i++ {
-		row.pubKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
-	}
-	current += keyLength * int(nPubKeys)
-
-	// number of priv keys (4 bytes)
-	if len(serializedSeries) < current+4 {
-		str := fmt.Sprintf("malformed serialized series - "+
-			"no priv key length: %v", serializedSeries)
-		return nil, managerError(0, str, nil)
-	}
-	nPrivKeys := bytesToUint32(serializedSeries[current : current+4])
-	current += 4
-
-	// see if there are enough PrivKeys to consume and 4 bytes after for
-	//  required sigs
-	if len(serializedSeries) < current+int(nPrivKeys)*keyLength+4 {
+	// check to see if we have the right number of bytes to consume
+	if len(serializedSeries) < current+int(nKeys)*keyLength*2+4 {
 		str := fmt.Sprintf("malformed serialized series - "+
 			"not enough data in %v", serializedSeries)
 		return nil, managerError(0, str, nil)
-	} else if len(serializedSeries) > current+int(nPrivKeys)*keyLength+4 {
+	} else if len(serializedSeries) > current+int(nKeys)*keyLength*2+4 {
 		str := fmt.Sprintf("malformed serialized series - "+
 			"too much data in %v", serializedSeries)
 		return nil, managerError(0, str, nil)
 	}
 
-	// the privkeys themselves (keyLength * nPrivKeys)
-	row.privKeysEncrypted = make([][]byte, nPrivKeys)
-	for i := 0; i < int(nPrivKeys); i++ {
-		row.privKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
+	// deserialize the pubkey/privkey pair
+	row := dbSeriesRow{}
+	row.pubKeysEncrypted = make([][]byte, nKeys)
+	row.privKeysEncrypted = make([][]byte, nKeys)
+	for i := 0; i < int(nKeys); i++ {
+		row.pubKeysEncrypted[i] = serializedSeries[current+keyLength*i*2 : current+keyLength*i*2+keyLength]
+		privKeyEncrypted := serializedSeries[current+keyLength*i*2+keyLength : current+keyLength*(i+1)*2]
+		if bytes.Equal(privKeyEncrypted, nullPrivKey[:]) {
+			row.privKeysEncrypted[i] = nil
+		} else {
+			row.privKeysEncrypted[i] = privKeyEncrypted
+		}
 	}
-	current += keyLength * int(nPrivKeys)
+
+	current += keyLength * int(nKeys) * 2
 
 	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
 

@@ -260,7 +260,7 @@ func TestSerialization(t *testing.T) {
 		},
 		{
 			pubKeys:  pubKeys[:3],
-			privKeys: privKeys[:1],
+			privKeys: []string{privKeys[0], "", ""},
 			reqSigs:  2,
 		},
 		{
@@ -269,7 +269,7 @@ func TestSerialization(t *testing.T) {
 		},
 		{
 			pubKeys:  pubKeys[:7],
-			privKeys: privKeys[:2],
+			privKeys: []string{"", privKeys[1], "", privKeys[3], "", "", ""},
 			reqSigs:  4,
 		},
 		// Errors
@@ -278,6 +278,12 @@ func TestSerialization(t *testing.T) {
 		{
 			pubKeys: []string{"NONSENSE"},
 			// not a valid length pub key
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			pubKeys:  []string{"PUBKEY1", "PUBKEY2"},
+			privKeys: []string{"PRIVKEY1"},
+			// pub and priv keys should be the same length
 			err: waddrmgr.ManagerError{ErrorCode: 0},
 		},
 		{
@@ -398,6 +404,7 @@ func TestSerialization(t *testing.T) {
 		var encryptedPubs, encryptedPrivs [][]byte
 		if test.serial == nil {
 			encryptedPubs = make([][]byte, len(test.pubKeys))
+			encryptedPrivs = make([][]byte, len(test.privKeys))
 			for i, pubKey := range test.pubKeys {
 				encryptedPubs[i], err = mgr.Encrypt([]byte(pubKey))
 				if err != nil {
@@ -406,9 +413,12 @@ func TestSerialization(t *testing.T) {
 				}
 			}
 
-			encryptedPrivs = make([][]byte, len(test.privKeys))
 			for i, privKey := range test.privKeys {
-				encryptedPrivs[i], err = mgr.Encrypt([]byte(privKey))
+				if privKey == "" {
+					encryptedPrivs[i] = nil
+				} else {
+					encryptedPrivs[i], err = mgr.Encrypt([]byte(privKey))
+				}
 				if err != nil {
 					t.Errorf("Serialization #%d -  Failed to encrypt private key %v",
 						testNum, privKey)
@@ -420,6 +430,7 @@ func TestSerialization(t *testing.T) {
 				if err == nil {
 					t.Errorf("Serialization #%d -  Should have gotten an error and didn't",
 						testNum)
+					continue
 				}
 				terr := test.err.(waddrmgr.ManagerError)
 				rerr := err.(waddrmgr.ManagerError)
@@ -427,6 +438,10 @@ func TestSerialization(t *testing.T) {
 					t.Errorf("Serialization #%d -  Incorrect type of error passed back: "+
 						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
 				}
+				continue
+			} else if err != nil {
+				t.Errorf("Serialization #%d - Error in serialization %v",
+					testNum, err)
 				continue
 			}
 		} else {
@@ -441,6 +456,8 @@ func TestSerialization(t *testing.T) {
 			if err == nil {
 				t.Errorf("Serialization #%d -  Should have gotten an error and didn't",
 					testNum)
+				continue
+
 			}
 			terr := test.sErr.(waddrmgr.ManagerError)
 			rerr := err.(waddrmgr.ManagerError)
@@ -453,17 +470,23 @@ func TestSerialization(t *testing.T) {
 		}
 
 		if err != nil {
-			t.Errorf("Serialization #%d -  Failed to deserialize %v", testNum, serialized)
+			t.Errorf("Serialization #%d -  Failed to deserialize %v %v", testNum, serialized, err)
+			continue
+
 		}
 
 		if row.ReqSigs != test.reqSigs {
 			t.Errorf("Serialization #%d -  row reqSigs off: want %d got %d",
 				testNum, test.reqSigs, row.ReqSigs)
+			continue
+
 		}
 
 		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
 			t.Errorf("Serialization #%d -  Number of pubkeys off: want %d got %d",
 				testNum, len(test.pubKeys), len(row.PubKeysEncrypted))
+			continue
+
 		}
 
 		for i, encryptedPub := range encryptedPubs {
@@ -472,13 +495,17 @@ func TestSerialization(t *testing.T) {
 			if got != string(encryptedPub) {
 				t.Errorf("Serialization #%d -  Pubkey deserialization not the same: "+
 					"want %v got %v", testNum, string(encryptedPub), got)
+				continue
+
 			}
 
 		}
 
-		if len(row.PrivKeysEncrypted) != len(test.privKeys) {
-			t.Errorf("Serialization #%d -  Number of privkeys off: want %d got %d",
-				testNum, len(test.privKeys), len(row.PrivKeysEncrypted))
+		if len(row.PrivKeysEncrypted) != len(row.PubKeysEncrypted) {
+			t.Errorf("Serialization #%d -  Number of privkeys not the same as number of pubkeys: pub %d priv %d",
+				testNum, len(row.PubKeysEncrypted), len(row.PrivKeysEncrypted))
+			continue
+
 		}
 
 		for i, encryptedPriv := range encryptedPrivs {
@@ -487,6 +514,8 @@ func TestSerialization(t *testing.T) {
 			if got != string(encryptedPriv) {
 				t.Errorf("Serialization #%d -  Privkey deserialization not the same: "+
 					"want %v got %v", testNum, string(encryptedPriv), got)
+				continue
+
 			}
 		}
 	}
