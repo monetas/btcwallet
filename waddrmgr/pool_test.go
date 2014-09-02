@@ -18,7 +18,6 @@ package waddrmgr_test
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -57,7 +56,7 @@ var (
 	}
 )
 
-func setUp(t *testing.T) (func(), *waddrmgr.Manager) {
+func setUp(t *testing.T) (func(), *waddrmgr.Manager, *waddrmgr.VotingPool) {
 	// Create a new manager.
 	// we create the file and immediately delete it as the waddrmgr
 	//  needs to be doing the creating.
@@ -67,20 +66,22 @@ func setUp(t *testing.T) (func(), *waddrmgr.Manager) {
 		&btcnet.MainNetParams)
 	if err != nil {
 		t.Errorf("Create: %v", err)
-		return nil, nil
+	}
+	pool, err := mgr.CreateVotingPool([]byte{0x00})
+	if err != nil {
+		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
 	f := func() {
 		defer os.Remove(file)
 		defer mgr.Close()
 	}
-	return f, mgr
+	return f, mgr, pool
 }
 
 func TestDepositScriptAddress(t *testing.T) {
-	tearDown, mgr := setUp(t)
+	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
-	pool := createVotingPool(mgr, t)
 	tests := []struct {
 		in      []string
 		series  uint32
@@ -149,10 +150,8 @@ func TestDepositScriptAddress(t *testing.T) {
 }
 
 func TestCreateVotingPool(t *testing.T) {
-	tearDown, mgr := setUp(t)
+	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
-
-	pool := createVotingPool(mgr, t)
 
 	pool2, err := mgr.LoadVotingPool(pool.ID)
 	if err != nil {
@@ -164,10 +163,8 @@ func TestCreateVotingPool(t *testing.T) {
 }
 
 func TestCreateSeries(t *testing.T) {
-	tearDown, mgr := setUp(t)
+	tearDown, _, pool := setUp(t)
 	defer tearDown()
-
-	pool := createVotingPool(mgr, t)
 
 	tests := []struct {
 		in      []string
@@ -234,7 +231,7 @@ func TestCreateSeries(t *testing.T) {
 }
 
 func TestSerialization(t *testing.T) {
-	tearDown, mgr := setUp(t)
+	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -505,9 +502,9 @@ func TestGetSeries(t *testing.T) {
 }
 
 func TestLoadAllSeries(t *testing.T) {
-	tearDown, manager := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
-	pool := createVotingPool(manager, t)
+
 	err := pool.CreateSeries(0, pubKeys[:3], 2)
 	if err != nil {
 		t.Fatalf("Failed to create series: %v", err)
@@ -663,18 +660,4 @@ func TestReverse(t *testing.T) {
 			}
 		}
 	}
-}
-
-// FIXME: Make it concurrency-safe
-var uniqueCounter uint32
-
-func createVotingPool(manager *waddrmgr.Manager, t *testing.T) *waddrmgr.VotingPool {
-	uniqueCounter++
-	id := make([]byte, 4)
-	binary.LittleEndian.PutUint32(id, uniqueCounter)
-	pool, err := manager.CreateVotingPool(id)
-	if err != nil {
-		t.Fatalf("Voting Pool creation failed: %v", err)
-	}
-	return pool
 }
