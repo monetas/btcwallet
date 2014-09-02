@@ -134,21 +134,6 @@ func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.Ex
 	return ErrNotImplemented
 }
 
-// XXX: Should this just use seriesLookup instead?
-func (vp *VotingPool) ExistsSeries(seriesID uint32) bool {
-	var exists bool
-	err := vp.manager.db.View(func(tx *managerTx) error {
-		exists = tx.ExistsSeries(vp.ID, seriesID)
-		return nil
-	})
-	if err != nil {
-		// If there was an error while retrieving the series, we should
-		// return an error, but we're too lazy for that.
-		return false
-	}
-	return exists
-}
-
 func (vp *VotingPool) LoadAllSeries() error {
 	var allSeries map[uint32]*dbSeriesRow
 	err := vp.manager.db.View(func(tx *managerTx) error {

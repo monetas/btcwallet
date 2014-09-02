@@ -256,7 +256,7 @@ func testCreateSeries(tc *testContext) bool {
 			tc.t.Errorf("Cannot create series %d", test.series)
 			return false
 		}
-		if !tc.pool.ExistsSeries(test.series) {
+		if !tc.pool.ExistsSeriesTestsOnly(test.series) {
 			tc.t.Errorf("Series %d not in database", test.series)
 			return false
 		}
@@ -510,6 +510,11 @@ func testReplaceSeries(tc *testContext) bool {
 }
 
 func testEmpowerBranch(tc *testContext) bool {
+	return true
+}
+
+func testGetSeries(tc *testContext) bool {
+	// TODO
 	return true
 }
 

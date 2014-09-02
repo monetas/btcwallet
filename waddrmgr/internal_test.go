@@ -42,3 +42,17 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 func BranchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
 	return branchOrder(pks, branch)
 }
+
+func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
+	var exists bool
+	err := vp.manager.db.View(func(tx *managerTx) error {
+		exists = tx.ExistsSeries(vp.ID, seriesID)
+		return nil
+	})
+	if err != nil {
+		// If there was an error while retrieving the series, we should
+		// return an error, but we're too lazy for that.
+		return false
+	}
+	return exists
+}
