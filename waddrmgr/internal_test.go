@@ -3,6 +3,7 @@
 package waddrmgr
 
 import (
+	"github.com/monetas/bolt"
 	"github.com/monetas/btcutil"
 )
 
@@ -55,4 +56,12 @@ func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
 		return false
 	}
 	return exists
+}
+
+func (mtx *managerTx) ExistsSeries(votingPoolID []byte, ID uint32) bool {
+	vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
+	if vpBucket == nil {
+		return false
+	}
+	return vpBucket.Get(uint32ToBytes(ID)) != nil
 }
