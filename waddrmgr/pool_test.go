@@ -17,15 +17,13 @@
 package waddrmgr_test
 
 import (
-	//	"bytes"
-	//	"encoding/binary"
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"reflect"
 	"testing"
-
-	"fmt"
 
 	"github.com/monetas/btcnet"
 	"github.com/monetas/btcutil"
@@ -79,11 +77,9 @@ func setUp(t *testing.T) (func(), *waddrmgr.Manager) {
 }
 
 func TestDepositScriptAddress(t *testing.T) {
-	fmt.Println("Starting DepositScript test")
 	tearDown, mgr := setUp(t)
 	defer tearDown()
 
-	// file is a unique string strictly to this test
 	pool, err := mgr.CreateVotingPool([]byte{0x00})
 	if err != nil {
 		t.Errorf("Voting Pool creation failed")
@@ -110,14 +106,15 @@ func TestDepositScriptAddress(t *testing.T) {
 			},
 			err: nil,
 		},
-		// // Errors..
-		// {
-		// 	in:  []string{"xpub"},
-		// 	err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrInvalidAccount},
-		// },
+		// Errors..
+		{
+			in: []string{"xpub"},
+			// TODO: correct this error code to the right thing in error.go
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
 	}
 
-	t.Logf("Running %d tests", len(tests))
+	t.Logf("DepositScript: Running %d tests", len(tests))
 	for i, test := range tests {
 		err := pool.CreateSeries(test.series, test.in, test.reqSigs)
 		if err != nil {
@@ -156,373 +153,383 @@ func TestDepositScriptAddress(t *testing.T) {
 	return
 }
 
-// func testCreateVotingPool(tc *testContext) bool {
-// 	pool, err := tc.manager.CreateVotingPool([]byte{0x00, 0x10, 0x20})
-// 	if err != nil {
-// 		tc.t.Errorf("Voting Pool creation failed")
-// 		return false
-// 	}
+func TestCreateVotingPool(t *testing.T) {
+	tearDown, mgr := setUp(t)
+	defer tearDown()
 
-// 	pool2, err := tc.manager.LoadVotingPool([]byte{0x00, 0x10, 0x20})
-// 	if pool2 == nil {
-// 		tc.t.Errorf("Voting Pool doesn't seem to be in the DB")
-// 		return false
-// 	}
-// 	if !bytes.Equal(pool2.ID, pool.ID) {
-// 		tc.t.Errorf("Voting pool obtained from DB does not match the created one")
-// 		return false
-// 	}
-// 	// XXX: This makes tests interdependent, and that's a bad idea for several reasons:
-// 	// http://xunitpatterns.com/Principles%20of%20Test%20Automation.html#Independent%20Test
-// 	tc.pool = pool2
+	pool, err := mgr.CreateVotingPool([]byte{0x00})
+	if err != nil {
+		t.Errorf("Voting Pool creation failed")
+	}
+
+	pool2, err := mgr.LoadVotingPool([]byte{0x00})
+	if pool2 == nil {
+		t.Errorf("Voting Pool doesn't seem to be in the DB")
+	}
+	if !bytes.Equal(pool2.ID, pool.ID) {
+		t.Errorf("Voting pool obtained from DB does not match the created one")
+	}
+}
+
+func TestCreateSeries(t *testing.T) {
+	tearDown, mgr := setUp(t)
+	defer tearDown()
+
+	pool, err := mgr.CreateVotingPool([]byte{0x00})
+	if err != nil {
+		t.Errorf("Voting Pool creation failed")
+	}
+
+	tests := []struct {
+		in      []string
+		series  uint32
+		reqSigs uint32
+		err     error
+	}{
+		{
+			in:      pubKeys[:3],
+			series:  0,
+			reqSigs: 2,
+			err:     nil,
+		},
+		{
+			in:      pubKeys[:5],
+			series:  1,
+			reqSigs: 3,
+			err:     nil,
+		},
+		{
+			in:      pubKeys[:7],
+			series:  2,
+			reqSigs: 4,
+			err:     nil,
+		},
+		{
+			in:      pubKeys[:9],
+			series:  3,
+			reqSigs: 5,
+			err:     nil,
+		},
+		// Errors..
+		{
+			in:     []string{"xpub"},
+			series: 99,
+			// TODO: get the correct error code
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+	}
+
+	t.Logf("CreateSeries: Running %d tests", len(tests))
+	for testNum, test := range tests {
+		err := pool.CreateSeries(uint32(test.series), test.in, test.reqSigs)
+		if test.err != nil {
+			if err == nil {
+				t.Errorf("%d: Expected a test failure and didn't get one", testNum)
+			} else {
+				rerr := err.(waddrmgr.ManagerError)
+				terr := test.err.(waddrmgr.ManagerError)
+				if terr.ErrorCode != rerr.ErrorCode {
+					t.Errorf("%d: Incorrect type of error passed back: "+
+						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
+				}
+				continue
+			}
+		}
+		if err != nil {
+			t.Errorf("%d: Cannot create series %d", testNum, test.series)
+		}
+		if !pool.ExistsSeriesTestsOnly(test.series) {
+			t.Errorf("%d: Series %d not in database", testNum, test.series)
+		}
+	}
+}
+
+func TestSerialization(t *testing.T) {
+	tearDown, mgr := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		pubKeys  []string
+		privKeys []string
+		reqSigs  uint32
+		err      error
+		serial   []byte
+		sErr     error
+	}{
+		{
+			pubKeys: pubKeys[:1],
+			reqSigs: 1,
+		},
+		{
+			pubKeys:  pubKeys[:1],
+			privKeys: privKeys[:1],
+			reqSigs:  1,
+		},
+		{
+			pubKeys: pubKeys[:3],
+			reqSigs: 2,
+		},
+		{
+			pubKeys:  pubKeys[:3],
+			privKeys: privKeys[:1],
+			reqSigs:  2,
+		},
+		{
+			pubKeys: pubKeys[:5],
+			reqSigs: 3,
+		},
+		{
+			pubKeys:  pubKeys[:7],
+			privKeys: privKeys[:2],
+			reqSigs:  4,
+		},
+		// Errors
+		// TODO: correct the error codes to their proper values
+		//  once actual error codes are in error.go
+		{
+			pubKeys: []string{"NONSENSE"},
+			// not a valid length pub key
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			pubKeys:  pubKeys[0:1],
+			reqSigs:  2,
+			privKeys: []string{"NONSENSE"},
+			// not a valid length priv key
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			serial: []byte("WRONG"),
+			// not enough bytes (under the theoretical minimum)
+			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			serial: make([]byte, 10000),
+			// too many bytes (over the theoretical maximum)
+			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			serial: []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			// not enough bytes (specifically not enough public keys)
+			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			serial: []byte{0x01, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00,
+			},
+			// not enough bytes (specifically no private keys)
+			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			serial: []byte{0x01, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00,
+				0x01, 0x00, 0x00, 0x00,
+			},
+			// not enough bytes for serialization
+			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			serial: []byte{0x01, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00,
+				0x01, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00,
+			},
+			// too many bytes for serialization
+			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+	}
+
+	var err error
+
+	t.Logf("Serialization: Running %d tests", len(tests))
+	for testNum, test := range tests {
+		var serialized []byte
+		var encryptedPubs, encryptedPrivs [][]byte
+		if test.serial == nil {
+			encryptedPubs = make([][]byte, len(test.pubKeys))
+			for i, pubKey := range test.pubKeys {
+				encryptedPubs[i], err = mgr.Encrypt([]byte(pubKey))
+				if err != nil {
+					t.Errorf("Serialization #%d -  Failed to encrypt public key %v",
+						testNum, pubKey)
+				}
+			}
+
+			encryptedPrivs = make([][]byte, len(test.privKeys))
+			for i, privKey := range test.privKeys {
+				encryptedPrivs[i], err = mgr.Encrypt([]byte(privKey))
+				if err != nil {
+					t.Errorf("Serialization #%d -  Failed to encrypt private key %v",
+						testNum, privKey)
+				}
+			}
+
+			serialized, err = waddrmgr.SerializeSeries(test.reqSigs, encryptedPubs, encryptedPrivs)
+			if test.err != nil {
+				if err == nil {
+					t.Errorf("Serialization #%d -  Should have gotten an error and didn't",
+						testNum)
+				}
+				terr := test.err.(waddrmgr.ManagerError)
+				rerr := err.(waddrmgr.ManagerError)
+				if terr.ErrorCode != rerr.ErrorCode {
+					t.Errorf("Serialization #%d -  Incorrect type of error passed back: "+
+						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
+				}
+				continue
+			}
+		} else {
+			// shortcut this serialization and pretend we got some other string
+			//  that's defined in the test
+			serialized = test.serial
+		}
+
+		row, err := waddrmgr.DeserializeSeries(serialized)
+
+		if test.sErr != nil {
+			if err == nil {
+				t.Errorf("Serialization #%d -  Should have gotten an error and didn't",
+					testNum)
+			}
+			terr := test.sErr.(waddrmgr.ManagerError)
+			rerr := err.(waddrmgr.ManagerError)
+			if terr.ErrorCode != rerr.ErrorCode {
+				t.Errorf("Serialization #%d -  Incorrect type of error passed back: "+
+					"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
+			}
+
+			continue
+		}
+
+		if err != nil {
+			t.Errorf("Serialization #%d -  Failed to deserialize %v", testNum, serialized)
+		}
+
+		if row.ReqSigs != test.reqSigs {
+			t.Errorf("Serialization #%d -  row reqSigs off: want %d got %d",
+				testNum, test.reqSigs, row.ReqSigs)
+		}
+
+		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
+			t.Errorf("Serialization #%d -  Number of pubkeys off: want %d got %d",
+				testNum, len(test.pubKeys), len(row.PubKeysEncrypted))
+		}
+
+		for i, encryptedPub := range encryptedPubs {
+			got := string(row.PubKeysEncrypted[i])
+
+			if got != string(encryptedPub) {
+				t.Errorf("Serialization #%d -  Pubkey deserialization not the same: "+
+					"want %v got %v", testNum, string(encryptedPub), got)
+			}
+
+		}
+
+		if len(row.PrivKeysEncrypted) != len(test.privKeys) {
+			t.Errorf("Serialization #%d -  Number of privkeys off: want %d got %d",
+				testNum, len(test.privKeys), len(row.PrivKeysEncrypted))
+		}
+
+		for i, encryptedPriv := range encryptedPrivs {
+			got := string(row.PrivKeysEncrypted[i])
+
+			if got != string(encryptedPriv) {
+				t.Errorf("Serialization #%d -  Privkey deserialization not the same: "+
+					"want %v got %v", testNum, string(encryptedPriv), got)
+			}
+		}
+	}
+}
+
+// func testReplaceSeries(t *testing.T) bool {
 // 	return true
 // }
 
-// func testCreateSeries(tc *testContext) bool {
-// 	tests := []struct {
-// 		in      []string
-// 		series  uint32
-// 		reqSigs uint32
-// 		err     error
-// 	}{
-// 		{
-// 			in:      pubKeys[:3],
-// 			series:  0,
-// 			reqSigs: 2,
-// 			err:     nil,
-// 		},
-// 		{
-// 			in:      pubKeys[:5],
-// 			series:  1,
-// 			reqSigs: 3,
-// 			err:     nil,
-// 		},
-// 		{
-// 			in:      pubKeys[:7],
-// 			series:  2,
-// 			reqSigs: 4,
-// 			err:     nil,
-// 		},
-// 		{
-// 			in:      pubKeys[:9],
-// 			series:  2,
-// 			reqSigs: 4,
-// 			err:     nil,
-// 		},
-// 		// Errors..
-// 		{
-// 			in:     []string{"xpub"},
-// 			series: 99,
-// 			// TODO: get the correct error code
-// 			err: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 	}
-// 	for testNum, test := range tests {
-// 		err := tc.pool.CreateSeries(uint32(test.series), test.in, test.reqSigs)
-// 		if test.err != nil {
-// 			if err == nil {
-// 				tc.t.Errorf("%d: Expected a test failure and didn't get one", testNum)
-// 				return false
-// 			} else {
-// 				rerr := err.(waddrmgr.ManagerError)
-// 				terr := test.err.(waddrmgr.ManagerError)
-// 				if terr.ErrorCode != rerr.ErrorCode {
-// 					tc.t.Errorf("%d: Incorrect type of error passed back: "+
-// 						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
-// 					return false
-// 				}
-// 				continue
-// 			}
-// 		}
-// 		if err != nil {
-// 			tc.t.Errorf("%d: Cannot create series %d", testNum, test.series)
-// 			return false
-// 		}
-// 		if !tc.pool.ExistsSeriesTestsOnly(test.series) {
-// 			tc.t.Errorf("%d: Series %d not in database", testNum, test.series)
-// 			return false
-// 		}
-// 	}
+// func testEmpowerBranch(t *testing.T) bool {
 // 	return true
 // }
 
-// func testSerialization(tc *testContext) bool {
-// 	tests := []struct {
-// 		pubKeys  []string
-// 		privKeys []string
-// 		reqSigs  uint32
-// 		err      error
-// 		serial   []byte
-// 		sErr     error
-// 	}{
-// 		{
-// 			pubKeys: pubKeys[0:1],
-// 			reqSigs: 2,
-// 		},
-// 		{
-// 			pubKeys: pubKeys,
-// 			reqSigs: 2,
-// 		},
-// 		// Errors
-// 		// TODO: correct the error codes to their proper values
-// 		//  once actual error codes are in error.go
-// 		{
-// 			pubKeys: []string{"NONSENSE"},
-// 			// not a valid length pub key
-// 			err: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			pubKeys:  pubKeys[0:1],
-// 			reqSigs:  2,
-// 			privKeys: []string{"NONSENSE"},
-// 			// not a valid length priv key
-// 			err: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			serial: []byte("WRONG"),
-// 			// not enough bytes (under the theoretical minimum)
-// 			sErr: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			serial: make([]byte, 10000),
-// 			// too many bytes (over the theoretical maximum)
-// 			sErr: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			serial: []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-// 			// not enough bytes (specifically not enough public keys)
-// 			sErr: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			serial: []byte{0x01, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00,
-// 			},
-// 			// not enough bytes (specifically no private keys)
-// 			sErr: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			serial: []byte{0x01, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00,
-// 				0x01, 0x00, 0x00, 0x00,
-// 			},
-// 			// not enough bytes for serialization
-// 			sErr: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 		{
-// 			serial: []byte{0x01, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00,
-// 				0x01, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-// 				0x00,
-// 			},
-// 			// too many bytes for serialization
-// 			sErr: waddrmgr.ManagerError{ErrorCode: 0},
-// 		},
-// 	}
-
-// 	var err error
-
-// 	for testNum, test := range tests {
-// 		var serialized []byte
-// 		var encryptedPubs, encryptedPrivs [][]byte
-// 		if test.serial == nil {
-// 			encryptedPubs = make([][]byte, len(test.pubKeys))
-// 			for i, pubKey := range test.pubKeys {
-// 				encryptedPubs[i], err = tc.manager.Encrypt([]byte(pubKey))
-// 				if err != nil {
-// 					tc.t.Errorf("%d: Failed to encrypt public key %v",
-// 						testNum, pubKey)
-// 					return false
-// 				}
-// 			}
-
-// 			encryptedPrivs = make([][]byte, len(test.privKeys))
-// 			for i, privKey := range test.privKeys {
-// 				encryptedPrivs[i], err = tc.manager.Encrypt([]byte(privKey))
-// 				if err != nil {
-// 					tc.t.Errorf("%d: Failed to encrypt private key %v",
-// 						testNum, privKey)
-// 					return false
-// 				}
-// 			}
-
-// 			serialized, err = waddrmgr.SerializeSeries(test.reqSigs, encryptedPubs, encryptedPrivs)
-// 			if test.err != nil {
-// 				if err == nil {
-// 					tc.t.Errorf("%d: Should have gotten an error and didn't",
-// 						testNum)
-// 					return false
-// 				}
-// 				terr := test.err.(waddrmgr.ManagerError)
-// 				rerr := err.(waddrmgr.ManagerError)
-// 				if terr.ErrorCode != rerr.ErrorCode {
-// 					tc.t.Errorf("%d: Incorrect type of error passed back: "+
-// 						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
-// 					return false
-// 				}
-// 				continue
-// 			}
-// 		} else {
-// 			// shortcut this serialization and pretend we got some other string
-// 			//  that's defined in the test
-// 			serialized = test.serial
-// 		}
-
-// 		row, err := waddrmgr.DeserializeSeries(serialized)
-
-// 		if test.sErr != nil {
-// 			if err == nil {
-// 				tc.t.Errorf("%d: Should have gotten an error and didn't",
-// 					testNum)
-// 				return false
-// 			}
-// 			terr := test.sErr.(waddrmgr.ManagerError)
-// 			rerr := err.(waddrmgr.ManagerError)
-// 			if terr.ErrorCode != rerr.ErrorCode {
-// 				tc.t.Errorf("%d: Incorrect type of error passed back: "+
-// 					"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
-// 				return false
-// 			}
-
-// 			continue
-// 		}
-
-// 		if err != nil {
-// 			tc.t.Errorf("%d: Failed to deserialize %v", testNum, serialized)
-// 			return false
-// 		}
-
-// 		if row.ReqSigs != test.reqSigs {
-// 			tc.t.Errorf("%d: row reqSigs off: want %d got %d",
-// 				testNum, test.reqSigs, row.ReqSigs)
-// 			return false
-// 		}
-
-// 		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
-// 			tc.t.Errorf("%d: Number of pubkeys off: want %d got %d",
-// 				testNum, len(test.pubKeys), len(row.PubKeysEncrypted))
-// 			return false
-// 		}
-
-// 		for i, encryptedPub := range encryptedPubs {
-// 			got := string(row.PubKeysEncrypted[i])
-
-// 			if got != string(encryptedPub) {
-// 				tc.t.Errorf("%d: Pubkey deserialization not the same: "+
-// 					"want %v got %v", testNum, string(encryptedPub), got)
-// 				return false
-// 			}
-
-// 		}
-
-// 		if len(row.PrivKeysEncrypted) != len(test.privKeys) {
-// 			tc.t.Errorf("%d: Number of privkeys off: want %d got %d",
-// 				testNum, len(test.privKeys), len(row.PrivKeysEncrypted))
-// 			return false
-// 		}
-
-// 		for i, encryptedPriv := range encryptedPrivs {
-// 			got := string(row.PrivKeysEncrypted[i])
-
-// 			if got != string(encryptedPriv) {
-// 				tc.t.Errorf("%d: Privkey deserialization not the same: "+
-// 					"want %v got %v", testNum, string(encryptedPriv), got)
-// 				return false
-// 			}
-// 		}
-// 	}
-
-// 	return true
-// }
-
-// func testReplaceSeries(tc *testContext) bool {
-// 	return true
-// }
-
-// func testEmpowerBranch(tc *testContext) bool {
-// 	return true
-// }
-
-// func testGetSeries(tc *testContext) bool {
+// func testGetSeries(t *testing.T) bool {
 // 	// TODO
 // 	return true
 // }
 
-// func testLoadAllSeries(tc *testContext) bool {
+// func testLoadAllSeries(t *testing.T) bool {
 // 	pool := createVotingPool(tc)
 // 	err := pool.CreateSeries(0, pubKeys[:3], 2)
 // 	if err != nil {
-// 		tc.t.Errorf("Failed to create series: %v", err)
+// 		t.Errorf("Failed to create series: %v", err)
 // 		return false
 // 	}
 // 	expectedSeries := pool.GetSeries(0)
 
 // 	// Ideally we should reset pool.seriesLookup and call LoadAllSeries() manually, but that
 // 	// is a private attribute so we just call LoadVotingPool, which calls LoadAllSeries.
-// 	pool2, err := tc.manager.LoadVotingPool(pool.ID)
+// 	pool2, err := mgr.LoadVotingPool(pool.ID)
 // 	if err != nil {
-// 		tc.t.Errorf("Failed to load voting pool: %v", err)
+// 		t.Errorf("Failed to load voting pool: %v", err)
 // 		return false
 // 	}
 
@@ -530,18 +537,18 @@ func TestDepositScriptAddress(t *testing.T) {
 // 	expectedKeys := expectedSeries.GetPublicKeys()
 // 	keys := series.GetPublicKeys()
 // 	if len(keys) != len(expectedKeys) {
-// 		tc.t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedKeys, keys)
+// 		t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedKeys, keys)
 // 	}
 // 	for i, key := range keys {
 // 		if key.String() != expectedKeys[i].String() {
-// 			tc.t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedSeries, series)
+// 			t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedSeries, series)
 // 			return false
 // 		}
 // 	}
 // 	return true
 // }
 
-// func testManagerAPI(tc *testContext) {
+// func testManagerAPI(t *testing.T) {
 // 	//testNextExternalAddresses(tc)
 
 // 	testSerialization(tc)
