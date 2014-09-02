@@ -17,11 +17,14 @@
 package waddrmgr
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/monetas/btcutil/hdkeychain"
 )
+
+var ErrNotImplemented = errors.New("not implemented")
 
 var (
 	// errAlreadyExists is the common error description used for the
@@ -112,13 +115,17 @@ const (
 	// addresses per account have been requested.
 	ErrTooManyAddresses
 
-	// ErrWrongPassphrase inidicates the specified password is incorrect.
+	// ErrWrongPassphrase indicates the specified password is incorrect.
 	// This could be for either the public and private master keys.
 	ErrWrongPassphrase
 
 	// ErrWrongNet indicates the private key to be imported is not for the
-	// the same network the account mangaer is configured for.
+	// the same network the account manager is configured for.
 	ErrWrongNet
+
+	// ErrSeriesStorage indicates that an error occurred while serializing
+	// or deserialing series for storing into database.
+	ErrSeriesStorage
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.
@@ -138,6 +145,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrTooManyAddresses:  "ErrTooManyAddresses",
 	ErrWrongPassphrase:   "ErrWrongPassphrase",
 	ErrWrongNet:          "ErrWrongNet",
+	ErrSeriesStorage:     "ErrSeriesStorage",
 }
 
 // String returns the ErrorCode as a human-readable name.

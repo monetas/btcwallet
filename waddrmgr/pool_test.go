@@ -276,36 +276,36 @@ func TestSerialization(t *testing.T) {
 		{
 			pubKeys: []string{"NONSENSE"},
 			// not a valid length pub key
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			pubKeys:  []string{"PUBKEY1", "PUBKEY2"},
 			privKeys: []string{"PRIVKEY1"},
 			// pub and priv keys should be the same length
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			pubKeys:  []string{pubKey0, pubKey1},
 			reqSigs:  2,
 			privKeys: []string{"NONSENSE"},
 			// not a valid length priv key
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			serial: []byte("WRONG"),
 			// not enough bytes (under the theoretical minimum)
-			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			serial: make([]byte, 10000),
 			// too many bytes (over the theoretical maximum)
-			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			serial: []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 			// not enough bytes (specifically not enough public keys)
-			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			serial: []byte{0x01, 0x00, 0x00, 0x00,
@@ -327,7 +327,7 @@ func TestSerialization(t *testing.T) {
 				0x00,
 			},
 			// not enough bytes (specifically no private keys)
-			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			serial: []byte{0x01, 0x00, 0x00, 0x00,
@@ -350,7 +350,7 @@ func TestSerialization(t *testing.T) {
 				0x01, 0x00, 0x00, 0x00,
 			},
 			// not enough bytes for serialization
-			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 		{
 			serial: []byte{0x01, 0x00, 0x00, 0x00,
@@ -390,7 +390,7 @@ func TestSerialization(t *testing.T) {
 				0x00,
 			},
 			// too many bytes for serialization
-			sErr: waddrmgr.ManagerError{ErrorCode: 0},
+			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
 		},
 	}
 

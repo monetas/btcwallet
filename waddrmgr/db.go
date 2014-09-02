@@ -19,7 +19,6 @@ package waddrmgr
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 
@@ -29,8 +28,6 @@ import (
 	"github.com/monetas/btcwallet/snacl"
 	"github.com/monetas/fastsha256"
 )
-
-var ErrNotImplemented = errors.New("not implemented")
 
 const (
 	// lastestDbVersion is the most recent database version.
@@ -315,7 +312,7 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 	}
 
 	if err := bucket.Put(watchingOnlyName, []byte{encoded}); err != nil {
-		str := "failed to store wathcing only flag"
+		str := "failed to store watching only flag"
 		return managerError(ErrDatabase, str, err)
 	}
 	return nil
@@ -343,9 +340,9 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	// + 4 bytes no. of required sigs
 
 	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
-		str := fmt.Sprintf("Number of pub keys and priv keys should be the same")
-		// TODO: get the correct error number
-		return nil, managerError(0, str, nil)
+		str := fmt.Sprintf("different number of public (%v) keys and private (%v) keys",
+			len(row.pubKeysEncrypted), len(row.privKeysEncrypted))
+		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
 	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
@@ -354,10 +351,9 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
 		// check that the encrypted length is correct
 		if len(pubKeyEncrypted) != keyLength {
-			str := fmt.Sprintf("Encrypted Public Key the incorrect length: %v",
+			str := fmt.Sprintf("wrong length of Encrypted Public Key: %v",
 				pubKeyEncrypted)
-			// TODO: get the correct error number
-			return nil, managerError(0, str, nil)
+			return nil, managerError(ErrSeriesStorage, str, nil)
 		}
 		serialized = append(serialized, pubKeyEncrypted...)
 
@@ -370,10 +366,9 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 		if privKeyEncrypted == nil {
 			serialized = append(serialized, nullPrivKey[:]...)
 		} else if len(privKeyEncrypted) != keyLength {
-			str := fmt.Sprintf("Encrypted Private Key the incorrect length: %v",
+			str := fmt.Sprintf("wrong length of Encrypted Private Key: %v",
 				len(privKeyEncrypted))
-			// TODO: get the correct error number
-			return nil, managerError(0, str, nil)
+			return nil, managerError(ErrSeriesStorage, str, nil)
 		} else {
 			serialized = append(serialized, privKeyEncrypted...)
 		}
@@ -396,18 +391,17 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// given the above, the length of the serialized series should be
 	//  at minimum the length of the constants
 	if len(serializedSeries) < minSerial {
-		str := fmt.Sprintf("malformed serialized series - too short: %v",
+		str := fmt.Sprintf("serialized series is too short: %v",
 			serializedSeries)
-		// TODO: put the correct error code into DB
-		return nil, managerError(0, str, nil)
+		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
 	// maximum number of public keys is 15 and the same for public keys
 	//  this gives us an upper bound
 	if len(serializedSeries) > maxSerial {
-		str := fmt.Sprintf("malformed serialized series - too long: %v",
+		str := fmt.Sprintf("serialized series is too long: %v",
 			serializedSeries)
-		return nil, managerError(0, str, nil)
+		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
 	// keeps track of the next set of bytes to serialize
@@ -419,13 +413,13 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 
 	// check to see if we have the right number of bytes to consume
 	if len(serializedSeries) < current+int(nKeys)*keyLength*2+4 {
-		str := fmt.Sprintf("malformed serialized series - "+
-			"not enough data in %v", serializedSeries)
-		return nil, managerError(0, str, nil)
+		str := fmt.Sprintf("serialized series has not enough data: %v",
+			serializedSeries)
+		return nil, managerError(ErrSeriesStorage, str, nil)
 	} else if len(serializedSeries) > current+int(nKeys)*keyLength*2+4 {
-		str := fmt.Sprintf("malformed serialized series - "+
-			"too much data in %v", serializedSeries)
-		return nil, managerError(0, str, nil)
+		str := fmt.Sprintf("serialized series has too much data: %v",
+			serializedSeries)
+		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
 	// deserialize the pubkey/privkey pair
@@ -595,7 +589,8 @@ func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	_, err := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).CreateBucket(votingPoolID)
 	if err != nil {
-		return managerError(0, "FIXME", err)
+		str := fmt.Sprintf("cannot create voting pool %v", votingPoolID)
+		return managerError(ErrDatabase, str, err)
 	}
 	return nil
 }
@@ -608,7 +603,8 @@ func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRo
 		seriesID := binary.LittleEndian.Uint32(id)
 		series, err := deserializeSeriesRow(seriesData)
 		if err != nil {
-			return nil, managerError(0, "FIXME", err)
+			str := fmt.Sprintf("cannot deserialize series %v", seriesData)
+			return nil, managerError(ErrSeriesStorage, str, err)
 		}
 		allSeries[seriesID] = series
 	}
@@ -634,15 +630,18 @@ func (mtx *managerTx) putSeriesRow(votingPoolID []byte, ID uint32, row *dbSeries
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
 	vpBucket, err := bucket.CreateBucketIfNotExists(votingPoolID)
 	if err != nil {
-		return managerError(0, "FIXME", err)
+		str := fmt.Sprintf("cannot create bucket %v", votingPoolID)
+		return managerError(ErrDatabase, str, err)
 	}
 	serialized, err := serializeSeriesRow(row)
 	if err != nil {
-		return managerError(0, "FIXME", err)
+		str := fmt.Sprintf("cannot serialize series %v", row)
+		return managerError(ErrSeriesStorage, str, err)
 	}
 	err = vpBucket.Put(uint32ToBytes(ID), serialized)
 	if err != nil {
-		return managerError(0, "FIXME", err)
+		str := fmt.Sprintf("cannot put series %v into bucket %v", serialized, votingPoolID)
+		return managerError(ErrSeriesStorage, str, err)
 	}
 	return nil
 }
