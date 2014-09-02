@@ -615,14 +615,6 @@ func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRo
 	return allSeries, nil
 }
 
-func (mtx *managerTx) ExistsSeries(votingPoolID []byte, ID uint32) bool {
-	vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
-	if vpBucket == nil {
-		return false
-	}
-	return vpBucket.Get(uint32ToBytes(ID)) != nil
-}
-
 func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
 	return bucket != nil
