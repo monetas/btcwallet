@@ -19,6 +19,7 @@ package waddrmgr_test
 import (
 	//	"bytes"
 	//	"encoding/binary"
+	"encoding/binary"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -743,14 +744,24 @@ func TestDepositScriptAddress(t *testing.T) {
 // 	}
 // }
 
-// func createVotingPool(tc *testContext) *waddrmgr.VotingPool {
-// 	tc.uniqueCounter++
-// 	id := make([]byte, 4)
-// 	binary.LittleEndian.PutUint32(id, tc.uniqueCounter)
-// 	pool, err := tc.manager.CreateVotingPool(id)
-// 	if err != nil {
-// 		tc.t.Fatalf("Voting Pool creation failed: %v", err)
-// 		return nil
-// 	}
-// 	return pool
-// }
+// FIXME: Make it concurrency-safe
+var uniqueCounter uint32
+
+func createVotingPool(manager *waddrmgr.Manager, t *testing.T) *waddrmgr.VotingPool {
+	uniqueCounter++
+	id := make([]byte, 4)
+	binary.LittleEndian.PutUint32(id, uniqueCounter)
+	pool, err := manager.CreateVotingPool(id)
+	if err != nil {
+		t.Fatalf("Voting Pool creation failed: %v", err)
+	}
+	return pool
+}
+
+func createSeries(pool *waddrmgr.VotingPool, publicKeys []string, reqSigs uint32, t *testing.T) {
+	uniqueCounter++
+	err := pool.CreateSeries(uniqueCounter, publicKeys, reqSigs)
+	if err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+}
