@@ -394,16 +394,18 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	nPubKeys := bytesToUint32(serializedSeries[current : current+4])
 	current += 4
 
+	// check to see if we have enough bytes to consume
+	if len(serializedSeries) < current+int(nPubKeys)*keyLength {
+		str := fmt.Sprintf("malformed serialized series - "+
+			"not enough pubkeys: want %d pubkeys in %v", nPubKeys,
+			serializedSeries)
+		return nil, managerError(0, str, nil)
+	}
+
 	// the pubkeys themselves (keyLength * nPubKeys)
 	row := dbSeriesRow{}
 	row.pubKeysEncrypted = make([][]byte, nPubKeys)
 	for i := 0; i < int(nPubKeys); i++ {
-		if len(serializedSeries) < current+keyLength*(i+1) {
-			str := fmt.Sprintf("malformed serialized series - "+
-				"not enough pubkeys: want %d pubkeys in %v", nPubKeys,
-				serializedSeries)
-			return nil, managerError(0, str, nil)
-		}
 		row.pubKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
 	}
 	current += keyLength * int(nPubKeys)
@@ -417,25 +419,25 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	nPrivKeys := bytesToUint32(serializedSeries[current : current+4])
 	current += 4
 
+	// see if there are enough PrivKeys to consume and 4 bytes after for
+	//  required sigs
+	if len(serializedSeries) < current+int(nPrivKeys)*keyLength+4 {
+		str := fmt.Sprintf("malformed serialized series - "+
+			"not enough data in %v", serializedSeries)
+		return nil, managerError(0, str, nil)
+	} else if len(serializedSeries) > current+int(nPrivKeys)*keyLength+4 {
+		str := fmt.Sprintf("malformed serialized series - "+
+			"too much data in %v", serializedSeries)
+		return nil, managerError(0, str, nil)
+	}
+
 	// the privkeys themselves (keyLength * nPrivKeys)
 	row.privKeysEncrypted = make([][]byte, nPrivKeys)
 	for i := 0; i < int(nPrivKeys); i++ {
-		if len(serializedSeries) < current+keyLength*(i+1) {
-			str := fmt.Sprintf("malformed serialized series - "+
-				"not enough priv keys: want %d privkeys in %v", nPrivKeys,
-				serializedSeries)
-			return nil, managerError(0, str, nil)
-		}
 		row.privKeysEncrypted[i] = serializedSeries[current+keyLength*i : current+keyLength*(i+1)]
 	}
 	current += keyLength * int(nPrivKeys)
 
-	// number of required signatures (4 bytes)
-	if len(serializedSeries) < current+4 {
-		str := fmt.Sprintf("malformed serialized series - "+
-			"no number of required sigs: %v", serializedSeries)
-		return nil, managerError(0, str, nil)
-	}
 	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
 
 	return &row, nil
