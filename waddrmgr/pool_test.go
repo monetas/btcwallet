@@ -30,30 +30,26 @@ import (
 	"github.com/monetas/btcwallet/waddrmgr"
 )
 
-var (
-	privKeys = []string{
-		"xprv9s21ZrQH143K2j9PK4CXkCu8sgxkpUxCF7p1KVwiV5tdnkeYzJXReUkxz5iB2FUzTXC1L15abCDG4RMxSYT5zhm67uvsnLYxuDhZfoFcB6a",
-		"xprv9s21ZrQH143K4PtW77ATQAKAGk7KAFFCzxFuAcWduoMEeQhCgWpuYWQvMGZknqdispUbgLZV1YPqFCbpzMJij8tSZ5xPSaZqPbchojeNuq7",
-		"xprv9s21ZrQH143K27XboWxXZGU5j7VZ9SqVBnmMQPKTbddiWAhuNzeLynKHaZTAti6N454tVUUcvy6u15DfuW68NCBUxry6ZsHHzqoA8UtzdMn",
-		"xprv9s21ZrQH143K2vb4DGQymRejLcZSksBHTYLxB7Stg1c7Lk9JxgEUGZTozwUKxoEWJPoGSdGnJY1TW7LNFQCWrpZjDdEXJeqJuDde6BmdD4P",
-		"xprv9s21ZrQH143K4JNmRvWeLc1PggzusKcDYV1y8fAMNDdb9Rm5X1AvGHizxEdhTVR3sc62XvifC6dLAXMuQesX1y6999xnDwQ3aVno8KviU9d",
-		"xprv9s21ZrQH143K3dxrqESqeHZ7pSwM6Uq77ssQADSBs7qdFs6dyRWmRcPyLUTQRpgB3EduNhJuWkCGG2LHjuUisw8KKfXJpPqYJ1MSPrZpe1z",
-		"xprv9s21ZrQH143K2nE8ENAMNksTTVxPrMxFNWUuwThMy2bcH9LHTtQDXSNq2pTNcbuq36n5A3J9pbXVqnq5LDXvqniFRLN299kW7Svnxsx9tQv",
-		"xprv9s21ZrQH143K3p93xF1oFeB6ey5ruUesWjuPxA9Z2R5wf6BLYfGXz7fg7NavWkQ2cx3Vm8w2HV9uKpSprNNHnenGeW9XhYDPSjwS9hyCs33",
-		"xprv9s21ZrQH143K3WxnnvPZ8SDGXndASvLTFwMLBVzNCVgs9rzP6rXgW92DLvozdyBm8T9bSQvrFm1jMpTJrRE6w1KY5tshFeDk9Nn3K6V5FYX",
-	}
+const (
+	privKey0 = "xprv9s21ZrQH143K2j9PK4CXkCu8sgxkpUxCF7p1KVwiV5tdnkeYzJXReUkxz5iB2FUzTXC1L15abCDG4RMxSYT5zhm67uvsnLYxuDhZfoFcB6a"
+	privKey1 = "xprv9s21ZrQH143K4PtW77ATQAKAGk7KAFFCzxFuAcWduoMEeQhCgWpuYWQvMGZknqdispUbgLZV1YPqFCbpzMJij8tSZ5xPSaZqPbchojeNuq7"
+	privKey2 = "xprv9s21ZrQH143K27XboWxXZGU5j7VZ9SqVBnmMQPKTbddiWAhuNzeLynKHaZTAti6N454tVUUcvy6u15DfuW68NCBUxry6ZsHHzqoA8UtzdMn"
+	privKey3 = "xprv9s21ZrQH143K2vb4DGQymRejLcZSksBHTYLxB7Stg1c7Lk9JxgEUGZTozwUKxoEWJPoGSdGnJY1TW7LNFQCWrpZjDdEXJeqJuDde6BmdD4P"
+	privKey4 = "xprv9s21ZrQH143K4JNmRvWeLc1PggzusKcDYV1y8fAMNDdb9Rm5X1AvGHizxEdhTVR3sc62XvifC6dLAXMuQesX1y6999xnDwQ3aVno8KviU9d"
+	privKey5 = "xprv9s21ZrQH143K3dxrqESqeHZ7pSwM6Uq77ssQADSBs7qdFs6dyRWmRcPyLUTQRpgB3EduNhJuWkCGG2LHjuUisw8KKfXJpPqYJ1MSPrZpe1z"
+	privKey6 = "xprv9s21ZrQH143K2nE8ENAMNksTTVxPrMxFNWUuwThMy2bcH9LHTtQDXSNq2pTNcbuq36n5A3J9pbXVqnq5LDXvqniFRLN299kW7Svnxsx9tQv"
+	privKey7 = "xprv9s21ZrQH143K3p93xF1oFeB6ey5ruUesWjuPxA9Z2R5wf6BLYfGXz7fg7NavWkQ2cx3Vm8w2HV9uKpSprNNHnenGeW9XhYDPSjwS9hyCs33"
+	privKey8 = "xprv9s21ZrQH143K3WxnnvPZ8SDGXndASvLTFwMLBVzNCVgs9rzP6rXgW92DLvozdyBm8T9bSQvrFm1jMpTJrRE6w1KY5tshFeDk9Nn3K6V5FYX"
 
-	pubKeys = []string{
-		"xpub661MyMwAqRbcFDDrR5jY7LqsRioFDwg3cLjc7tML3RRcfYyhXqqgCH5SqMSQdpQ1Xh8EtVwcfm8psD8zXKPcRaCVSY4GCqbb3aMEs27GitE",
-		"xpub661MyMwAqRbcGsxyD8hTmJFtpmwoZhy4NBBVxzvFU8tDXD2ME49A6JjQCYgbpSUpHGP1q4S2S1Pxv2EqTjwfERS5pc9Q2yeLkPFzSgRpjs9",
-		"xpub661MyMwAqRbcEbc4uYVXvQQpH9L3YuZLZ1gxCmj59yAhNy33vXxbXadmRpx5YZEupNSqWRrR7PqU6duS2FiVCGEiugBEa5zuEAjsyLJjKCh",
-		"xpub661MyMwAqRbcFQfXKHwz8ZbTtePwAKu8pmGYyVrWEM96DYUTWDYipMnHrFcemZHn13jcRMfsNU3UWQUudiaE7mhkWCHGFRMavF167DQM4Va",
-		"xpub661MyMwAqRbcGnTEXx3ehjx8EiqQGnL4uhwZw3ZxvZAa2E6E4YVAp63UoVtvm2vMDDF8BdPpcarcf7PWcEKvzHhxzAYw1zG23C2egeh82AR",
-		"xpub661MyMwAqRbcG83KwFyr1RVrNUmqVwYxV6nzxbqoRTNc8fRnWxq1yQiTBifTHhevcEM9ucZ1TqFS7Kv17Gd81cesv6RDrrvYS9SLPjPXhV5",
-		"xpub661MyMwAqRbcFGJbLPhMjtpC1XntFpg6jjQWjr6yXN8b9wfS1RiU5EhJt5L7qoFuidYawc3XJoLjT2PcjVpXryS3hn1WmSPCyvQDNuKsfgM",
-		"xpub661MyMwAqRbcGJDX4GYocn7qCzvMJwNisxpzkYZAakcvXtWV6CanXuz9xdfe5kTptFMJ4hDt2iTiT11zyN14u8R5zLvoZ1gnEVqNLxp1r3v",
-		"xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E",
-	}
+	pubKey0 = "xpub661MyMwAqRbcFDDrR5jY7LqsRioFDwg3cLjc7tML3RRcfYyhXqqgCH5SqMSQdpQ1Xh8EtVwcfm8psD8zXKPcRaCVSY4GCqbb3aMEs27GitE"
+	pubKey1 = "xpub661MyMwAqRbcGsxyD8hTmJFtpmwoZhy4NBBVxzvFU8tDXD2ME49A6JjQCYgbpSUpHGP1q4S2S1Pxv2EqTjwfERS5pc9Q2yeLkPFzSgRpjs9"
+	pubKey2 = "xpub661MyMwAqRbcEbc4uYVXvQQpH9L3YuZLZ1gxCmj59yAhNy33vXxbXadmRpx5YZEupNSqWRrR7PqU6duS2FiVCGEiugBEa5zuEAjsyLJjKCh"
+	pubKey3 = "xpub661MyMwAqRbcFQfXKHwz8ZbTtePwAKu8pmGYyVrWEM96DYUTWDYipMnHrFcemZHn13jcRMfsNU3UWQUudiaE7mhkWCHGFRMavF167DQM4Va"
+	pubKey4 = "xpub661MyMwAqRbcGnTEXx3ehjx8EiqQGnL4uhwZw3ZxvZAa2E6E4YVAp63UoVtvm2vMDDF8BdPpcarcf7PWcEKvzHhxzAYw1zG23C2egeh82AR"
+	pubKey5 = "xpub661MyMwAqRbcG83KwFyr1RVrNUmqVwYxV6nzxbqoRTNc8fRnWxq1yQiTBifTHhevcEM9ucZ1TqFS7Kv17Gd81cesv6RDrrvYS9SLPjPXhV5"
+	pubKey6 = "xpub661MyMwAqRbcFGJbLPhMjtpC1XntFpg6jjQWjr6yXN8b9wfS1RiU5EhJt5L7qoFuidYawc3XJoLjT2PcjVpXryS3hn1WmSPCyvQDNuKsfgM"
+	pubKey7 = "xpub661MyMwAqRbcGJDX4GYocn7qCzvMJwNisxpzkYZAakcvXtWV6CanXuz9xdfe5kTptFMJ4hDt2iTiT11zyN14u8R5zLvoZ1gnEVqNLxp1r3v"
+	pubKey8 = "xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E"
 )
 
 func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool) {
@@ -94,7 +90,7 @@ func TestDepositScriptAddress(t *testing.T) {
 		err       error
 	}{
 		{
-			in:      pubKeys[:3],
+			in:      []string{pubKey0, pubKey1, pubKey2},
 			series:  0,
 			reqSigs: 2,
 			addresses: map[uint32]string{
@@ -176,25 +172,27 @@ func TestCreateSeries(t *testing.T) {
 		err     error
 	}{
 		{
-			in:      pubKeys[:3],
+			in:      []string{pubKey0, pubKey1, pubKey2},
 			series:  0,
 			reqSigs: 2,
 			err:     nil,
 		},
 		{
-			in:      pubKeys[:5],
+			in:      []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
 			series:  1,
 			reqSigs: 3,
 			err:     nil,
 		},
 		{
-			in:      pubKeys[:7],
+			in: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
+				pubKey5, pubKey6},
 			series:  2,
 			reqSigs: 4,
 			err:     nil,
 		},
 		{
-			in:      pubKeys[:9],
+			in: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
+				pubKey5, pubKey6, pubKey7, pubKey8},
 			series:  3,
 			reqSigs: 5,
 			err:     nil,
@@ -210,7 +208,7 @@ func TestCreateSeries(t *testing.T) {
 
 	t.Logf("CreateSeries: Running %d tests", len(tests))
 	for testNum, test := range tests {
-		err := pool.CreateSeries(uint32(test.series), test.in, test.reqSigs)
+		err := pool.CreateSeries(uint32(test.series), test.in[:], test.reqSigs)
 		if test.err != nil {
 			if err == nil {
 				t.Errorf("%d: Expected a test failure and didn't get one", testNum)
@@ -246,30 +244,30 @@ func TestSerialization(t *testing.T) {
 		sErr     error
 	}{
 		{
-			pubKeys: pubKeys[:1],
+			pubKeys: []string{pubKey0},
 			reqSigs: 1,
 		},
 		{
-			pubKeys:  pubKeys[:1],
-			privKeys: privKeys[:1],
+			pubKeys:  []string{pubKey0},
+			privKeys: []string{privKey0},
 			reqSigs:  1,
 		},
 		{
-			pubKeys: pubKeys[:3],
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			reqSigs: 2,
 		},
 		{
-			pubKeys:  pubKeys[:3],
-			privKeys: []string{privKeys[0], "", ""},
+			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
+			privKeys: []string{privKey0, "", ""},
 			reqSigs:  2,
 		},
 		{
-			pubKeys: pubKeys[:5],
+			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
 			reqSigs: 3,
 		},
 		{
-			pubKeys:  pubKeys[:7],
-			privKeys: []string{"", privKeys[1], "", privKeys[3], "", "", ""},
+			pubKeys:  []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6},
+			privKeys: []string{"", privKey1, "", privKey3, "", "", ""},
 			reqSigs:  4,
 		},
 		// Errors
@@ -287,7 +285,7 @@ func TestSerialization(t *testing.T) {
 			err: waddrmgr.ManagerError{ErrorCode: 0},
 		},
 		{
-			pubKeys:  pubKeys[0:1],
+			pubKeys:  []string{pubKey0, pubKey1},
 			reqSigs:  2,
 			privKeys: []string{"NONSENSE"},
 			// not a valid length priv key
@@ -525,14 +523,90 @@ func TestReplaceSeries(t *testing.T) {
 	// TODO
 }
 
-func TestEmpowerBranch(t *testing.T) {
-	// TODO
+func TestEmpowerSeries(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	seriesID := uint32(0)
+	err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2)
+	if err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+
+	tests := []struct {
+		seriesID uint32
+		key      string
+		err      error
+	}{
+		{
+			seriesID: 0,
+			key:      privKey0,
+		},
+		{
+			seriesID: 0,
+			key:      privKey1,
+		},
+		{
+			seriesID: 1,
+			key:      privKey0,
+			// invalid series
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			seriesID: 0,
+			key:      "NONSENSE",
+			// invalid private key
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			seriesID: 0,
+			key:      pubKey5,
+			// wrong type of key
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+		{
+			seriesID: 0,
+			key:      privKey5,
+			// key not corresponding to pub key
+			err: waddrmgr.ManagerError{ErrorCode: 0},
+		},
+	}
+
+	for testNum, test := range tests {
+		// add the extended private key to voting pool
+		err := pool.EmpowerSeries(test.seriesID, test.key)
+		if test.err != nil {
+			if err == nil {
+				t.Errorf("EmpowerSeries #%d Expected an error and got none", testNum)
+				continue
+			}
+			if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
+				t.Errorf("DepositScript #%d wrong error type "+
+					"got: %v <%T>, want: %T", testNum, err, err, test.err)
+				continue
+			}
+			rerr := err.(waddrmgr.ManagerError)
+			trerr := test.err.(waddrmgr.ManagerError)
+			if rerr.ErrorCode != trerr.ErrorCode {
+				t.Errorf("DepositScript #%d wrong error code got: %v, want: %v",
+					testNum, rerr.ErrorCode, trerr.ErrorCode)
+				continue
+			}
+			continue
+		}
+
+		if err != nil {
+			t.Errorf("EmpowerSeries #%d Unexpected error %v", testNum, err)
+			continue
+		}
+	}
+
 }
 
 func TestGetSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
-	rawPubKeys := pubKeys[:3]
+	rawPubKeys := []string{pubKey0, pubKey1, pubKey2}
 	if err := pool.CreateSeries(0, rawPubKeys, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
@@ -557,10 +631,10 @@ func TestLoadAllSeries(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	if err := pool.CreateSeries(0, pubKeys[:3], 2); err != nil {
+	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
-	if err := pool.CreateSeries(1, pubKeys[3:6], 2); err != nil {
+	if err := pool.CreateSeries(1, []string{pubKey3, pubKey4, pubKey5}, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
 

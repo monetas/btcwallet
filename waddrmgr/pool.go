@@ -26,8 +26,9 @@ import (
 )
 
 type seriesData struct {
-	publicKeys []*hdkeychain.ExtendedKey
-	reqSigs    uint32
+	publicKeys  []*hdkeychain.ExtendedKey
+	privateKeys []*hdkeychain.ExtendedKey
+	reqSigs     uint32
 }
 
 type VotingPool struct {
@@ -41,8 +42,8 @@ func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
 		return tx.PutVotingPool(poolID)
 	})
 	if err != nil {
-		// TODO: This should be a managerError()
-		return nil, err
+		// TODO: Put the right error code
+		return nil, managerError(0, "Unable to add voting pool to db", nil)
 	}
 	return &VotingPool{
 		ID:           poolID,
@@ -81,6 +82,43 @@ func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
 	return series
 }
 
+func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
+
+	var err error
+	encryptedPubKeys := make([][]byte, len(data.publicKeys))
+	for i, pubKey := range data.publicKeys {
+		encryptedPubKeys[i], err = vp.manager.cryptoKeyPub.Encrypt(
+			[]byte(pubKey.String()))
+		if err != nil {
+			str := fmt.Sprintf("Key %v failed encryption", pubKey)
+			return managerError(0, str, err)
+		}
+	}
+	encryptedPrivKeys := make([][]byte, len(data.privateKeys))
+	for i, privKey := range data.privateKeys {
+		if privKey == nil {
+			encryptedPrivKeys[i] = nil
+		} else {
+			encryptedPrivKeys[i], err = vp.manager.cryptoKeyPriv.Encrypt(
+				[]byte(privKey.String()))
+		}
+		if err != nil {
+			str := fmt.Sprintf("Key %v failed encryption", privKey)
+			return managerError(0, str, err)
+		}
+	}
+
+	err = vp.manager.db.Update(func(tx *managerTx) error {
+		return tx.PutSeries(vp.ID, seriesID, data.reqSigs,
+			encryptedPubKeys, encryptedPrivKeys)
+	})
+	if err != nil {
+		str := fmt.Sprintf("Cannot put series #%d into db", seriesID)
+		return managerError(0, str, err)
+	}
+	return nil
+}
+
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 
 	if _, ok := vp.seriesLookup[seriesID]; ok {
@@ -90,41 +128,30 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs
 	}
 
 	keys := make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
-	encryptedKeys := make([][]byte, len(keys))
 	sort.Sort(sort.StringSlice(rawPubKeys))
 
 	for i, rawPubKey := range rawPubKeys {
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
-		keys[i] = key
 		if err != nil {
 			str := fmt.Sprintf("Invalid extended public key %v", rawPubKey)
 			return managerError(0, str, err)
 		}
-		if keys[i].IsPrivate() {
+		if key.IsPrivate() {
 			return managerError(0, "Please only use public extended keys", nil)
 		}
-		encryptedKeys[i], err = vp.manager.cryptoKeyPub.Encrypt([]byte(key.String()))
-		if err != nil {
-			str := fmt.Sprintf("Key %v failed encryption", rawPubKey)
-			return managerError(0, str, err)
-		}
-
+		keys[i] = key
+	}
+	data := &seriesData{
+		publicKeys:  keys,
+		privateKeys: make([]*hdkeychain.ExtendedKey, len(keys)),
+		reqSigs:     reqSigs,
 	}
 
-	err := vp.manager.db.Update(func(tx *managerTx) error {
-		// TODO: check error
-		tx.PutSeries(vp.ID, seriesID, reqSigs, encryptedKeys, nil)
-		return nil
-	})
+	err := vp.saveSeriesToDisk(seriesID, data)
 	if err != nil {
-		str := fmt.Sprintf("Cannot put series #%d", seriesID)
-		return managerError(0, str, nil)
+		return err
 	}
-
-	vp.seriesLookup[seriesID] = &seriesData{
-		publicKeys: keys,
-		reqSigs:    reqSigs,
-	}
+	vp.seriesLookup[seriesID] = data
 
 	return nil
 }
@@ -250,9 +277,57 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 	return newScriptAddress(vp.manager, ImportedAddrAccount, scriptHash, encryptedScript)
 }
 
-func (vp *VotingPool) EmpowerBranch(seriesID, branch uint32, key *hdkeychain.ExtendedKey) error {
-	// TODO(jimmy): Ensure extended key is private (.IsPrivate)
-	return ErrNotImplemented
+func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
+	// make sure this series exists
+	series := vp.GetSeries(seriesID)
+	if series == nil {
+		str := fmt.Sprintf("series %d does not exist for this voting pool",
+			seriesID)
+		return managerError(0, str, nil)
+	}
+
+	// see if the private key is valid
+	privKey, err := hdkeychain.NewKeyFromString(rawPrivKey)
+	if err != nil {
+		str := fmt.Sprintf("Invalid extended private key %v", rawPrivKey)
+		return managerError(0, str, err)
+	}
+	if !privKey.IsPrivate() {
+		return managerError(0, "To empower a series, you need the "+
+			"extended private key, not an extended public key", nil)
+	}
+
+	pubKey, err := privKey.Neuter()
+	if err != nil {
+		str := fmt.Sprintf("Invalid extended private key %v, can't convert to public key", rawPrivKey)
+		return managerError(0, str, err)
+	}
+
+	lookingFor := pubKey.String()
+	found := false
+
+	// make sure the private key has the corresponding public key in the
+	//  series to "empower" it
+	for i, publicKey := range series.publicKeys {
+		if publicKey.String() == lookingFor {
+			found = true
+			series.privateKeys[i] = privKey
+		}
+	}
+
+	if !found {
+		str := fmt.Sprintf("Private Key does not have a corresponding public key in this series")
+		return managerError(0, str, nil)
+	}
+
+	err = vp.saveSeriesToDisk(seriesID, series)
+
+	if err != nil {
+		str := fmt.Sprintf("Failed to save series to disk")
+		return managerError(0, str, err)
+	}
+
+	return nil
 }
 
 // XXX: Is this necessary or should we just expose seriesData.PublicKeys?
