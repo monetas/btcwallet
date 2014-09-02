@@ -532,27 +532,37 @@ func TestEmpowerBranch(t *testing.T) {
 func TestGetSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
-	err := pool.CreateSeries(0, pubKeys[:3], 2)
-	if err != nil {
+	rawPubKeys := pubKeys[:3]
+	if err := pool.CreateSeries(0, rawPubKeys, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
 
 	series := pool.GetSeries(0)
+
 	if series == nil {
 		t.Fatal("GetSeries() returned nil")
 	}
-	// TODO: Must check that the series is really the one we expect
+	pubKeys := series.GetPublicKeys()
+	if len(pubKeys) != len(rawPubKeys) {
+		t.Errorf("Expected %d public keys, found %d", len(rawPubKeys), len(pubKeys))
+	}
+	for i, key := range pubKeys {
+		if key.String() != rawPubKeys[i] {
+			t.Fatalf("Series pubKeys mismatch. Expected %v, got %v", rawPubKeys, pubKeys)
+		}
+	}
 }
 
 func TestLoadAllSeries(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	err := pool.CreateSeries(0, pubKeys[:3], 2)
-	if err != nil {
+	if err := pool.CreateSeries(0, pubKeys[:3], 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
-	expectedSeries := pool.GetSeries(0)
+	if err := pool.CreateSeries(1, pubKeys[3:6], 2); err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
 
 	// Ideally we should reset pool.seriesLookup and call LoadAllSeries() manually, but that
 	// is a private attribute so we just call LoadVotingPool, which calls LoadAllSeries.
@@ -561,16 +571,11 @@ func TestLoadAllSeries(t *testing.T) {
 		t.Fatalf("Failed to load voting pool: %v", err)
 	}
 
-	series := pool2.GetSeries(0)
-	expectedKeys := expectedSeries.GetPublicKeys()
-	keys := series.GetPublicKeys()
-	if len(keys) != len(expectedKeys) {
-		t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedKeys, keys)
+	if pool2.GetSeries(0) == nil {
+		t.Errorf("Series 0 not found: %v", err)
 	}
-	for i, key := range keys {
-		if key.String() != expectedKeys[i].String() {
-			t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedSeries, series)
-		}
+	if pool2.GetSeries(1) == nil {
+		t.Errorf("Series 1 not found: %v", err)
 	}
 }
 
