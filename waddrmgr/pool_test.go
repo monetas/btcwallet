@@ -591,7 +591,7 @@ func reverse(inKeys []*btcutil.AddressPubKey) []*btcutil.AddressPubKey {
 func TestBranchOrderZero(t *testing.T) {
 	// test change address branch (0) for 0-10 keys
 	for i := 0; i < 10; i++ {
-		inKeys := createTestPubKeys(i, 0)
+		inKeys := createTestPubKeys(t, i, 0)
 		wantKeys := reverse(inKeys)
 		resKeys := waddrmgr.BranchOrder(inKeys, 0)
 
@@ -630,9 +630,9 @@ func TestBranchOrderNonZero(t *testing.T) {
 	// we test the case branch := 0 elsewhere
 	for branch := 1; branch <= maxBranch; branch++ {
 		for j := 0; j <= maxTail; j++ {
-			first := createTestPubKeys(branch-1, 0)
-			pivot := createTestPubKeys(1, branch)
-			last := createTestPubKeys(j, branch+1)
+			first := createTestPubKeys(t, branch-1, 0)
+			pivot := createTestPubKeys(t, 1, branch)
+			last := createTestPubKeys(t, j, branch+1)
 
 			inKeys := append(append(first, pivot...), last...)
 
@@ -676,17 +676,31 @@ func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) ([]int, []int, 
 	return origOrder, wantOrder, gotOrder
 }
 
-func createTestPubKeys(number, offset int) []*btcutil.AddressPubKey {
+func createTestPubKeys(t *testing.T, number, offset int) []*btcutil.AddressPubKey {
 
 	net := &btcnet.TestNet3Params
 	xpubRaw := "xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7"
-	xpubKey, _ := hdkeychain.NewKeyFromString(xpubRaw)
+	xpubKey, err := hdkeychain.NewKeyFromString(xpubRaw)
+	if err != nil {
+		t.Fatalf("Failed to generate new key", err)
+	}
 
 	keys := make([]*btcutil.AddressPubKey, number)
 	for i := uint32(0); i < uint32(len(keys)); i++ {
-		chPubKey, _ := xpubKey.Child(i + uint32(offset))
-		pubKey, _ := chPubKey.ECPubKey()
-		x, _ := btcutil.NewAddressPubKey(pubKey.SerializeCompressed(), net)
+		chPubKey, err := xpubKey.Child(i + uint32(offset))
+		if err != nil {
+			t.Fatalf("Failed to generate child key", err)
+		}
+
+		pubKey, err := chPubKey.ECPubKey()
+		if err != nil {
+			t.Fatalf("Failed to generate ECPubKey", err)
+		}
+
+		x, err := btcutil.NewAddressPubKey(pubKey.SerializeCompressed(), net)
+		if err != nil {
+			t.Fatalf("Failed to create new public key", err)
+		}
 		keys[i] = x
 	}
 	return keys
@@ -696,7 +710,7 @@ func TestReverse(t *testing.T) {
 	// this basically just tests that the utility function that
 	// reverses a bunch of public keys. 11 is a random number
 	for numKeys := 0; numKeys < 11; numKeys++ {
-		keys := createTestPubKeys(numKeys, 0)
+		keys := createTestPubKeys(t, numKeys, 0)
 		revRevKeys := reverse(reverse(keys))
 		if len(keys) != len(revRevKeys) {
 			t.Errorf("Reverse twice the list of pubkeys changed the length. Exp: %d, Got: %d", len(keys), len(revRevKeys))
