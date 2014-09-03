@@ -161,6 +161,18 @@ func TestCreateVotingPool(t *testing.T) {
 	}
 }
 
+func TestCreateSeriesWithDuplicateKeys(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2, pubKey0}, 2)
+
+	if err == nil {
+		t.Errorf("Expected an error when creating a series with duplicated keys")
+	}
+	// TODO: Check that the error matches the expected type.
+}
+
 func TestCreateSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()

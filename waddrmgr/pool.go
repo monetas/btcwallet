@@ -119,16 +119,25 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 	return nil
 }
 
+// TODO: Document me!
+// Remember to mention that the order of the pubkeys is important as that's the order they're
+// going to be listed in the P2SH scripts.
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	if vp.GetSeries(seriesID) != nil {
 		// TODO: define error codes
 		return managerError(0, fmt.Sprintf("Series #%d already exists", seriesID), nil)
 	}
 
+	seenKeys := make(map[string]bool)
 	keys := make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	sort.Sort(sort.StringSlice(rawPubKeys))
 
 	for i, rawPubKey := range rawPubKeys {
+		if _, seen := seenKeys[rawPubKey]; seen {
+			return managerError(0, "Duplicate public keys", nil)
+		} else {
+			seenKeys[rawPubKey] = true
+		}
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
 		if err != nil {
 			str := fmt.Sprintf("Invalid extended public key %v", rawPubKey)
