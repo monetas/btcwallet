@@ -121,7 +121,7 @@ type addrKey string
 // of an account along with the extended keys needed to derive new keys.  It
 // also handles locking by keeping an encrypted version of the serialized
 // private extended key so the unencrypted versions can be cleared from memory
-// when the account manager is locked.
+// when the address manager is locked.
 type accountInfo struct {
 	// The account key is used to derive the branches which in turn derive
 	// the internal and external addresses.
@@ -142,7 +142,7 @@ type accountInfo struct {
 }
 
 // unlockDeriveInfo houses the information needed to derive a private key for a
-// managed address when the account manager is unlocked.  See the deriveOnUnlock
+// managed address when the address manager is unlocked.  See the deriveOnUnlock
 // field in the Manager struct for more details on how this is used.
 type unlockDeriveInfo struct {
 	managedAddr *managedAddress
@@ -200,7 +200,7 @@ type Manager struct {
 
 	// deriveOnUnlock is a list of private keys which needs to be derived
 	// on the next unlock.  This occurs when a public address is derived
-	// while the account manager is locked since it does not have access to
+	// while the address manager is locked since it does not have access to
 	// the private extended key (hence nor the underlying private key) in
 	// order to encrypt it.
 	deriveOnUnlock []*unlockDeriveInfo
@@ -297,7 +297,7 @@ func (m *Manager) keyToManaged(derivedKey *hdkeychain.ExtendedKey, account, bran
 	}
 	if !derivedKey.IsPrivate() {
 		// Add the managed address to the list of addresses that need
-		// their private keys derived when the account manager is next
+		// their private keys derived when the address manager is next
 		// unlocked.
 		info := unlockDeriveInfo{
 			managedAddr: ma,
@@ -493,7 +493,9 @@ func (m *Manager) importedAddressRowToManaged(row *dbImportedAddressRow) (Manage
 		return nil, managerError(ErrCrypto, str, err)
 	}
 
-	ma, err := newManagedAddressWithoutPrivKey(m, row.account, pubKey, true)
+	compressed := len(pubBytes) == btcec.PubKeyBytesLenCompressed
+	ma, err := newManagedAddressWithoutPrivKey(m, row.account, pubKey,
+		compressed)
 	if err != nil {
 		return nil, err
 	}
@@ -585,9 +587,8 @@ func (m *Manager) Address(address btcutil.Address) (ManagedAddress, error) {
 
 // ChangePassphrase changes either the public or private passphrase to the
 // provided value depending on the private flag.  In order to change the private
-// password, the account manager must not be watching-only and also must be
-// unlocked.
-func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
+// password, the address manager must not be watching-only.
+func (m *Manager) ChangePassphrase(oldPassphrase, newPassphrase []byte, private bool) error {
 	// No private passphrase to change for a watching-only address manager.
 	if private && m.watchingOnly {
 		return managerError(ErrWatchingOnly, errWatchingOnly, nil)
@@ -596,10 +597,30 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	// Can't change the private passphrase when locked.
-	if private && m.locked {
-		return managerError(ErrLocked, errLocked, nil)
+	// Ensure the provided old passphrase is correct.  This check is done
+	// using a copy of the appropriate master key depending on the private
+	// flag to ensure the current state is not altered.  The temp key is
+	// cleared when done to avoid leaving a copy in memory.
+	var keyName string
+	secretKey := snacl.SecretKey{Key: &snacl.CryptoKey{}}
+	if private {
+		keyName = "private"
+		secretKey.Parameters = m.masterKeyPriv.Parameters
+	} else {
+		keyName = "public"
+		secretKey.Parameters = m.masterKeyPub.Parameters
 	}
+	if err := secretKey.DeriveKey(&oldPassphrase); err != nil {
+		if err == snacl.ErrInvalidPassword {
+			str := fmt.Sprintf("invalid passphrase for %s master "+
+				"key", keyName)
+			return managerError(ErrWrongPassphrase, str, nil)
+		}
+
+		str := fmt.Sprintf("failed to derive %s master key", keyName)
+		return managerError(ErrCrypto, str, err)
+	}
+	defer secretKey.Zero()
 
 	// Generate a new master key from the passphrase which is used to secure
 	// the actual secret keys.
@@ -612,9 +633,21 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 	newKeyParams := newMasterKey.Marshal()
 
 	if private {
+		// Technically, the locked state could be checked here to only
+		// do the decrypts when the address manager is locked as the
+		// clear text keys are already available in memory when it is
+		// unlocked, but this is not a hot path, decryption is quite
+		// fast, and it's less cyclomatic complexity to simply decrypt
+		// in either case.
+
 		// Re-encrypt the crypto private key using the new master
 		// private key.
-		encPriv, err := newMasterKey.Encrypt(m.cryptoKeyPriv[:])
+		decPriv, err := secretKey.Decrypt(m.cryptoKeyPrivEncrypted)
+		if err != nil {
+			return err
+		}
+		encPriv, err := newMasterKey.Encrypt(decPriv)
+		zero(decPriv)
 		if err != nil {
 			str := "failed to encrypt crypto private key"
 			return managerError(ErrCrypto, str, err)
@@ -622,10 +655,21 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 
 		// Re-encrypt the crypto script key using the new master private
 		// key.
-		encScript, err := newMasterKey.Encrypt(m.cryptoKeyScript[:])
+		decScript, err := secretKey.Decrypt(m.cryptoKeyScriptEncrypted)
+		if err != nil {
+			return err
+		}
+		encScript, err := newMasterKey.Encrypt(decScript)
+		zero(decScript)
 		if err != nil {
 			str := "failed to encrypt crypto script key"
 			return managerError(ErrCrypto, str, err)
+		}
+
+		// When the manager is locked, ensure the new clear text master
+		// key is cleared from memory now that it is no longer needed.
+		if m.locked {
+			newMasterKey.Zero()
 		}
 
 		// Save the new keys and params to the the db in a single
@@ -642,9 +686,11 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 			return err
 		}
 
-		// Now that the db has been successfully updated, update memory.
+		// Now that the db has been successfully updated, clear the old
+		// key and set the new one.
 		copy(m.cryptoKeyPrivEncrypted[:], encPriv)
 		copy(m.cryptoKeyScriptEncrypted[:], encScript)
+		m.masterKeyPriv.Zero() // Clear the old key.
 		m.masterKeyPriv = newMasterKey
 	} else {
 		// Re-encrypt the crypto public key using the new master public
@@ -669,15 +715,17 @@ func (m *Manager) ChangePassphrase(newPassphrase []byte, private bool) error {
 			return err
 		}
 
-		// Now that the db has been successfully updated, update memory.
+		// Now that the db has been successfully updated, clear the old
+		// key and set the new one.
+		m.masterKeyPub.Zero()
 		m.masterKeyPub = newMasterKey
 	}
 
 	return nil
 }
 
-// ExportWatchingOnly creates a new watching-only account manager backed by a
-// database at the provided path.  A watching-only account manager has all
+// ExportWatchingOnly creates a new watching-only address manager backed by a
+// database at the provided path.  A watching-only address manager has all
 // private keys removed which means it is not possible to create transactions
 // which spend funds.
 func (m *Manager) ExportWatchingOnly(newDbPath string, pubPassphrase []byte) (*Manager, error) {
@@ -739,7 +787,7 @@ func (m *Manager) existsAddress(addressID []byte) (bool, error) {
 	return exists, nil
 }
 
-// ImportPrivateKey imports a WIF private key into the account manager.  The
+// ImportPrivateKey imports a WIF private key into the address manager.  The
 // imported address is created using either a compressed or uncompressed
 // serialized public key, depending on the CompressPubKey bool of the WIF.
 //
@@ -760,7 +808,7 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 	// associated with.
 	if !wif.IsForNet(m.net) {
 		str := fmt.Sprintf("private key is not for the same network the "+
-			"account manager is configured for (%s)", m.net.Name)
+			"address manager is configured for (%s)", m.net.Name)
 		return nil, managerError(ErrWrongNet, str, nil)
 	}
 
@@ -822,7 +870,7 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 	return managedAddr, nil
 }
 
-// ImportScript imports a user-provided script into the account manager.  The
+// ImportScript imports a user-provided script into the address manager.  The
 // imported script will act as a pay-to-script-hash address.
 //
 // This function will return an error if the address manager is watching-only,
@@ -899,7 +947,7 @@ func (m *Manager) ImportScript(script []byte, bs *BlockStamp) (ManagedScriptAddr
 	return scriptAddr, nil
 }
 
-// IsLocked returns whether or not the account managed is locked.  When it is
+// IsLocked returns whether or not the address managed is locked.  When it is
 // unlocked, the decryption key needed to decrypt private keys used for signing
 // is in memory.
 func (m *Manager) IsLocked() bool {
@@ -934,8 +982,8 @@ func (m *Manager) Lock() error {
 
 // Unlock derives the master private key from the specified passphrase.  An
 // invalid passphrase will return an error.  Otherwise, the derived secret key
-// is stored in memory until the account manager is locked.  Any failures that
-// occur during this function will result in the account manager being locked,
+// is stored in memory until the address manager is locked.  Any failures that
+// occur during this function will result in the address manager being locked,
 // even if it was already unlocked prior to calling this function.
 //
 // This function will return an error if invoked on a watching-only address
@@ -994,7 +1042,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 	}
 
 	// Derive any private keys that are pending due to them being created
-	// while the account manager was locked.
+	// while the address manager was locked.
 	for _, info := range m.deriveOnUnlock {
 		addressKey, err := m.deriveKeyFromPath(info.managedAddr.account,
 			info.branch, info.index, true)
@@ -1026,7 +1074,7 @@ func (m *Manager) Unlock(passphrase []byte) error {
 	return nil
 }
 
-// Net returns the network parameters for this account manager.
+// Net returns the network parameters for this address manager.
 func (m *Manager) Net() *btcnet.Params {
 	// NOTE: No need for mutex here since the net field does not change
 	// after the manager instance is created.
@@ -1046,7 +1094,7 @@ func (m *Manager) nextAddresses(account uint32, numAddresses uint32, internal bo
 		return nil, err
 	}
 
-	// Choose the account key to used based on whether the account manager
+	// Choose the account key to used based on whether the address manager
 	// is locked.
 	acctKey := acctInfo.acctKeyPub
 	if !m.locked {
@@ -1117,6 +1165,9 @@ func (m *Manager) nextAddresses(account uint32, numAddresses uint32, internal bo
 		if err != nil {
 			return nil, err
 		}
+		if internal {
+			managedAddr.internal = true
+		}
 		info := unlockDeriveInfo{
 			managedAddr: managedAddr,
 			branch:      branchNum,
@@ -1145,15 +1196,16 @@ func (m *Manager) nextAddresses(account uint32, numAddresses uint32, internal bo
 	}
 
 	// Finally update the next address tracking and add the addresses to the
-	// cache after the newly generated address have been successfully added
-	// to the db.
+	// cache after the newly generated addresses have been successfully
+	// added to the db.
 	managedAddresses := make([]ManagedAddress, 0, len(addressInfo))
 	for _, info := range addressInfo {
 		ma := info.managedAddr
 		m.addrs[addrKey(ma.Address().ScriptAddress())] = ma
 
-		// Add the new managed address to the list of addresses that need their
-		// private keys derived when the account manager is next unlocked.
+		// Add the new managed address to the list of addresses that
+		// need their private keys derived when the address manager is
+		// next unlocked.
 		if m.locked && !m.watchingOnly {
 			m.deriveOnUnlock = append(m.deriveOnUnlock, info)
 		}
@@ -1307,7 +1359,7 @@ func (m *Manager) SyncedTo() BlockStamp {
 	return *m.syncedTo
 }
 
-// newManager returns a new locked account manager with the given parameters.
+// newManager returns a new locked address manager with the given parameters.
 func newManager(db *managerDB, net *btcnet.Params, masterKeyPub *snacl.SecretKey,
 	masterKeyPriv *snacl.SecretKey, cryptoKeyPub *snacl.CryptoKey,
 	cryptoKeyPrivEncrypted, cryptoKeyScriptEncrypted []byte) *Manager {
@@ -1403,7 +1455,7 @@ func checkBranchKeys(acctKey *hdkeychain.ExtendedKey) error {
 	return err
 }
 
-// loadManager returns a new account manager that results from loading it from
+// loadManager returns a new address manager that results from loading it from
 // the passed opened database.  The public passphrase is required to decrypt the
 // public keys.
 func loadManager(db *managerDB, pubPassphrase []byte, net *btcnet.Params) (*Manager, error) {
@@ -1471,7 +1523,7 @@ func loadManager(db *managerDB, pubPassphrase []byte, net *btcnet.Params) (*Mana
 	// TODO(davec): Load up syncedTo from db.
 	syncedTo := &BlockStamp{}
 
-	// Create new account manager with the given parameters.  Also, override
+	// Create new address manager with the given parameters.  Also, override
 	// the defaults for the additional fields which are not specified in the
 	// call to new with the values loaded from the database.
 	mgr := newManager(db, net, &masterKeyPub, &masterKeyPriv, &cryptoKeyPub,
@@ -1481,7 +1533,7 @@ func loadManager(db *managerDB, pubPassphrase []byte, net *btcnet.Params) (*Mana
 	return mgr, nil
 }
 
-// Open loads an existing account manager from the given database path.  The
+// Open loads an existing address manager from the given database path.  The
 // public passphrase is required to decrypt the public keys used to protect the
 // public information such as addresses.  This is important since access to
 // BIP0032 extended keys means it is possible to generate all future addresses.
@@ -1491,7 +1543,7 @@ func loadManager(db *managerDB, pubPassphrase []byte, net *btcnet.Params) (*Mana
 func Open(dbPath string, pubPassphrase []byte, net *btcnet.Params) (*Manager, error) {
 	// Return an error if the specified database does not exist.
 	if !fileExists(dbPath) {
-		str := "the specified account manager does not exist"
+		str := "the specified address manager does not exist"
 		return nil, managerError(ErrNoExist, str, nil)
 	}
 
@@ -1503,16 +1555,16 @@ func Open(dbPath string, pubPassphrase []byte, net *btcnet.Params) (*Manager, er
 	return loadManager(db, pubPassphrase, net)
 }
 
-// Create returns a new locked account manager at the given database path.  The
+// Create returns a new locked address manager at the given database path.  The
 // seed must conform to the standards described in hdkeychain.NewMaster and will
 // be used to create the master root node from which all hierarchical
 // deterministic addresses are derived.  This allows all chained addresses in
-// the account manager to be recovered by using the same seed.
+// the address manager to be recovered by using the same seed.
 //
 // All private and public keys and information are protected by secret keys
 // derived from the provided private and public passphrases.  The public
-// passphrase is required on subsequent opens of the account manager, and the
-// private passphrase is required to unlock the account manager in order to gain
+// passphrase is required on subsequent opens of the address manager, and the
+// private passphrase is required to unlock the address manager in order to gain
 // access to any private keys and information.
 //
 // A ManagerError with an error code of ErrAlreadyExists will be returned if the
@@ -1653,7 +1705,7 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 			return err
 		}
 
-		// Save the fact this is not a watching-only account manager to
+		// Save the fact this is not a watching-only address manager to
 		// the database.
 		err = tx.PutWatchingOnly(false)
 		if err != nil {
@@ -1673,7 +1725,7 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 		return nil, err
 	}
 
-	// The new account manager is locked by default, so clear the master,
+	// The new address manager is locked by default, so clear the master,
 	// crypto private, and crypto script keys from memory.
 	masterKeyPriv.Zero()
 	cryptoKeyPriv.Zero()

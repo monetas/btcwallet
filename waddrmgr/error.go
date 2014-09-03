@@ -26,7 +26,7 @@ import (
 var (
 	// errAlreadyExists is the common error description used for the
 	// ErrAlreadyExists error code.
-	errAlreadyExists = "the specified account manager already exists"
+	errAlreadyExists = "the specified address manager already exists"
 
 	// errCoinTypeTooHigh is the common error description used for the
 	// ErrCoinTypeTooHigh error code.
@@ -40,11 +40,11 @@ var (
 
 	// errLocked is the common error description used for the ErrLocked
 	// error code.
-	errLocked = "account manager is locked"
+	errLocked = "address manager is locked"
 
 	// errWatchingOnly is the common error description used for the
 	// ErrWatchingOnly error code.
-	errWatchingOnly = "account manager is watching-only"
+	errWatchingOnly = "address manager is watching-only"
 )
 
 // ErrorCode identifies a kind of error.
@@ -85,24 +85,24 @@ const (
 	// than the max allowed value as defined by the MaxAccountNum constant.
 	ErrAccountNumTooHigh
 
-	// ErrLocked indicates the an operation which requires the account
-	// manager to be unlocked was requested on a locked account manager.
+	// ErrLocked indicates the an operation which requires the address
+	// manager to be unlocked was requested on a locked address manager.
 	ErrLocked
 
-	// ErrWatchingOnly indicates the an operation which requires the account
+	// ErrWatchingOnly indicates the an operation which requires the address
 	// manager to have access to private data was requested on a
-	// watching-only account manager.
+	// watching-only address manager.
 	ErrWatchingOnly
 
 	// ErrInvalidAccount indicates the requested account is not valid.
 	ErrInvalidAccount
 
 	// ErrAddressNotFound indicates the requested address is not known to
-	// the account manager.
+	// the address manager.
 	ErrAddressNotFound
 
 	// ErrAccountNotFound indicates the requested account is not known to
-	// the account manager.
+	// the address manager.
 	ErrAccountNotFound
 
 	// ErrDuplicate indicates an address already exists.
@@ -128,6 +128,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrCrypto:            "ErrCrypto",
 	ErrNoExist:           "ErrNoExist",
 	ErrAlreadyExists:     "ErrAlreadyExists",
+	ErrCoinTypeTooHigh:   "ErrCoinTypeTooHigh",
 	ErrAccountNumTooHigh: "ErrAccountNumTooHigh",
 	ErrLocked:            "ErrLocked",
 	ErrWatchingOnly:      "ErrWatchingOnly",
@@ -151,7 +152,7 @@ func (e ErrorCode) String() string {
 // ManagerError provides a single type for errors that can happen during address
 // manager operation.  It is used to indicate several types of failures
 // including errors with caller requests such as invalid accounts or requesting
-// private keys against a locked account manager, errors with the database
+// private keys against a locked address manager, errors with the database
 // (ErrDatabase), errors with key chain derivation (ErrKeyChain), and errors
 // related to crypto (ErrCrypto).
 //
