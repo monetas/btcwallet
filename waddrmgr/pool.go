@@ -23,6 +23,7 @@ import (
 	"github.com/monetas/btcscript"
 	"github.com/monetas/btcutil"
 	"github.com/monetas/btcutil/hdkeychain"
+	"github.com/monetas/btcwallet/snacl"
 )
 
 type seriesData struct {
@@ -119,6 +120,15 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 	return nil
 }
 
+// CanonicalKeyOrder will return a copy of the input canonically
+// ordered which is defined to be lexicographical.
+func CanonicalKeyOrder(keys []string) []string {
+	orderedKeys := make([]string, len(keys))
+	copy(orderedKeys, keys)
+	sort.Sort(sort.StringSlice(orderedKeys))
+	return orderedKeys
+}
+
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	if vp.GetSeries(seriesID) != nil {
 		// TODO: define error codes
@@ -159,6 +169,19 @@ func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.Ex
 	return ErrNotImplemented
 }
 
+func decryptExtendedKey(cryptoKey *snacl.CryptoKey, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
+	decrypted, err := cryptoKey.Decrypt(encrypted)
+	if err != nil {
+		return nil, managerError(0, "FIXME", err)
+	}
+	result, err := hdkeychain.NewKeyFromString(string(decrypted))
+	zero(decrypted)
+	if err != nil {
+		return nil, managerError(0, "FIXME", err)
+	}
+	return result, nil
+}
+
 func (vp *VotingPool) LoadAllSeries() error {
 	var allSeries map[uint32]*dbSeriesRow
 	err := vp.manager.db.View(func(tx *managerTx) error {
@@ -170,22 +193,46 @@ func (vp *VotingPool) LoadAllSeries() error {
 		return managerError(0, "FIXME", err)
 	}
 	for id, series := range allSeries {
-		keys := make([]*hdkeychain.ExtendedKey, len(series.pubKeysEncrypted))
-		for i, data := range series.pubKeysEncrypted {
-			decrypted, err := vp.manager.cryptoKeyPub.Decrypt(data)
+		pubKeys := make([]*hdkeychain.ExtendedKey, len(series.pubKeysEncrypted))
+		privKeys := make([]*hdkeychain.ExtendedKey, len(series.privKeysEncrypted))
+		if len(pubKeys) != len(privKeys) {
+			return managerError(0, "The pub key and priv key arrays should have the same number of elements", nil)
+		}
+
+		for i, encryptedPub := range series.pubKeysEncrypted {
+			pubKey, err := decryptExtendedKey(vp.manager.cryptoKeyPub, encryptedPub)
 			if err != nil {
-				return managerError(0, "FIXME", err)
+				return err
 			}
-			key, err := hdkeychain.NewKeyFromString(string(decrypted))
-			zero(decrypted)
-			if err != nil {
-				return managerError(0, "FIXME", err)
+			pubKeys[i] = pubKey
+
+			encryptedPriv := series.privKeysEncrypted[i]
+			var privKey *hdkeychain.ExtendedKey
+			if encryptedPriv == nil {
+				privKey = nil
+			} else {
+				privKey, err = decryptExtendedKey(vp.manager.cryptoKeyPriv, encryptedPriv)
+				if err != nil {
+					return err
+				}
 			}
-			keys[i] = key
+			privKeys[i] = privKey
+
+			if privKey != nil {
+				checkPubKey, err := privKey.Neuter()
+				if err != nil {
+					return managerError(0, "FIXME", err)
+				}
+				if pubKey.String() != checkPubKey.String() {
+					return managerError(0, "FIXME", err)
+				}
+			}
 		}
 		vp.seriesLookup[id] = &seriesData{
-			publicKeys: keys,
-			reqSigs:    series.reqSigs}
+			publicKeys:  pubKeys,
+			privateKeys: privKeys,
+			reqSigs:     series.reqSigs,
+		}
 	}
 	return nil
 }
@@ -322,9 +369,4 @@ func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	}
 
 	return nil
-}
-
-// XXX: Is this necessary or should we just expose seriesData.PublicKeys?
-func (s *seriesData) GetPublicKeys() []*hdkeychain.ExtendedKey {
-	return s.publicKeys
 }
