@@ -519,8 +519,69 @@ func TestSerialization(t *testing.T) {
 	}
 }
 
-func TestReplaceSeries(t *testing.T) {
-	// TODO
+func TestCannotReplaceEmpoweredSeries(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	var seriesId uint32 = 1
+
+	if err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1}, 3); err != nil {
+		t.Fatalf("Failed to create series", err)
+	}
+
+	if err := pool.EmpowerSeries(seriesId, privKey1); err != nil {
+		t.Fatalf("Failed to empower series", err)
+	}
+
+	if err := pool.ReplaceSeries(seriesId, []string{pubKey3}, 4); err == nil {
+		t.Errorf("Replaced an empowered series. That should not be possible", err)
+	}
+
+}
+
+func TestReplaceNonExistingSeries(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	pubKeys := []string{pubKey0, pubKey1, pubKey2}
+	if err := pool.ReplaceSeries(uint32(1), pubKeys, 3); err == nil {
+		t.Errorf("Replaced non-existant series. This should not be possible.")
+	}
+}
+
+func TestReplaceExistingSeries(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	var seriesID uint32 = 1
+	origKeys := []string{pubKey0}
+	if err := pool.CreateSeries(seriesID, origKeys, 1); err != nil {
+		t.Fatalf("Failed to create series", err)
+	}
+
+	replacementKeys := waddrmgr.CanonicalKeyOrder([]string{pubKey1, pubKey3})
+	var replacementReqSigs uint32 = 2
+	if err := pool.ReplaceSeries(seriesID, replacementKeys, replacementReqSigs); err != nil {
+		t.Errorf("ReplaceSeries failed: ", err)
+	}
+
+	series := pool.GetSeries(seriesID)
+	if series == nil {
+		t.Fatalf("Got unexpected nil!")
+	}
+
+	if len(replacementKeys) != len(series.TstGetPublicKeys()) {
+		t.Fatalf("Expected and actual series have different lengths! Exp: %d, Got %d", len(replacementKeys), len(series.TstGetPublicKeys()))
+	}
+
+	for i, key := range series.TstGetPublicKeys() {
+		if replacementKeys[i] != key.String() {
+			t.Fatalf("Replace series failed! Exp: %v, got %v", replacementKeys[i], key.String())
+		}
+	}
+	if replacementReqSigs != series.TstGetReqSigs() {
+		t.Fatalf("Replace series failed, required signatures mismatch. Exp: %d, got %d", replacementReqSigs, series.TstGetReqSigs())
+	}
 }
 
 func TestEmpowerSeries(t *testing.T) {
@@ -606,7 +667,7 @@ func TestEmpowerSeries(t *testing.T) {
 func TestGetSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
-	rawPubKeys := []string{pubKey0, pubKey1, pubKey2}
+	rawPubKeys := waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
 	if err := pool.CreateSeries(0, rawPubKeys, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
