@@ -120,11 +120,9 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 }
 
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
-
-	if _, ok := vp.seriesLookup[seriesID]; ok {
+	if vp.GetSeries(seriesID) != nil {
 		// TODO: define error codes
-		str := fmt.Sprintf("Series #%d already exists", seriesID)
-		return managerError(0, str, nil)
+		return managerError(0, fmt.Sprintf("Series #%d already exists", seriesID), nil)
 	}
 
 	keys := make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
@@ -228,18 +226,16 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 }
 
 func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (ManagedScriptAddress, error) {
-
-	series, ok := vp.seriesLookup[seriesID]
-	if !ok {
-		str := fmt.Sprintf("Series #%d does not exist", seriesID)
-		return nil, managerError(0, str, nil)
+	series := vp.GetSeries(seriesID)
+	if series == nil {
+		return nil, managerError(0, fmt.Sprintf("Series #%d does not exist", seriesID), nil)
 	}
 
 	pks := make([]*btcutil.AddressPubKey, len(series.publicKeys))
 
 	for i, key := range series.publicKeys {
 		child, err := key.Child(index)
-		// implement getting the next index until we find a valid one in case
+		// TODO: implement getting the next index until we find a valid one in case
 		// there is a hdkeychain.ErrInvalidChild
 		if err != nil {
 			str := fmt.Sprintf("Child #%d for this pubkey %d does not exist", index, i)
@@ -251,7 +247,6 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 			return nil, managerError(0, str, err)
 		}
 		pks[i], err = btcutil.NewAddressPubKey(pubkey.SerializeCompressed(), vp.manager.net)
-
 		if err != nil {
 			str := fmt.Sprintf("Child #%d for this pubkey %d could not be converted to an address", index, i)
 			return nil, managerError(0, str, err)
@@ -268,8 +263,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 
 	encryptedScript, err := vp.manager.cryptoKeyScript.Encrypt(script)
 	if err != nil {
-		str := fmt.Sprintf("error while encrypting multisig script hash")
-		return nil, managerError(0, str, err)
+		return nil, managerError(0, "Error while encrypting multisig script hash", err)
 	}
 
 	scriptHash := btcutil.Hash160(script)
