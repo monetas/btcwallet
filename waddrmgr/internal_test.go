@@ -13,7 +13,7 @@ type SeriesRow struct {
 	PrivKeysEncrypted [][]byte
 }
 
-func (m *Manager) Encrypt(unencrypted []byte) ([]byte, error) {
+func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
 	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
 }
 
@@ -46,8 +46,13 @@ func BranchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 
 func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
 	var exists bool
-	err := vp.manager.db.View(func(tx *managerTx) error {
-		exists = tx.ExistsSeries(vp.ID, seriesID)
+	err := vp.manager.db.View(func(mtx *managerTx) error {
+		vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(vp.ID)
+		if vpBucket == nil {
+			exists = false
+			return nil
+		}
+		exists = vpBucket.Get(uint32ToBytes(seriesID)) != nil
 		return nil
 	})
 	if err != nil {
@@ -56,12 +61,4 @@ func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
 		return false
 	}
 	return exists
-}
-
-func (mtx *managerTx) ExistsSeries(votingPoolID []byte, ID uint32) bool {
-	vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
-	if vpBucket == nil {
-		return false
-	}
-	return vpBucket.Get(uint32ToBytes(ID)) != nil
 }
