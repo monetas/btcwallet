@@ -404,7 +404,7 @@ func TestSerialization(t *testing.T) {
 			encryptedPubs = make([][]byte, len(test.pubKeys))
 			encryptedPrivs = make([][]byte, len(test.privKeys))
 			for i, pubKey := range test.pubKeys {
-				encryptedPubs[i], err = mgr.Encrypt([]byte(pubKey))
+				encryptedPubs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(pubKey))
 				if err != nil {
 					t.Errorf("Serialization #%d -  Failed to encrypt public key %v",
 						testNum, pubKey)
@@ -415,7 +415,7 @@ func TestSerialization(t *testing.T) {
 				if privKey == "" {
 					encryptedPrivs[i] = nil
 				} else {
-					encryptedPrivs[i], err = mgr.Encrypt([]byte(privKey))
+					encryptedPrivs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(privKey))
 				}
 				if err != nil {
 					t.Errorf("Serialization #%d -  Failed to encrypt private key %v",
