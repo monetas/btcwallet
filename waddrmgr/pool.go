@@ -84,7 +84,6 @@ func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
 }
 
 func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
-
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
 	for i, pubKey := range data.publicKeys {
@@ -129,44 +128,72 @@ func CanonicalKeyOrder(keys []string) []string {
 	return orderedKeys
 }
 
-func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
-	if vp.GetSeries(seriesID) != nil {
-		// TODO: define error codes
-		return managerError(0, fmt.Sprintf("Series #%d already exists", seriesID), nil)
-	}
-
+func convertPubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, error) {
 	keys := make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
-	sort.Sort(sort.StringSlice(rawPubKeys))
-
 	for i, rawPubKey := range rawPubKeys {
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
 		if err != nil {
 			str := fmt.Sprintf("Invalid extended public key %v", rawPubKey)
-			return managerError(0, str, err)
+			return nil, managerError(0, str, err)
 		}
 		if key.IsPrivate() {
-			return managerError(0, "Please only use public extended keys", nil)
+			return nil, managerError(0, "Please only use public extended keys", nil)
 		}
 		keys[i] = key
 	}
+	return keys, nil
+}
+
+func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
+	rawPubKeys := CanonicalKeyOrder(inRawPubKeys)
+
+	keys, err := convertPubKeys(rawPubKeys)
+	if err != nil {
+		return err
+	}
+
 	data := &seriesData{
 		publicKeys:  keys,
 		privateKeys: make([]*hdkeychain.ExtendedKey, len(keys)),
 		reqSigs:     reqSigs,
 	}
 
-	err := vp.saveSeriesToDisk(seriesID, data)
+	err = vp.saveSeriesToDisk(seriesID, data)
 	if err != nil {
 		return err
 	}
 	vp.seriesLookup[seriesID] = data
-
 	return nil
 }
 
-func (vp *VotingPool) ReplaceSeries(seriesID uint32, publicKeys []*hdkeychain.ExtendedKey, reqSigs uint32) error {
-	// TODO(lars): !
-	return ErrNotImplemented
+// CreateSeries will create a new non-existing series
+func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+
+	if series := vp.GetSeries(seriesID); series != nil {
+		// TODO: define error codes
+		str := fmt.Sprintf("Series #%d already exists", seriesID)
+		return managerError(0, str, nil)
+	}
+
+	return vp.putSeries(seriesID, rawPubKeys, reqSigs)
+}
+
+// ReplaceSeries will replace an already existing series
+func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+	series := vp.GetSeries(seriesID)
+	if series == nil {
+		str := fmt.Sprintf("Series #%d does not exist, cannot replace it", seriesID)
+		// TODO: define error codes
+		return managerError(0, str, nil)
+	}
+
+	if series.IsEmpowered() {
+		str := fmt.Sprintf("Series #%d has private keys and cannot be replaced", seriesID)
+		// TODO: define error codes
+		return managerError(0, str, nil)
+	}
+
+	return vp.putSeries(seriesID, rawPubKeys, reqSigs)
 }
 
 func decryptExtendedKey(cryptoKey *snacl.CryptoKey, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
@@ -369,4 +396,13 @@ func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	}
 
 	return nil
+}
+
+func (s *seriesData) IsEmpowered() bool {
+	for _, key := range s.privateKeys {
+		if key != nil {
+			return true
+		}
+	}
+	return false
 }
