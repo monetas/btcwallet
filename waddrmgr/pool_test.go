@@ -616,7 +616,7 @@ func TestGetSeries(t *testing.T) {
 	if series == nil {
 		t.Fatal("GetSeries() returned nil")
 	}
-	pubKeys := series.GetPublicKeys()
+	pubKeys := series.TstGetPublicKeys()
 	if len(pubKeys) != len(rawPubKeys) {
 		t.Errorf("Expected %d public keys, found %d", len(rawPubKeys), len(pubKeys))
 	}
@@ -627,29 +627,153 @@ func TestGetSeries(t *testing.T) {
 	}
 }
 
+type seriesRaw struct {
+	id       uint32
+	pubKeys  []string
+	privKeys []string
+	reqSigs  uint32
+}
+
+type testLoadAllSeriesTest struct {
+	id     int
+	series []seriesRaw
+}
+
+var testLoadAllSeriesTests = []testLoadAllSeriesTest{
+	{
+		id: 1,
+		series: []seriesRaw{
+			{
+				id:      0,
+				pubKeys: []string{pubKey0, pubKey1, pubKey2},
+				reqSigs: 2,
+			},
+			{
+				id:       1,
+				pubKeys:  []string{pubKey3, pubKey4, pubKey5},
+				privKeys: []string{privKey4},
+				reqSigs:  2,
+			},
+			{
+				id:       2,
+				pubKeys:  []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
+				privKeys: []string{privKey0, privKey2},
+				reqSigs:  3,
+			},
+		},
+	},
+	{
+		id: 2,
+		series: []seriesRaw{
+			{
+				id:      0,
+				pubKeys: []string{pubKey0, pubKey1, pubKey2},
+				reqSigs: 2,
+			},
+		},
+	},
+}
+
+func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSeriesTest) *waddrmgr.VotingPool {
+	pool, err := mgr.CreateVotingPool([]byte{byte(test.id + 1)})
+	if err != nil {
+		t.Fatalf("Voting Pool creation failed: %v", err)
+	}
+
+	for _, series := range test.series {
+		err := pool.CreateSeries(series.id, series.pubKeys, series.reqSigs)
+		if err != nil {
+			t.Fatalf("Test #%d Series #%d: Failed to create series: %v",
+				test.id, series.id, err)
+		}
+
+		for _, privKey := range series.privKeys {
+			err := pool.EmpowerSeries(series.id, privKey)
+			if err != nil {
+				t.Fatalf("Test #%d Series #%d: Failed to empower series with privKey"+
+					"%v: %v", test.id, series.id, privKey, err)
+			}
+		}
+	}
+	return pool
+}
+
 func TestLoadAllSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, _ := setUp(t)
 	defer tearDown()
 
-	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
-		t.Fatalf("Failed to create series: %v", err)
+	for _, test := range testLoadAllSeriesTests {
+		pool := setUpLoadAllSeries(t, manager, test)
+		pool.TstEmptySeriesLookup()
+		err := pool.LoadAllSeries()
+		if err != nil {
+			t.Fatalf("Test #%d: Failed to load voting pool: %v", test.id, err)
+		}
+		for _, seriesData := range test.series {
+			validateLoadAllSeries(t, pool, test.id, seriesData)
+		}
 	}
-	if err := pool.CreateSeries(1, []string{pubKey3, pubKey4, pubKey5}, 2); err != nil {
-		t.Fatalf("Failed to create series: %v", err)
+}
+
+/*
+validateLoadAllSeries checks the following:
+1. series exists
+2. reqSigs is what we inserted
+3. pubkeys and privkeys have the same length
+4. pubkeys are what we inserted (length and content)
+5. privkeys are what we inserted (length and content)
+*/
+func validateLoadAllSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, seriesData seriesRaw) {
+
+	series := pool.GetSeries(seriesData.id)
+	if series == nil {
+		t.Errorf("Test #%d Series #%d: series not found",
+			testID, seriesData.id)
 	}
 
-	// Ideally we should reset pool.seriesLookup and call LoadAllSeries() manually, but that
-	// is a private attribute so we just call LoadVotingPool, which calls LoadAllSeries.
-	pool2, err := manager.LoadVotingPool(pool.ID)
-	if err != nil {
-		t.Fatalf("Failed to load voting pool: %v", err)
+	if seriesData.reqSigs != series.TstGetReqSigs() {
+		t.Errorf("Test #%d Series #%d: required sigs are different want %d got %d",
+			testID, seriesData.id, seriesData.reqSigs, series.TstGetReqSigs())
 	}
 
-	if pool2.GetSeries(0) == nil {
-		t.Errorf("Series 0 not found: %v", err)
+	publicKeys := series.TstGetPublicKeys()
+	privateKeys := series.TstGetPrivateKeys()
+	if len(privateKeys) != len(publicKeys) {
+		t.Errorf("Test #%d Series #%d: wrong number of private keys: want %d got %d",
+			testID, seriesData.id, len(publicKeys), len(privateKeys))
 	}
-	if pool2.GetSeries(1) == nil {
-		t.Errorf("Series 1 not found: %v", err)
+
+	if len(publicKeys) != len(seriesData.pubKeys) {
+		t.Errorf("Test #%d Series #%d: wrong number of public keys: want %d got %d",
+			testID, seriesData.id, len(seriesData.pubKeys), len(publicKeys))
+	}
+	sortedKeys := waddrmgr.CanonicalKeyOrder(seriesData.pubKeys)
+	for i, sortedKey := range sortedKeys {
+		if publicKeys[i].String() != sortedKey {
+			t.Errorf("Test #%d Series #%d: incorrectly ordered public keys"+
+				" at index %d", testID, seriesData.id, i)
+		}
+	}
+
+	foundPrivKeys := make([]string, 0, len(seriesData.pubKeys))
+	for _, privateKey := range privateKeys {
+		if privateKey != nil {
+			foundPrivKeys = append(foundPrivKeys, privateKey.String())
+		}
+	}
+	if len(foundPrivKeys) != len(seriesData.privKeys) {
+		t.Errorf("Test #%d Series #%d: wrong number of non-nil private keys: "+
+			"want %v got %v", testID, seriesData.id, seriesData.privKeys,
+			foundPrivKeys)
+	}
+	foundPrivKeys = waddrmgr.CanonicalKeyOrder(foundPrivKeys)
+	privKeys := waddrmgr.CanonicalKeyOrder(seriesData.privKeys)
+	for i, privKey := range privKeys {
+		if privKey != foundPrivKeys[i] {
+			t.Errorf("Test #%d Series #%d: didn't find the same private keys "+
+				"want %v got %v", testID, seriesData.id, privKeys,
+				foundPrivKeys)
+		}
 	}
 }
 

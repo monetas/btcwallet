@@ -5,6 +5,7 @@ package waddrmgr
 import (
 	"github.com/monetas/bolt"
 	"github.com/monetas/btcutil"
+	"github.com/monetas/btcutil/hdkeychain"
 )
 
 type SeriesRow struct {
@@ -15,6 +16,10 @@ type SeriesRow struct {
 
 func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
 	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
+}
+
+func (vp *VotingPool) TstEmptySeriesLookup() {
+	vp.seriesLookup = make(map[uint32]*seriesData)
 }
 
 func SerializeSeries(reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
@@ -61,4 +66,16 @@ func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
 		return false
 	}
 	return exists
+}
+
+func (s *seriesData) TstGetPublicKeys() []*hdkeychain.ExtendedKey {
+	return s.publicKeys
+}
+
+func (s *seriesData) TstGetPrivateKeys() []*hdkeychain.ExtendedKey {
+	return s.privateKeys
+}
+
+func (s *seriesData) TstGetReqSigs() uint32 {
+	return s.reqSigs
 }
