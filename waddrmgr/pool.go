@@ -17,6 +17,7 @@
 package waddrmgr
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sort"
 
@@ -73,6 +74,58 @@ func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 		return nil, err
 	}
 	return vp, nil
+}
+
+func (m *Manager) LoadVotingPoolAndDepositScript(
+	poolID string, seriesID, branch, index uint32) (interface{}, error) {
+	pid := []byte(poolID)
+	vp, err := m.LoadVotingPool(pid)
+	if err != nil {
+		return nil, err
+	}
+	script, err := vp.DepositScript(seriesID, branch, index)
+	if err != nil {
+		return nil, err
+	}
+	return hex.EncodeToString(script), nil
+}
+
+func (m *Manager) LoadVotingPoolAndCreateSeries(
+	poolID string, seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+	pid := []byte(poolID)
+	vp, err := m.LoadVotingPool(pid)
+	if err != nil {
+		managerErr := err.(ManagerError)
+		if managerErr.ErrorCode == ErrVotingPoolNotExists {
+			vp, err = m.CreateVotingPool(pid)
+			if err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
+	return vp.CreateSeries(seriesID, rawPubKeys, reqSigs)
+}
+
+func (m *Manager) LoadVotingPoolAndReplaceSeries(
+	poolID string, seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+	pid := []byte(poolID)
+	vp, err := m.LoadVotingPool(pid)
+	if err != nil {
+		return err
+	}
+	return vp.ReplaceSeries(seriesID, rawPubKeys, reqSigs)
+}
+
+func (m *Manager) LoadVotingPoolAndEmpowerSeries(
+	poolID string, seriesID uint32, rawPrivKey string) error {
+	pid := []byte(poolID)
+	pool, err := m.LoadVotingPool(pid)
+	if err != nil {
+		return err
+	}
+	return pool.EmpowerSeries(seriesID, rawPrivKey)
 }
 
 func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
@@ -328,6 +381,23 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 }
 
 func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (ManagedScriptAddress, error) {
+	script, err := vp.DepositScript(seriesID, branch, index)
+	if err != nil {
+		return nil, err
+	}
+
+	encryptedScript, err := vp.manager.cryptoKeyScript.Encrypt(script)
+	if err != nil {
+		str := fmt.Sprintf("Error while encrypting multisig script hash")
+		return nil, managerError(ErrCrypto, str, err)
+	}
+
+	scriptHash := btcutil.Hash160(script)
+
+	return newScriptAddress(vp.manager, ImportedAddrAccount, scriptHash, encryptedScript)
+}
+
+func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("Series #%d does not exist", seriesID)
@@ -364,15 +434,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 		return nil, managerError(ErrScriptCreation, str, err)
 	}
 
-	encryptedScript, err := vp.manager.cryptoKeyScript.Encrypt(script)
-	if err != nil {
-		str := fmt.Sprintf("Error while encrypting multisig script hash")
-		return nil, managerError(ErrCrypto, str, err)
-	}
-
-	scriptHash := btcutil.Hash160(script)
-
-	return newScriptAddress(vp.manager, ImportedAddrAccount, scriptHash, encryptedScript)
+	return script, nil
 }
 
 func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {

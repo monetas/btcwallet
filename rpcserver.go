@@ -1387,6 +1387,9 @@ var rpcHandlers = map[string]requestHandler{
 	// implemenation's API.
 
 	"getdepositscript":        GetDepositScript,
+	"createseries":            CreateSeries,
+	"replaceseries":           ReplaceSeries,
+	"thawseries":              ThawSeries,
 	"getunconfirmedbalance":   GetUnconfirmedBalance,
 	"listaddresstransactions": ListAddressTransactions,
 	"listalltransactions":     ListAllTransactions,
@@ -1771,17 +1774,67 @@ func GetAccountAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (int
 	return addr.EncodeAddress(), err
 }
 
-
 // GetDepositScript handles a getdepositscript extension request
 // by returning a P2SH address that could be deposited to
 func GetDepositScript(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	// Type assert icmd to access parameters.
-	_, ok := icmd.(*btcws.GetDepositScriptCmd)
+	cmd, ok := icmd.(*btcws.GetDepositScriptCmd)
 	if !ok {
 		return nil, btcjson.ErrInternal
 	}
+	return w.Manager.LoadVotingPoolAndDepositScript(
+		cmd.PoolID, cmd.SeriesID, cmd.BranchID, cmd.Index)
+}
 
-	return "someasyetunimplementedscript", nil
+// CreateSeries - Requires a voting pool id, a series id, required sigs and
+//  a list of extended public keys from BIP0032
+// returns success or not
+func CreateSeries(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	// Type assert icmd to access parameters.
+	cmd, ok := icmd.(*btcws.CreateSeriesCmd)
+	if !ok {
+		return nil, btcjson.ErrInternal
+	}
+	err := w.Manager.LoadVotingPoolAndCreateSeries(
+		cmd.PoolID, cmd.SeriesID, cmd.PubKeys, cmd.ReqSigs)
+	if err != nil {
+		return nil, err
+	}
+	return "success", nil
+}
+
+// ReplaceSeries - Requires a voting pool id, a series id, required sigs and
+//  a list of extended public keys from BIP0032
+// returns success or not
+func ReplaceSeries(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	// Type assert icmd to access parameters.
+	cmd, ok := icmd.(*btcws.ReplaceSeriesCmd)
+	if !ok {
+		return nil, btcjson.ErrInternal
+	}
+	err := w.Manager.LoadVotingPoolAndReplaceSeries(
+		cmd.PoolID, cmd.SeriesID, cmd.PubKeys, cmd.ReqSigs)
+	if err != nil {
+		return nil, err
+	}
+	return "success", nil
+}
+
+// ThawSeries - Requires a voting pool id, a series id and a private key
+//  which corresponds to a public key in the series
+// returns success or not
+func ThawSeries(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	// Type assert icmd to access parameters.
+	cmd, ok := icmd.(*btcws.ThawSeriesCmd)
+	if !ok {
+		return nil, btcjson.ErrInternal
+	}
+	err := w.Manager.LoadVotingPoolAndEmpowerSeries(
+		cmd.PoolID, cmd.SeriesID, cmd.PrivKey)
+	if err != nil {
+		return nil, err
+	}
+	return "success", nil
 }
 
 // GetUnconfirmedBalance handles a getunconfirmedbalance extension request
