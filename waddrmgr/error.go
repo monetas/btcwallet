@@ -61,7 +61,7 @@ const (
 	ErrDatabase ErrorCode = iota
 
 	// ErrKeyChain indicates an error with the key chain typically either
-	// due to the inability to create and extended key or deriving a child
+	// due to the inability to create an extended key or deriving a child
 	// extended key.  When this error code is set, the Err field of the
 	// ManagerError will be set to the underlying error.
 	ErrKeyChain
@@ -73,59 +73,55 @@ const (
 	// error.
 	ErrCrypto
 
-	// ErrNoExist indicates the specified database does not exist.
+	// ErrNoExist indicates that the specified database does not exist.
 	ErrNoExist
 
-	// ErrAlreadyExists indicates the specified database already exists.
+	// ErrAlreadyExists indicates that the specified database already exists.
 	ErrAlreadyExists
 
-	// ErrCoinTypeTooHigh indicates the coin type specified in the provided
+	// ErrCoinTypeTooHigh indicates that the coin type specified in the provided
 	// network parameters is higher than the max allowed value as defined
 	// by the maxCoinType constant.
 	ErrCoinTypeTooHigh
 
-	// ErrAccountNumTooHigh indicates the specified account number is higher
+	// ErrAccountNumTooHigh indicates that the specified account number is higher
 	// than the max allowed value as defined by the MaxAccountNum constant.
 	ErrAccountNumTooHigh
 
-	// ErrLocked indicates the an operation which requires the account
-	// manager to be unlocked was requested on a locked account manager.
+	// ErrLocked indicates that an operation, which requires the account
+	// manager to be unlocked, was requested on a locked account manager.
 	ErrLocked
 
-	// ErrWatchingOnly indicates the an operation which requires the account
-	// manager to have access to private data was requested on a
-	// watching-only account manager.
+	// ErrWatchingOnly indicates that an operation, which requires the
+	// account manager to have access to private data, was requested on
+	// a watching-only account manager.
 	ErrWatchingOnly
 
-	// ErrInvalidAccount indicates the requested account is not valid.
+	// ErrInvalidAccount indicates that the requested account is not valid.
 	ErrInvalidAccount
 
-	// ErrAddressNotFound indicates the requested address is not known to
+	// ErrAddressNotFound indicates that the requested address is not known to
 	// the account manager.
 	ErrAddressNotFound
 
-	// ErrAccountNotFound indicates the requested account is not known to
+	// ErrAccountNotFound indicates that the requested account is not known to
 	// the account manager.
 	ErrAccountNotFound
 
-	// ErrDuplicate indicates an address already exists.
+	// ErrDuplicate indicates that an address already exists.
 	ErrDuplicate
 
-	// ErrTooManyAddresses indicates more than the maximum allowed number of
+	// ErrTooManyAddresses indicates that more than the maximum allowed number of
 	// addresses per account have been requested.
 	ErrTooManyAddresses
 
-	// ErrWrongPassphrase indicates the specified password is incorrect.
-	// This could be for either the public and private master keys.
+	// ErrWrongPassphrase indicates that the specified passphrase is incorrect.
+	// This could be for either public or private master keys.
 	ErrWrongPassphrase
 
-	// ErrWrongNet indicates the private key to be imported is not for the
+	// ErrWrongNet indicates that the private key to be imported is not for the
 	// the same network the account manager is configured for.
 	ErrWrongNet
-
-	// ErrSeriesStorage indicates that an error occurred while serializing
-	// or deserialing series for storing into database.
-	ErrSeriesStorage
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.
@@ -145,7 +141,18 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrTooManyAddresses:  "ErrTooManyAddresses",
 	ErrWrongPassphrase:   "ErrWrongPassphrase",
 	ErrWrongNet:          "ErrWrongNet",
-	ErrSeriesStorage:     "ErrSeriesStorage",
+
+	// The following error codes are defined in pool_error.go.
+	ErrSeriesStorage:             "ErrSeriesStorage",
+	ErrSeriesNotExists:           "ErrSeriesNotExists",
+	ErrSeriesAlreadyExists:       "ErrSeriesAlreadyExists",
+	ErrSeriesAlreadyEmpowered:    "ErrSeriesAlreadyEmpowered",
+	ErrKeyIsPrivate:              "ErrKeyIsPrivate",
+	ErrKeyNeuter:                 "ErrKeyNeuter",
+	ErrKeyMismatch:               "ErrKeyMismatch",
+	ErrKeysPrivatePublicMismatch: "ErrKeysPrivatePublicMismatch",
+	ErrVotingPoolNotExists:       "ErrVotingPoolNotExists",
+	ErrScriptCreation:            "ErrScriptCreation",
 }
 
 // String returns the ErrorCode as a human-readable name.
