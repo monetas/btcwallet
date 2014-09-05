@@ -128,16 +128,28 @@ func CanonicalKeyOrder(keys []string) []string {
 	return orderedKeys
 }
 
-func convertPubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, error) {
+// Convert the given slice of strings into a slice of ExtendedKeys, checking that all
+// of them are valid Public (and not Private) Keys and that there are no duplicates.
+func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, error) {
+	seenKeys := make(map[string]bool)
 	keys := make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	for i, rawPubKey := range rawPubKeys {
+		if _, seen := seenKeys[rawPubKey]; seen {
+			str := fmt.Sprintf("Duplicated public key: %v", rawPubKey)
+			return nil, managerError(0, str, nil)
+		} else {
+			seenKeys[rawPubKey] = true
+		}
+
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
 		if err != nil {
 			str := fmt.Sprintf("Invalid extended public key %v", rawPubKey)
 			return nil, managerError(0, str, err)
 		}
+
 		if key.IsPrivate() {
-			return nil, managerError(0, "Please only use public extended keys", nil)
+			str := fmt.Sprintf("Private keys not accepted: %v", rawPubKey)
+			return nil, managerError(0, str, nil)
 		}
 		keys[i] = key
 	}
@@ -147,7 +159,7 @@ func convertPubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, error) {
 func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
 	rawPubKeys := CanonicalKeyOrder(inRawPubKeys)
 
-	keys, err := convertPubKeys(rawPubKeys)
+	keys, err := convertAndValidatePubKeys(rawPubKeys)
 	if err != nil {
 		return err
 	}

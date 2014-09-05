@@ -169,65 +169,77 @@ func TestCreateSeries(t *testing.T) {
 		in      []string
 		series  uint32
 		reqSigs uint32
-		err     error
 	}{
 		{
 			in:      []string{pubKey0, pubKey1, pubKey2},
 			series:  0,
 			reqSigs: 2,
-			err:     nil,
 		},
 		{
 			in:      []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
 			series:  1,
 			reqSigs: 3,
-			err:     nil,
 		},
 		{
 			in: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
 				pubKey5, pubKey6},
 			series:  2,
 			reqSigs: 4,
-			err:     nil,
 		},
 		{
 			in: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
 				pubKey5, pubKey6, pubKey7, pubKey8},
 			series:  3,
 			reqSigs: 5,
-			err:     nil,
-		},
-		// Errors..
-		{
-			in:     []string{"xpub"},
-			series: 99,
-			// TODO: get the correct error code
-			err: waddrmgr.ManagerError{ErrorCode: 0},
 		},
 	}
 
 	t.Logf("CreateSeries: Running %d tests", len(tests))
 	for testNum, test := range tests {
 		err := pool.CreateSeries(uint32(test.series), test.in[:], test.reqSigs)
-		if test.err != nil {
-			if err == nil {
-				t.Errorf("%d: Expected a test failure and didn't get one", testNum)
-			} else {
-				rerr := err.(waddrmgr.ManagerError)
-				terr := test.err.(waddrmgr.ManagerError)
-				if terr.ErrorCode != rerr.ErrorCode {
-					t.Errorf("%d: Incorrect type of error passed back: "+
-						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
-				}
-				continue
-			}
-		}
 		if err != nil {
 			t.Errorf("%d: Cannot create series %d", testNum, test.series)
 		}
 		if !pool.ExistsSeriesTestsOnly(test.series) {
 			t.Errorf("%d: Series %d not in database", testNum, test.series)
 		}
+	}
+}
+
+func TestCreateSeriesErrors(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		pubKeys []string
+		reqSigs uint32
+		err     error
+		msg     string
+	}{
+		{
+			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey0},
+			err:     waddrmgr.ManagerError{}, // FIXME: Use specific error type here
+			msg:     "Should return error when passed duplicate pubkeys.",
+		},
+		{
+			pubKeys: []string{"invalidxpub"},
+			err:     waddrmgr.ManagerError{}, // FIXME: Use specific error type here
+			msg:     "Should return error when passed invalid pubkey.",
+		},
+		{
+			pubKeys: []string{privKey0},
+			err:     waddrmgr.ManagerError{}, // FIXME: Use specific error type here
+			msg:     "Should return error when passed private keys.",
+		},
+	}
+
+	for i, test := range tests {
+		err := pool.CreateSeries(uint32(i), test.pubKeys, test.reqSigs)
+		if err == nil {
+			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v", test.pubKeys, test.reqSigs)
+			t.Errorf(str)
+		}
+		// TODO: Check that the error matches the expected type.
 	}
 }
 
