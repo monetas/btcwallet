@@ -101,45 +101,26 @@ func TestDepositScriptAddress(t *testing.T) {
 			},
 			err: nil,
 		},
-		// Errors..
-		{
-			in: []string{"xpub"},
-			// TODO: correct this error code to the right thing in error.go
-			err: waddrmgr.ManagerError{ErrorCode: 0},
-		},
 	}
 
 	t.Logf("DepositScript: Running %d tests", len(tests))
 	for i, test := range tests {
 		err := pool.CreateSeries(test.series, test.in, test.reqSigs)
 		if err != nil {
-			if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
-				t.Errorf("DepositScript #%d wrong error type "+
-					"got: %v <%T>, want: %T", i, err, err, test.err)
-				continue
-			}
-			rerr := err.(waddrmgr.ManagerError)
-			trerr := test.err.(waddrmgr.ManagerError)
-			if rerr.ErrorCode != trerr.ErrorCode {
+			t.Fatalf("Cannot creates series %v", test.series)
+		}
+		for branch, address := range test.addresses {
+			addr, err := pool.DepositScriptAddress(test.series, branch, 0)
+			if err != nil {
 				t.Errorf("DepositScript #%d wrong "+
-					"error code got: %v, want: %v", i,
-					rerr.ErrorCode, trerr.ErrorCode)
+					"error %v", i, err)
 				continue
 			}
-		} else {
-			for branch, address := range test.addresses {
-				addr, err := pool.DepositScriptAddress(test.series, branch, 0)
-				if err != nil {
-					t.Errorf("DepositScript #%d wrong "+
-						"error %v", i, err)
-					continue
-				}
-				got := addr.Address().EncodeAddress()
-				if address != got {
-					t.Errorf("DepositScript #%d returned "+
-						"the wrong deposit script got: %v, want: %v",
-						i, got, address)
-				}
+			got := addr.Address().EncodeAddress()
+			if address != got {
+				t.Errorf("DepositScript #%d returned "+
+					"the wrong deposit script got: %v, want: %v",
+					i, got, address)
 			}
 		}
 
@@ -283,8 +264,6 @@ func TestSerialization(t *testing.T) {
 			reqSigs:  4,
 		},
 		// Errors
-		// TODO: correct the error codes to their proper values
-		//  once actual error codes are in error.go
 		{
 			pubKeys: []string{"NONSENSE"},
 			// not a valid length pub key
@@ -623,25 +602,25 @@ func TestEmpowerSeries(t *testing.T) {
 			seriesID: 1,
 			key:      privKey0,
 			// invalid series
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesNotExists},
 		},
 		{
 			seriesID: 0,
 			key:      "NONSENSE",
 			// invalid private key
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyChain},
 		},
 		{
 			seriesID: 0,
 			key:      pubKey5,
 			// wrong type of key
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyIsPublic},
 		},
 		{
 			seriesID: 0,
 			key:      privKey5,
 			// key not corresponding to pub key
-			err: waddrmgr.ManagerError{ErrorCode: 0},
+			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeysPrivatePublicMismatch},
 		},
 	}
 
