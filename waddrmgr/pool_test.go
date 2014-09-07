@@ -540,38 +540,120 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 	}
 }
 
+type replaceSeriesTestEntry struct {
+	testId      int
+	orig        seriesRaw
+	replaceWith seriesRaw
+}
+
+var replaceSeriesTestData = []replaceSeriesTestEntry{
+	{
+		testId: 0,
+		orig: seriesRaw{
+			id: 0,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey0, pubKey1, pubKey2, pubKey4}),
+			reqSigs: 2,
+		},
+		replaceWith: seriesRaw{
+			id: 0,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey3, pubKey4, pubKey5}),
+			reqSigs: 1,
+		},
+	},
+	{
+		testId: 1,
+		orig: seriesRaw{
+			id: 2,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey0, pubKey1, pubKey2}),
+			reqSigs: 2,
+		},
+		replaceWith: seriesRaw{
+			id: 2,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey3, pubKey4, pubKey5, pubKey6}),
+			reqSigs: 2,
+		},
+	},
+	{
+		testId: 2,
+		orig: seriesRaw{
+			id:      4,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
+			reqSigs: 8,
+		},
+		replaceWith: seriesRaw{
+			id:      4,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
+			reqSigs: 7,
+		},
+	},
+	{
+		testId: 3,
+		orig: seriesRaw{
+			id:      6,
+			pubKeys: []string{pubKey0},
+			reqSigs: 1,
+		},
+		replaceWith: seriesRaw{
+			id:      6,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1}),
+			reqSigs: 2,
+		},
+	},
+}
+
 func TestReplaceExistingSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
-	var seriesID uint32 = 1
-	origKeys := []string{pubKey0}
-	if err := pool.CreateSeries(seriesID, origKeys, 1); err != nil {
-		t.Fatalf("Failed to create series", err)
-	}
+	for _, data := range replaceSeriesTestData {
+		seriesID := data.orig.id
+		testID := data.testId
 
-	replacementKeys := waddrmgr.CanonicalKeyOrder([]string{pubKey1, pubKey3})
-	var replacementReqSigs uint32 = 2
-	if err := pool.ReplaceSeries(seriesID, replacementKeys, replacementReqSigs); err != nil {
-		t.Errorf("ReplaceSeries failed: ", err)
-	}
+		if err := pool.CreateSeries(seriesID, data.orig.pubKeys, data.orig.reqSigs); err != nil {
+			t.Fatalf("Failed to create series in replace series setup", err)
+		}
 
+		if err := pool.ReplaceSeries(seriesID, data.replaceWith.pubKeys, data.replaceWith.reqSigs); err != nil {
+			t.Errorf("ReplaceSeries failed: ", err)
+		}
+
+		validateReplaceSeries(t, pool, testID, data.replaceWith)
+	}
+}
+
+// validate the created series stored in the system corresponds to the series we replaced the original with.
+func validateReplaceSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, replacedWith seriesRaw) {
+	seriesID := replacedWith.id
 	series := pool.GetSeries(seriesID)
 	if series == nil {
-		t.Fatalf("Got unexpected nil!")
+		t.Fatalf("Test #%d Series #%d: series not found",
+			testID, seriesID)
 	}
 
-	if len(replacementKeys) != len(series.TstGetPublicKeys()) {
-		t.Fatalf("Expected and actual series have different lengths! Exp: %d, Got %d", len(replacementKeys), len(series.TstGetPublicKeys()))
+	// validate series length
+	if len(replacedWith.pubKeys) != len(series.TstGetPublicKeys()) {
+		t.Fatalf("Test #%d Series #%d: ReplacedWith and actual series have different lengths! Exp: %d, Got %d", testID, seriesID, len(replacedWith.pubKeys), len(series.TstGetPublicKeys()))
 	}
 
+	// check that the replaced keys are the same
 	for i, key := range series.TstGetPublicKeys() {
-		if replacementKeys[i] != key.String() {
-			t.Fatalf("Replace series failed! Exp: %v, got %v", replacementKeys[i], key.String())
+		if replacedWith.pubKeys[i] != key.String() {
+			t.Fatalf("Test #%d Series #%d: validate series pubkeys failed! Exp: %v, got %v", testID, seriesID, replacedWith.pubKeys[i], key.String())
 		}
 	}
-	if replacementReqSigs != series.TstGetReqSigs() {
-		t.Fatalf("Replace series failed, required signatures mismatch. Exp: %d, got %d", replacementReqSigs, series.TstGetReqSigs())
+
+	// check number of required sigs
+	if replacedWith.reqSigs != series.TstGetReqSigs() {
+		t.Fatalf("Test #%d Series #%d: validate series failed, required signatures mismatch. Exp: %d, got %d", testID, seriesID, replacedWith.reqSigs, series.TstGetReqSigs())
+	}
+
+	// check series is not empowered
+	if series.IsEmpowered() {
+		t.Errorf("Test #%d Series #%d: this series is empowered but should not be", testID, seriesID)
 	}
 }
 
