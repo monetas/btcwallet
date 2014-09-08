@@ -150,6 +150,16 @@ type unlockDeriveInfo struct {
 	index       uint32
 }
 
+// defaultNewSecretKey returns a new secret key.  See newSecretKey.
+func defaultNewSecretKey(passphrase *[]byte) (*snacl.SecretKey, error) {
+	return snacl.NewSecretKey(passphrase, scryptN, scryptR, scryptP)
+}
+
+// newSecretKey is used as a way to replace the new secret key generation
+// function used so tests can provide a version that fails for testing error
+// paths.
+var newSecretKey = defaultNewSecretKey
+
 // Manager represents a concurrency safe crypto currency address manager and
 // key store.
 type Manager struct {
@@ -624,8 +634,7 @@ func (m *Manager) ChangePassphrase(oldPassphrase, newPassphrase []byte, private 
 
 	// Generate a new master key from the passphrase which is used to secure
 	// the actual secret keys.
-	newMasterKey, err := snacl.NewSecretKey(&newPassphrase, scryptN,
-		scryptR, scryptP)
+	newMasterKey, err := newSecretKey(&newPassphrase)
 	if err != nil {
 		str := "failed to create new master private key"
 		return managerError(ErrCrypto, str, err)
@@ -1648,14 +1657,12 @@ func Create(dbPath string, seed, pubPassphrase, privPassphrase []byte, net *btcn
 
 	// Generate new master keys.  These master keys are used to protect the
 	// crypto keys that will be generated next.
-	masterKeyPub, err := snacl.NewSecretKey(&pubPassphrase, scryptN,
-		scryptR, scryptP)
+	masterKeyPub, err := newSecretKey(&pubPassphrase)
 	if err != nil {
 		str := "failed to master public key"
 		return nil, managerError(ErrCrypto, str, err)
 	}
-	masterKeyPriv, err := snacl.NewSecretKey(&privPassphrase, scryptN,
-		scryptR, scryptP)
+	masterKeyPriv, err := newSecretKey(&privPassphrase)
 	if err != nil {
 		str := "failed to master private key"
 		return nil, managerError(ErrCrypto, str, err)

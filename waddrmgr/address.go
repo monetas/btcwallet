@@ -485,7 +485,7 @@ func (a *scriptAddress) Compressed() bool {
 // This is part of the ManagedAddress interface implementation.
 func (a *scriptAddress) SyncStatus() SyncStatus {
 	// TODO(davec): Finish
-	return SSFull
+	return SSUnsynced
 }
 
 // Script returns the script associated with the address.
