@@ -794,16 +794,17 @@ func (m *Manager) existsAddress(addressID []byte) (bool, error) {
 // All imported addresses will be part of the account defined by the
 // ImportedAddrAccount constant.
 //
-// This function will return a an error if the address manager is watching-only,
-// locked, or not for the same network as the key trying to be imported.  It
-// will also return an error if the address already exists.  Any other errors
+// NOTE: When the address manager is watching-only, the private key itself will
+// not be stored or available since it is private data.  Instead, only the
+// public key will be stored.  This means it is paramount the private key is
+// kept elsewhere as the watching-only address manager will NOT ever have access
+// to it.
+//
+// This function will return a an error if the address manager is lock and not
+// watching-only, or not for the same network as the key trying to be imported.
+// It will also return an error if the address already exists.  Any other errors
 // returned are generally unexpected.
 func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPubKeyAddress, error) {
-	// A watching-only address manager must not contain private keys.
-	if m.watchingOnly {
-		return nil, managerError(ErrWatchingOnly, errWatchingOnly, nil)
-	}
-
 	// Ensure the address is intended for network the address manager is
 	// associated with.
 	if !wif.IsForNet(m.net) {
@@ -816,7 +817,7 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 	defer m.mtx.Unlock()
 
 	// The manager must be unlocked to encrypt the imported private key.
-	if m.locked {
+	if m.locked && !m.watchingOnly {
 		return nil, managerError(ErrLocked, errLocked, nil)
 	}
 
@@ -833,18 +834,25 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 		return nil, managerError(ErrDuplicate, str, nil)
 	}
 
-	// Encrypt private and public keys.
-	encryptedPrivKey, err := m.cryptoKeyPriv.Encrypt(wif.PrivKey.Serialize())
-	if err != nil {
-		str := fmt.Sprintf("failed to encrypt private key for %x",
-			serializedPubKey)
-		return nil, managerError(ErrCrypto, str, err)
-	}
+	// Encrypt public key.
 	encryptedPubKey, err := m.cryptoKeyPub.Encrypt(serializedPubKey)
 	if err != nil {
 		str := fmt.Sprintf("failed to encrypt public key for %x",
 			serializedPubKey)
 		return nil, managerError(ErrCrypto, str, err)
+	}
+
+	// Encrypt the private key when not a watching-only address manager.
+	var encryptedPrivKey []byte
+	if !m.watchingOnly {
+		privKeyBytes := wif.PrivKey.Serialize()
+		encryptedPrivKey, err = m.cryptoKeyPriv.Encrypt(privKeyBytes)
+		zero(privKeyBytes)
+		if err != nil {
+			str := fmt.Sprintf("failed to encrypt private key for %x",
+				serializedPubKey)
+			return nil, managerError(ErrCrypto, str, err)
+		}
 	}
 
 	// Save the new imported address to the db in a single transaction.
@@ -857,8 +865,15 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 	}
 
 	// Create a new managed address based on the imported address.
-	managedAddr, err := newManagedAddress(m, ImportedAddrAccount,
-		wif.PrivKey, wif.CompressPubKey)
+	var managedAddr *managedAddress
+	if !m.watchingOnly {
+		managedAddr, err = newManagedAddress(m, ImportedAddrAccount,
+			wif.PrivKey, wif.CompressPubKey)
+	} else {
+		pubKey := (*btcec.PublicKey)(&wif.PrivKey.PublicKey)
+		managedAddr, err = newManagedAddressWithoutPrivKey(m,
+			ImportedAddrAccount, pubKey, wif.CompressPubKey)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -873,20 +888,21 @@ func (m *Manager) ImportPrivateKey(wif *btcutil.WIF, bs *BlockStamp) (ManagedPub
 // ImportScript imports a user-provided script into the address manager.  The
 // imported script will act as a pay-to-script-hash address.
 //
-// This function will return an error if the address manager is watching-only,
-// locked, or the address already exists.  It will also return any underlying
-// script parse errors and any other errors returned are generally unexpected.
+// All imported script addresses will be part of the account defined by the
+// ImportedAddrAccount constant.
+//
+// When the address manager is watching-only, the script itself will not be
+// stored or available since it is considered private data.
+//
+// This function will return an error if the address manager is locked and not
+// watching-only, or the address already exists.  Any other errors returned are
+// generally unexpected.
 func (m *Manager) ImportScript(script []byte, bs *BlockStamp) (ManagedScriptAddress, error) {
-	// A watching-only address manager must not contain private data.
-	if m.watchingOnly {
-		return nil, managerError(ErrWatchingOnly, errWatchingOnly, nil)
-	}
-
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
 	// The manager must be unlocked to encrypt the imported script.
-	if m.locked {
+	if m.locked && !m.watchingOnly {
 		return nil, managerError(ErrLocked, errLocked, nil)
 	}
 
@@ -903,7 +919,7 @@ func (m *Manager) ImportScript(script []byte, bs *BlockStamp) (ManagedScriptAddr
 	}
 
 	// Encrypt the script hash using the crypto public key so it is
-	// accessible when the address manager is locked.
+	// accessible when the address manager is locked or watching-only.
 	encryptedHash, err := m.cryptoKeyPub.Encrypt(scriptHash)
 	if err != nil {
 		str := fmt.Sprintf("failed to encrypt script hash %x",
@@ -912,12 +928,15 @@ func (m *Manager) ImportScript(script []byte, bs *BlockStamp) (ManagedScriptAddr
 	}
 
 	// Encrypt the script for storage in database using the crypto script
-	// key.
-	encryptedScript, err := m.cryptoKeyScript.Encrypt(script)
-	if err != nil {
-		str := fmt.Sprintf("failed to encrypt script for %x",
-			scriptHash)
-		return nil, managerError(ErrCrypto, str, err)
+	// key when not a watching-only address manager.
+	var encryptedScript []byte
+	if !m.watchingOnly {
+		encryptedScript, err = m.cryptoKeyScript.Encrypt(script)
+		if err != nil {
+			str := fmt.Sprintf("failed to encrypt script for %x",
+				scriptHash)
+			return nil, managerError(ErrCrypto, str, err)
+		}
 	}
 
 	// Save the new imported address to the db in a single transaction.
@@ -930,16 +949,18 @@ func (m *Manager) ImportScript(script []byte, bs *BlockStamp) (ManagedScriptAddr
 	}
 
 	// Create a new managed address based on the imported script.  Also,
-	// make a copy of the script since it will be cleared on lock and the
-	// script the caller passed should not be cleared out from under the
-	// caller.
+	// when not a watching-only address manager, make a copy of the script
+	// since it will be cleared on lock and the script the caller passed
+	// should not be cleared out from under the caller.
 	scriptAddr, err := newScriptAddress(m, ImportedAddrAccount, scriptHash,
 		encryptedScript)
 	if err != nil {
 		return nil, err
 	}
-	scriptAddr.scriptCT = make([]byte, len(script))
-	copy(scriptAddr.scriptCT, script)
+	if !m.watchingOnly {
+		scriptAddr.scriptCT = make([]byte, len(script))
+		copy(scriptAddr.scriptCT, script)
+	}
 
 	// Add the new managed address to the cache of recent addresses and
 	// return it.
