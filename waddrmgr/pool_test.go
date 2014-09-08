@@ -53,10 +53,11 @@ const (
 	pubKey8 = "xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E"
 )
 
+func init() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
+}
+
 func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool) {
-	// All our tests can run in parallel and most computers have at least 4 cores these days, so
-	// we set GOMAXPROCS to 4.
-	runtime.GOMAXPROCS(4)
 	t.Parallel()
 
 	// Create a new manager.
