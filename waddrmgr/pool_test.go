@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/monetas/btcnet"
@@ -53,6 +54,11 @@ const (
 )
 
 func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool) {
+	// All our tests can run in parallel and most computers have at least 4 cores these days, so
+	// we set GOMAXPROCS to 4.
+	runtime.GOMAXPROCS(4)
+	t.Parallel()
+
 	// Create a new manager.
 	// we create the file and immediately delete it as the waddrmgr
 	//  needs to be doing the creating.
