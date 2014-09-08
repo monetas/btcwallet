@@ -59,4 +59,12 @@ const (
 
 	// ErrScriptCreation indicates that the creation of a deposit script failed.
 	ErrScriptCreation
+
+	// ErrTooFewPublicKeys indicates that a required minimum of public
+	// keys was not met
+	ErrTooFewPublicKeys
+
+	// ErrTooManyReqSignatures indicates that too many required
+	// signatures are required
+	ErrTooManyReqSignatures
 )
