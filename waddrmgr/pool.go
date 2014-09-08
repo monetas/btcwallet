@@ -158,6 +158,16 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 }
 
 func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
+	if len(inRawPubKeys) < 3 {
+		str := fmt.Sprintf("Need at least three public keys to create a series")
+		return managerError(ErrTooFewPublicKeys, str, nil)
+	}
+
+	if reqSigs > uint32(len(inRawPubKeys)) {
+		str := fmt.Sprintf("The number of required signatures cannot be more than the number of keys")
+		return managerError(ErrTooManyReqSignatures, str, nil)
+	}
+
 	rawPubKeys := CanonicalKeyOrder(inRawPubKeys)
 
 	keys, err := convertAndValidatePubKeys(rawPubKeys)
@@ -180,8 +190,10 @@ func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs 
 }
 
 // CreateSeries will create a new non-existing series
+//
+// rawPubKeys has to contain three or more public keys
+// reqSigs has to be less than the number of public keys in rawPubKeys
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
-
 	if series := vp.GetSeries(seriesID); series != nil {
 		str := fmt.Sprintf("Series #%d already exists", seriesID)
 		return managerError(ErrSeriesAlreadyExists, str, nil)
@@ -190,7 +202,10 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs
 	return vp.putSeries(seriesID, rawPubKeys, reqSigs)
 }
 
-// ReplaceSeries will replace an already existing series
+// ReplaceSeries will replace an already existing series.
+//
+// rawPubKeys has to contain three or more public keys
+// reqSigs has to be less than the number of public keys in rawPubKeys
 func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
