@@ -149,6 +149,57 @@ func TestCreateVotingPool(t *testing.T) {
 	}
 }
 
+func TestCreateSeriesTooFewKeys(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	if err := pool.CreateSeries(1, []string{pubKey0, pubKey1}, 1); err == nil {
+		t.Errorf("Created series with only two keys - minimum should is 3")
+	}
+}
+
+func TestCreateSeriesTooManyReqSigs(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	pubKeys := []string{pubKey0, pubKey1, pubKey3}
+	reqSigs := uint32(3)
+	if err := pool.CreateSeries(1, pubKeys, reqSigs); err == nil {
+		t.Errorf("Required signatures (%d) must be strictly less than the number of keys (%d)", reqSigs, len(pubKeys))
+	}
+}
+
+func TestReplaceSeriesTooFewKeys(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	if err := pool.CreateSeries(1, []string{pubKey0, pubKey1, pubKey3}, 1); err != nil {
+		t.Fatal("Created series with only two keys - minimum should is 3")
+	}
+
+	if err := pool.CreateSeries(1, []string{pubKey0, pubKey1, pubKey3}, 1); err == nil {
+		t.Errorf("Replaced series with only two keys - minimum should is 3")
+	}
+
+}
+
+func TestReplaceSeriesTooManyReqSigs(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	var reqSigs uint32 = 2
+	pubKeys := []string{pubKey0, pubKey1, pubKey3}
+	if err := pool.CreateSeries(1, pubKeys, reqSigs); err != nil {
+		t.Fatalf("Failed to create series", err)
+	}
+
+	reqSigs = 3
+	if err := pool.ReplaceSeries(1, pubKeys, reqSigs); err == nil {
+		t.Errorf("Required signatures (%d) < number of keys (%d) requirement violated.", reqSigs, len(pubKeys))
+	}
+
+}
+
 func TestCreateSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
@@ -523,7 +574,7 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 
 	var seriesId uint32 = 1
 
-	if err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1}, 3); err != nil {
+	if err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1, pubKey2, pubKey3}, 3); err != nil {
 		t.Fatalf("Failed to create series", err)
 	}
 
@@ -531,7 +582,7 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 		t.Fatalf("Failed to empower series", err)
 	}
 
-	if err := pool.ReplaceSeries(seriesId, []string{pubKey3}, 4); err == nil {
+	if err := pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2); err == nil {
 		t.Errorf("Replaced an empowered series. That should not be possible", err)
 	}
 
@@ -597,19 +648,6 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 			reqSigs: 7,
 		},
 	},
-	{
-		testId: 3,
-		orig: seriesRaw{
-			id:      6,
-			pubKeys: []string{pubKey0},
-			reqSigs: 1,
-		},
-		replaceWith: seriesRaw{
-			id:      6,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1}),
-			reqSigs: 2,
-		},
-	},
 }
 
 func TestReplaceExistingSeries(t *testing.T) {
@@ -621,11 +659,11 @@ func TestReplaceExistingSeries(t *testing.T) {
 		testID := data.testId
 
 		if err := pool.CreateSeries(seriesID, data.orig.pubKeys, data.orig.reqSigs); err != nil {
-			t.Fatalf("Failed to create series in replace series setup", err)
+			t.Fatalf("Test #%d: Failed to create series in replace series setup", testID, err)
 		}
 
 		if err := pool.ReplaceSeries(seriesID, data.replaceWith.pubKeys, data.replaceWith.reqSigs); err != nil {
-			t.Errorf("ReplaceSeries failed: ", err)
+			t.Errorf("Test #%d: ReplaceSeries failed: ", testID, err)
 		}
 
 		validateReplaceSeries(t, pool, testID, data.replaceWith)

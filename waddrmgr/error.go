@@ -153,6 +153,8 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrKeysPrivatePublicMismatch: "ErrKeysPrivatePublicMismatch",
 	ErrVotingPoolNotExists:       "ErrVotingPoolNotExists",
 	ErrScriptCreation:            "ErrScriptCreation",
+	ErrTooFewPublicKeys:          "ErrTooFewPublicKeys",
+	ErrTooManyReqSignatures:      "ErrTooManyReqSignatures",
 }
 
 // String returns the ErrorCode as a human-readable name.
