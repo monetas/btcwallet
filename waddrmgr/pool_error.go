@@ -65,6 +65,6 @@ const (
 	ErrTooFewPublicKeys
 
 	// ErrTooManyReqSignatures indicates that too many required
-	// signatures are required
+	// signatures are requested
 	ErrTooManyReqSignatures
 )
