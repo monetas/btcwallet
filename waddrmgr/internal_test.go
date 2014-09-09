@@ -26,7 +26,6 @@ package waddrmgr
 import (
 	"github.com/monetas/bolt"
 	"github.com/monetas/btcutil"
-	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/snacl"
 )
 
@@ -121,12 +120,22 @@ func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
 	return exists
 }
 
-func (s *seriesData) TstGetPublicKeys() []*hdkeychain.ExtendedKey {
-	return s.publicKeys
+func (s *seriesData) TstGetRawPublicKeys() []string {
+	rawKeys := make([]string, len(s.publicKeys))
+	for i, key := range s.publicKeys {
+		rawKeys[i] = key.String()
+	}
+	return rawKeys
 }
 
-func (s *seriesData) TstGetPrivateKeys() []*hdkeychain.ExtendedKey {
-	return s.privateKeys
+func (s *seriesData) TstGetRawPrivateKeys() []string {
+	rawKeys := make([]string, len(s.privateKeys))
+	for i, key := range s.privateKeys {
+		if key != nil {
+			rawKeys[i] = key.String()
+		}
+	}
+	return rawKeys
 }
 
 func (s *seriesData) TstGetReqSigs() uint32 {
