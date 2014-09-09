@@ -89,15 +89,14 @@ func TestDepositScriptAddress(t *testing.T) {
 	defer tearDown()
 
 	tests := []struct {
-		in      []string
+		pubKeys []string
 		series  uint32
 		reqSigs uint32
 		// map of branch:address (we only check the branch index at 0)
 		addresses map[uint32]string
-		err       error
 	}{
 		{
-			in:      []string{pubKey0, pubKey1, pubKey2},
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			series:  0,
 			reqSigs: 2,
 			addresses: map[uint32]string{
@@ -106,34 +105,60 @@ func TestDepositScriptAddress(t *testing.T) {
 				2: "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe",
 				3: "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG",
 			},
-			err: nil,
 		},
 	}
 
-	t.Logf("DepositScript: Running %d tests", len(tests))
 	for i, test := range tests {
-		err := pool.CreateSeries(test.series, test.in, test.reqSigs)
-		if err != nil {
+		if err := pool.CreateSeries(test.series, test.pubKeys, test.reqSigs); err != nil {
 			t.Fatalf("Cannot creates series %v", test.series)
 		}
-		for branch, address := range test.addresses {
+		for branch, expectedAddress := range test.addresses {
 			addr, err := pool.DepositScriptAddress(test.series, branch, 0)
 			if err != nil {
-				t.Errorf("DepositScript #%d wrong "+
-					"error %v", i, err)
-				continue
+				t.Fatalf("Failed to get DepositScriptAddress #%d: %v", i, err)
 			}
-			got := addr.Address().EncodeAddress()
-			if address != got {
-				t.Errorf("DepositScript #%d returned "+
-					"the wrong deposit script got: %v, want: %v",
-					i, got, address)
+			address := addr.Address().EncodeAddress()
+			if expectedAddress != address {
+				t.Errorf("DepositScript #%d returned the wrong deposit script got: %v, want: %v",
+					i, address, expectedAddress)
 			}
 		}
+	}
+}
 
+func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	if _, err := pool.DepositScriptAddress(0, 0, 0); err == nil {
+		t.Fatalf("Expected an error, got none")
+	} else {
+		rerr := err.(waddrmgr.ManagerError)
+		if waddrmgr.ErrSeriesNotExists != rerr.ErrorCode {
+			t.Errorf("Expected ErrSeriesNotExists, got %v", rerr.ErrorCode)
+		}
+	}
+}
+
+func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
+		t.Fatalf("Cannot creates series")
 	}
 
-	return
+	// Ask for a DepositScriptAddress using an index for a hardened child, which should
+	// fail as we use the extended public keys to derive childs.
+	_, err := pool.DepositScriptAddress(0, 0, uint32(hdkeychain.HardenedKeyStart+1))
+
+	if err == nil {
+		t.Fatalf("Expected an error, got none")
+	} else {
+		rerr := err.(waddrmgr.ManagerError)
+		if waddrmgr.ErrKeyChain != rerr.ErrorCode {
+			t.Errorf("Expected ErrKeyChain, got %v", rerr.ErrorCode)
+		}
+	}
 }
 
 func TestCreateVotingPool(t *testing.T) {
