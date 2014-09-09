@@ -65,3 +65,8 @@ func hexToBytes(origHex string) []byte {
 	}
 	return buf
 }
+
+func init() {
+	// Tune the scrypt params down for tests so they execute quickly.
+	waddrmgr.TstSetScryptParams(16, 8, 1)
+}
