@@ -17,7 +17,6 @@
 package waddrmgr
 
 import (
-	"encoding/hex"
 	"fmt"
 	"sort"
 
@@ -78,7 +77,7 @@ func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 }
 
 func (m *Manager) LoadVotingPoolAndDepositScript(
-	poolID string, seriesID, branch, index uint32) (interface{}, error) {
+	poolID string, seriesID, branch, index uint32) ([]byte, error) {
 	pid := []byte(poolID)
 	vp, err := m.LoadVotingPool(pid)
 	if err != nil {
@@ -88,7 +87,7 @@ func (m *Manager) LoadVotingPoolAndDepositScript(
 	if err != nil {
 		return nil, err
 	}
-	return hex.EncodeToString(script), nil
+	return script, nil
 }
 
 func (m *Manager) LoadVotingPoolAndCreateSeries(

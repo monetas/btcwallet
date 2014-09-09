@@ -1783,8 +1783,29 @@ func GetDepositScript(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (inte
 	if !ok {
 		return nil, btcjson.ErrInternal
 	}
-	return w.Manager.LoadVotingPoolAndDepositScript(
+
+	script, err := w.Manager.LoadVotingPoolAndDepositScript(
 		cmd.PoolID, cmd.SeriesID, cmd.BranchID, cmd.Index)
+	if err != nil {
+		return nil, fmt.Errorf("getting deposit script failed: %v", err)
+	}
+
+	// TEMPORARY:
+	// store address with the OLD wallet. Otherwise we can't get notifications
+	addr, err := w.KeyStore.ImportScript(script, &keystore.BlockStamp{})
+	if err != nil {
+		return nil, fmt.Errorf("importing script failed: %v", err)
+	}
+	// Request updates from btcd for new transactions sent to this address.
+	if err := chainSvr.NotifyReceived([]btcutil.Address{addr}); err != nil {
+		return nil, fmt.Errorf("registering for notification failed: %v", err)
+	}
+
+	// TEMPORARY:
+	//  This string should be just the hex-encoded script. We add the address
+	//  at the end so we can test this easier since nobody's using this yet.
+	str := fmt.Sprintf("%v %v", hex.EncodeToString(script), addr.String())
+	return str, nil
 }
 
 // CreateSeries - Requires a voting pool id, a series id, required sigs and
