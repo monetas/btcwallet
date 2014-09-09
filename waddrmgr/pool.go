@@ -191,8 +191,8 @@ func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs 
 
 // CreateSeries will create a new non-existing series
 //
-// rawPubKeys has to contain three or more public keys
-// reqSigs has to be less than the number of public keys in rawPubKeys
+// rawPubKeys has to contain three or more public keys reqSigs has to
+// be less or equal than the number of public keys in rawPubKeys
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	if series := vp.GetSeries(seriesID); series != nil {
 		str := fmt.Sprintf("Series #%d already exists", seriesID)
@@ -204,8 +204,8 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs
 
 // ReplaceSeries will replace an already existing series.
 //
-// rawPubKeys has to contain three or more public keys
-// reqSigs has to be less than the number of public keys in rawPubKeys
+// rawPubKeys has to contain three or more public keys reqSigs has to
+// be less or equal than the number of public keys in rawPubKeys
 func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
