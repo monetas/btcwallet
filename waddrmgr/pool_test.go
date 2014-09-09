@@ -84,6 +84,92 @@ func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *wadd
 	return tearDownFunc, mgr, pool
 }
 
+func TestLoadVotingPoolAndDepositScript(t *testing.T) {
+	tearDown, manager, _ := setUp(t)
+	defer tearDown()
+
+	// setup
+	poolID := "test"
+	pubKeys := []string{pubKey0, pubKey1, pubKey2}
+	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	if err != nil {
+		t.Fatalf("Failed to create voting pool and series: %v", err)
+	}
+
+	// execute
+	script, err := manager.LoadVotingPoolAndDepositScript(poolID, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("Failed to get deposit script: %v", err)
+	}
+
+	// validate
+	strScript := script.(string)
+	want := "5221035e94da75731a2153b20909017f62fcd49474c45f3b46282c0dafa8b40a3a312b2102e983a53dd20b7746dd100dfd2925b777436fc1ab1dd319433798924a5ce143e32102908d52a548ee9ef6b2d0ea67a3781a0381bc3570ad623564451e63757ff9393253ae"
+	if want != strScript {
+		t.Fatalf("Failed to get the right deposit script: got %v, want %v",
+			strScript, want)
+	}
+}
+
+func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
+	tearDown, manager, _ := setUp(t)
+	defer tearDown()
+
+	poolID := "test"
+
+	// first time, the voting pool is created
+	pubKeys := []string{pubKey0, pubKey1, pubKey2}
+	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	if err != nil {
+		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
+	}
+
+	// create another series where the voting pool is loaded this time
+	pubKeys = []string{pubKey3, pubKey4, pubKey5}
+	err = manager.LoadVotingPoolAndCreateSeries(poolID, 1, pubKeys, 2)
+
+	if err != nil {
+		t.Fatalf("Loading voting pool and Creating series failed: %v", err)
+	}
+}
+
+func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
+	tearDown, manager, _ := setUp(t)
+	defer tearDown()
+
+	// setup
+	poolID := "test"
+	pubKeys := []string{pubKey0, pubKey1, pubKey2}
+	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	if err != nil {
+		t.Fatalf("Failed to create voting pool and series: %v", err)
+	}
+
+	pubKeys = []string{pubKey3, pubKey4, pubKey5}
+	err = manager.LoadVotingPoolAndReplaceSeries(poolID, 0, pubKeys, 2)
+	if err != nil {
+		t.Fatalf("Failed to replace series: %v", err)
+	}
+}
+
+func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
+	tearDown, manager, _ := setUp(t)
+	defer tearDown()
+
+	// setup
+	poolID := "test"
+	pubKeys := []string{pubKey0, pubKey1, pubKey2}
+	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	if err != nil {
+		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
+	}
+
+	err = manager.LoadVotingPoolAndEmpowerSeries(poolID, 0, privKey0)
+	if err != nil {
+		t.Fatalf("Load voting pool and Empower series failed: %v", err)
+	}
+}
+
 func TestDepositScriptAddress(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
