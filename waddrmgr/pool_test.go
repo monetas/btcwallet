@@ -18,6 +18,7 @@ package waddrmgr_test
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -103,7 +104,7 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 	}
 
 	// validate
-	strScript := script.(string)
+	strScript := hex.EncodeToString(script)
 	want := "5221035e94da75731a2153b20909017f62fcd49474c45f3b46282c0dafa8b40a3a312b2102e983a53dd20b7746dd100dfd2925b777436fc1ab1dd319433798924a5ce143e32102908d52a548ee9ef6b2d0ea67a3781a0381bc3570ad623564451e63757ff9393253ae"
 	if want != strScript {
 		t.Fatalf("Failed to get the right deposit script: got %v, want %v",
