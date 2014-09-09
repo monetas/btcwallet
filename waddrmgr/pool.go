@@ -189,7 +189,7 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 	for i, rawPubKey := range rawPubKeys {
 		if _, seen := seenKeys[rawPubKey]; seen {
 			str := fmt.Sprintf("Duplicated public key: %v", rawPubKey)
-			return nil, managerError(0, str, nil)
+			return nil, managerError(ErrKeyDuplicate, str, nil)
 		} else {
 			seenKeys[rawPubKey] = true
 		}
@@ -276,12 +276,14 @@ func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSig
 func decryptExtendedKey(cryptoKey EncryptorDecryptor, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
 	decrypted, err := cryptoKey.Decrypt(encrypted)
 	if err != nil {
-		return nil, managerError(0, "FIXME", err)
+		str := fmt.Sprintf("cannot decrypt key %v", encrypted)
+		return nil, managerError(ErrCrypto, str, err)
 	}
 	result, err := hdkeychain.NewKeyFromString(string(decrypted))
 	zero(decrypted)
 	if err != nil {
-		return nil, managerError(0, "FIXME", err)
+		str := fmt.Sprintf("cannot get key from string %v", decrypted)
+		return nil, managerError(ErrKeyChain, str, err)
 	}
 	return result, nil
 }
