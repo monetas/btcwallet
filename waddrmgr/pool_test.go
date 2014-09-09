@@ -363,23 +363,23 @@ func TestCreateSeriesErrors(t *testing.T) {
 	tests := []struct {
 		pubKeys []string
 		reqSigs uint32
-		err     error
+		err     waddrmgr.ManagerError
 		msg     string
 	}{
 		{
 			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey0},
-			err:     waddrmgr.ManagerError{}, // FIXME: Use specific error type here
-			msg:     "Should return error when passed duplicate pubkeys.",
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyDuplicate},
+			msg:     "Should return error when passed duplicate pubkeys",
 		},
 		{
-			pubKeys: []string{"invalidxpub"},
-			err:     waddrmgr.ManagerError{}, // FIXME: Use specific error type here
-			msg:     "Should return error when passed invalid pubkey.",
+			pubKeys: []string{"invalidxpub1", "invalidxpub2", "invalidxpub3"},
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyChain},
+			msg:     "Should return error when passed invalid pubkey",
 		},
 		{
-			pubKeys: []string{privKey0},
-			err:     waddrmgr.ManagerError{}, // FIXME: Use specific error type here
-			msg:     "Should return error when passed private keys.",
+			pubKeys: []string{privKey0, privKey1, privKey2},
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyIsPrivate},
+			msg:     "Should return error when passed private keys",
 		},
 	}
 
@@ -388,8 +388,14 @@ func TestCreateSeriesErrors(t *testing.T) {
 		if err == nil {
 			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v", test.pubKeys, test.reqSigs)
 			t.Errorf(str)
+		} else {
+			retErr := err.(waddrmgr.ManagerError)
+			if test.err.ErrorCode != retErr.ErrorCode {
+				t.Errorf(
+					"Create series #%d - Incorrect error type passed back: got %s, want %s",
+					i, retErr.ErrorCode, test.err.ErrorCode)
+			}
 		}
-		// TODO: Check that the error matches the expected type.
 	}
 }
 
