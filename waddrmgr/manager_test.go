@@ -1176,6 +1176,9 @@ func testExportWatchingOnly(tc *testContext) bool {
 // It makes use of a test context because the address manager is persistent and
 // much of the testing involves having specific state.
 func TestManager(t *testing.T) {
+	// Tune the scrypt params down for tests so they execute quickly.
+	waddrmgr.TstSetScryptParams(16, 8, 1)
+
 	// Open manager that does not exist to ensure the expected error is
 	// returned.
 	mgrName := "mgrtest.bin"

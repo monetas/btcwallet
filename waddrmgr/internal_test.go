@@ -27,6 +27,14 @@ import (
 	"github.com/conformal/btcwallet/snacl"
 )
 
+// TstSetScryptParams allows the scrypt parameters to be set to much lower
+// values while the tests are running so they are faster.
+func TstSetScryptParams(n, r, p int) {
+	scryptN = n
+	scryptR = r
+	scryptP = p
+}
+
 // TstReplaceNewSecretKeyFunc replaces the new secret key generation function
 // with a version that intentionally fails.
 func TstReplaceNewSecretKeyFunc() {

@@ -51,12 +51,6 @@ const (
 	// defaultAccountNum is the number of the default account.
 	defaultAccountNum = 0
 
-	// scryptN, scryptR, and scryptP are the parameters used for scrypt
-	// password-based key derivation.
-	scryptN = snacl.DefaultN
-	scryptR = snacl.DefaultR
-	scryptP = snacl.DefaultP
-
 	// The hierarchy described by BIP0043 is:
 	//  m/<purpose>'/*
 	// This is further extended by BIP0044 to:
@@ -79,6 +73,14 @@ const (
 	// style hierarchical deterministic key derivation for the internal
 	// branch.
 	internalBranch uint32 = 1
+)
+
+var (
+	// scryptN, scryptR, and scryptP are the parameters used for scrypt
+	// password-based key derivation.
+	scryptN = snacl.DefaultN
+	scryptR = snacl.DefaultR
+	scryptP = snacl.DefaultP
 )
 
 // BlockStamp defines a block (by height and a unique hash) and is
