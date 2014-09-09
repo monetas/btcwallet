@@ -53,6 +53,13 @@ const (
 	// public keys is not the same.
 	ErrKeysPrivatePublicMismatch
 
+	// ErrKeyDuplicate indicates that a key is duplicated.
+	ErrKeyDuplicate
+
+	// ErrTooFewPublicKeys indicates that a required minimum of public
+	// keys was not met.
+	ErrTooFewPublicKeys
+
 	// ErrVotingPool indicates that an attempt has been made to access a
 	// voting pool that does not exist.
 	ErrVotingPoolNotExists
@@ -60,11 +67,7 @@ const (
 	// ErrScriptCreation indicates that the creation of a deposit script failed.
 	ErrScriptCreation
 
-	// ErrTooFewPublicKeys indicates that a required minimum of public
-	// keys was not met
-	ErrTooFewPublicKeys
-
 	// ErrTooManyReqSignatures indicates that too many required
-	// signatures are requested
+	// signatures are requested.
 	ErrTooManyReqSignatures
 )

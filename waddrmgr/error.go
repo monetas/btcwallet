@@ -152,9 +152,10 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrKeyNeuter:                 "ErrKeyNeuter",
 	ErrKeyMismatch:               "ErrKeyMismatch",
 	ErrKeysPrivatePublicMismatch: "ErrKeysPrivatePublicMismatch",
+	ErrKeyDuplicate:              "ErrKeyDuplicate",
+	ErrTooFewPublicKeys:          "ErrTooFewPublicKeys",
 	ErrVotingPoolNotExists:       "ErrVotingPoolNotExists",
 	ErrScriptCreation:            "ErrScriptCreation",
-	ErrTooFewPublicKeys:          "ErrTooFewPublicKeys",
 	ErrTooManyReqSignatures:      "ErrTooManyReqSignatures",
 }
 
