@@ -641,21 +641,16 @@ func validateReplaceSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, 
 			testID, seriesID)
 	}
 
-	// validate series length
-	if len(replacedWith.pubKeys) != len(series.TstGetPublicKeys()) {
-		t.Fatalf("Test #%d Series #%d: ReplacedWith and actual series have different lengths! Exp: %d, Got %d", testID, seriesID, len(replacedWith.pubKeys), len(series.TstGetPublicKeys()))
-	}
-
-	// check that the replaced keys are the same
-	for i, key := range series.TstGetPublicKeys() {
-		if replacedWith.pubKeys[i] != key.String() {
-			t.Fatalf("Test #%d Series #%d: validate series pubkeys failed! Exp: %v, got %v", testID, seriesID, replacedWith.pubKeys[i], key.String())
-		}
+	pubKeys := series.TstGetRawPublicKeys()
+	// Check that the public keys match what we expect.
+	if !reflect.DeepEqual(replacedWith.pubKeys, pubKeys) {
+		t.Errorf("Test #%d Series #%d: pubkeys mismatch. Expected: %v, got %v",
+			testID, seriesID, replacedWith.pubKeys, pubKeys)
 	}
 
 	// check number of required sigs
 	if replacedWith.reqSigs != series.TstGetReqSigs() {
-		t.Fatalf("Test #%d Series #%d: validate series failed, required signatures mismatch. Exp: %d, got %d", testID, seriesID, replacedWith.reqSigs, series.TstGetReqSigs())
+		t.Errorf("Test #%d Series #%d: validate series failed, required signatures mismatch. Exp: %d, got %d", testID, seriesID, replacedWith.reqSigs, series.TstGetReqSigs())
 	}
 
 	// check series is not empowered
@@ -747,8 +742,8 @@ func TestEmpowerSeries(t *testing.T) {
 func TestGetSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
-	rawPubKeys := waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
-	if err := pool.CreateSeries(0, rawPubKeys, 2); err != nil {
+	expectedPubKeys := waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
+	if err := pool.CreateSeries(0, expectedPubKeys, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
 
@@ -757,14 +752,9 @@ func TestGetSeries(t *testing.T) {
 	if series == nil {
 		t.Fatal("GetSeries() returned nil")
 	}
-	pubKeys := series.TstGetPublicKeys()
-	if len(pubKeys) != len(rawPubKeys) {
-		t.Errorf("Expected %d public keys, found %d", len(rawPubKeys), len(pubKeys))
-	}
-	for i, key := range pubKeys {
-		if key.String() != rawPubKeys[i] {
-			t.Fatalf("Series pubKeys mismatch. Expected %v, got %v", rawPubKeys, pubKeys)
-		}
+	pubKeys := series.TstGetRawPublicKeys()
+	if !reflect.DeepEqual(pubKeys, expectedPubKeys) {
+		t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedPubKeys, pubKeys)
 	}
 }
 
@@ -877,44 +867,30 @@ func validateLoadAllSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, 
 			testID, seriesData.id, seriesData.reqSigs, series.TstGetReqSigs())
 	}
 
-	publicKeys := series.TstGetPublicKeys()
-	privateKeys := series.TstGetPrivateKeys()
+	publicKeys := series.TstGetRawPublicKeys()
+	privateKeys := series.TstGetRawPrivateKeys()
 	if len(privateKeys) != len(publicKeys) {
 		t.Errorf("Test #%d Series #%d: wrong number of private keys: want %d got %d",
 			testID, seriesData.id, len(publicKeys), len(privateKeys))
 	}
 
-	if len(publicKeys) != len(seriesData.pubKeys) {
-		t.Errorf("Test #%d Series #%d: wrong number of public keys: want %d got %d",
-			testID, seriesData.id, len(seriesData.pubKeys), len(publicKeys))
-	}
 	sortedKeys := waddrmgr.CanonicalKeyOrder(seriesData.pubKeys)
-	for i, sortedKey := range sortedKeys {
-		if publicKeys[i].String() != sortedKey {
-			t.Errorf("Test #%d Series #%d: incorrectly ordered public keys"+
-				" at index %d", testID, seriesData.id, i)
-		}
+	if !reflect.DeepEqual(publicKeys, sortedKeys) {
+		t.Errorf("Test #%d Series #%d: public keys mismatch, expected %v, got %v",
+			testID, seriesData.id, publicKeys, sortedKeys)
 	}
 
 	foundPrivKeys := make([]string, 0, len(seriesData.pubKeys))
 	for _, privateKey := range privateKeys {
-		if privateKey != nil {
-			foundPrivKeys = append(foundPrivKeys, privateKey.String())
+		if privateKey != "" {
+			foundPrivKeys = append(foundPrivKeys, privateKey)
 		}
-	}
-	if len(foundPrivKeys) != len(seriesData.privKeys) {
-		t.Errorf("Test #%d Series #%d: wrong number of non-nil private keys: "+
-			"want %v got %v", testID, seriesData.id, seriesData.privKeys,
-			foundPrivKeys)
 	}
 	foundPrivKeys = waddrmgr.CanonicalKeyOrder(foundPrivKeys)
 	privKeys := waddrmgr.CanonicalKeyOrder(seriesData.privKeys)
-	for i, privKey := range privKeys {
-		if privKey != foundPrivKeys[i] {
-			t.Errorf("Test #%d Series #%d: didn't find the same private keys "+
-				"want %v got %v", testID, seriesData.id, privKeys,
-				foundPrivKeys)
-		}
+	if !reflect.DeepEqual(privKeys, foundPrivKeys) {
+		t.Errorf("Test #%d Series #%d: private keys mismatch, expected %v, got %v",
+			testID, seriesData.id, privKeys, foundPrivKeys)
 	}
 }
 
