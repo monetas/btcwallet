@@ -27,6 +27,7 @@ import (
 	"github.com/monetas/bolt"
 	"github.com/monetas/btcutil"
 	"github.com/monetas/btcwallet/snacl"
+	"testing"
 )
 
 // TstSetScryptParams allows the scrypt parameters to be set to much lower
@@ -144,4 +145,44 @@ func (s *seriesData) TstGetReqSigs() uint32 {
 
 func (vp *VotingPool) TstPutSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
 	return vp.putSeries(seriesID, inRawPubKeys, reqSigs)
+}
+
+func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
+	cryptoKey, err := snacl.GenerateCryptoKey()
+
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+	if _, err := decryptExtendedKey(cryptoKey, []byte{}); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(ManagerError)
+		wantErrCode := ErrorCode(ErrCrypto)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
+}
+
+func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
+	cryptoKey, err := snacl.GenerateCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+
+	// the plaintext not being base58 encoded triggers the error
+	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
+	if err != nil {
+		t.Fatalf("Failed to encrypt plaintext: %v", err)
+	}
+
+	if _, err := decryptExtendedKey(cryptoKey, cipherText); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(ManagerError)
+		wantErrCode := ErrorCode(ErrKeyChain)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
 }
