@@ -43,7 +43,7 @@ func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
 		return tx.PutVotingPool(poolID)
 	})
 	if err != nil {
-		str := fmt.Sprintf("Unable to add voting pool %v to db", poolID)
+		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
 		return nil, managerError(ErrDatabase, str, err)
 	}
 	return &VotingPool{
@@ -56,7 +56,7 @@ func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
 func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 	err := m.db.View(func(tx *managerTx) error {
 		if exists := tx.ExistsVotingPool(poolID); !exists {
-			str := fmt.Sprintf("Unable to find voting pool %v in db", poolID)
+			str := fmt.Sprintf("unable to find voting pool %v in db", poolID)
 			return managerError(ErrVotingPoolNotExists, str, nil)
 		}
 		return nil
@@ -142,7 +142,7 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 		encryptedPubKeys[i], err = vp.manager.cryptoKeyPub.Encrypt(
 			[]byte(pubKey.String()))
 		if err != nil {
-			str := fmt.Sprintf("Key %v failed encryption", pubKey)
+			str := fmt.Sprintf("key %v failed encryption", pubKey)
 			return managerError(ErrCrypto, str, err)
 		}
 	}
@@ -155,7 +155,7 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 				[]byte(privKey.String()))
 		}
 		if err != nil {
-			str := fmt.Sprintf("Key %v failed encryption", privKey)
+			str := fmt.Sprintf("key %v failed encryption", privKey)
 			return managerError(ErrCrypto, str, err)
 		}
 	}
@@ -165,7 +165,7 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 			encryptedPubKeys, encryptedPrivKeys)
 	})
 	if err != nil {
-		str := fmt.Sprintf("Cannot put series #%d into db", seriesID)
+		str := fmt.Sprintf("cannot put series #%d into db", seriesID)
 		return managerError(ErrSeriesStorage, str, err)
 	}
 	return nil
@@ -180,14 +180,15 @@ func CanonicalKeyOrder(keys []string) []string {
 	return orderedKeys
 }
 
-// Convert the given slice of strings into a slice of ExtendedKeys, checking that all
-// of them are valid Public (and not Private) Keys and that there are no duplicates.
+// Convert the given slice of strings into a slice of ExtendedKeys,
+// checking that all of them are valid public (and not private) keys,
+// and that there are no duplicates.
 func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, error) {
 	seenKeys := make(map[string]bool)
 	keys := make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	for i, rawPubKey := range rawPubKeys {
 		if _, seen := seenKeys[rawPubKey]; seen {
-			str := fmt.Sprintf("Duplicated public key: %v", rawPubKey)
+			str := fmt.Sprintf("duplicated public key: %v", rawPubKey)
 			return nil, managerError(ErrKeyDuplicate, str, nil)
 		} else {
 			seenKeys[rawPubKey] = true
@@ -195,12 +196,12 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
 		if err != nil {
-			str := fmt.Sprintf("Invalid extended public key %v", rawPubKey)
+			str := fmt.Sprintf("invalid extended public key %v", rawPubKey)
 			return nil, managerError(ErrKeyChain, str, err)
 		}
 
 		if key.IsPrivate() {
-			str := fmt.Sprintf("Private keys not accepted: %v", rawPubKey)
+			str := fmt.Sprintf("private keys not accepted: %v", rawPubKey)
 			return nil, managerError(ErrKeyIsPrivate, str, nil)
 		}
 		keys[i] = key
@@ -210,12 +211,13 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 
 func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
 	if len(inRawPubKeys) < 3 {
-		str := fmt.Sprintf("Need at least three public keys to create a series")
+		str := fmt.Sprintf("need at least three public keys to create a series")
 		return managerError(ErrTooFewPublicKeys, str, nil)
 	}
 
 	if reqSigs > uint32(len(inRawPubKeys)) {
-		str := fmt.Sprintf("The number of required signatures cannot be more than the number of keys")
+		str := fmt.Sprintf(
+			"the number of required signatures cannot be more than the number of keys")
 		return managerError(ErrTooManyReqSignatures, str, nil)
 	}
 
@@ -240,13 +242,13 @@ func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs 
 	return nil
 }
 
-// CreateSeries will create a new non-existing series
+// CreateSeries will create a new non-existing series.
 //
-// rawPubKeys has to contain three or more public keys reqSigs has to
-// be less or equal than the number of public keys in rawPubKeys
+// - rawPubKeys has to contain three or more public keys;
+// - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
 func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	if series := vp.GetSeries(seriesID); series != nil {
-		str := fmt.Sprintf("Series #%d already exists", seriesID)
+		str := fmt.Sprintf("series #%d already exists", seriesID)
 		return managerError(ErrSeriesAlreadyExists, str, nil)
 	}
 
@@ -255,17 +257,17 @@ func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs
 
 // ReplaceSeries will replace an already existing series.
 //
-// rawPubKeys has to contain three or more public keys reqSigs has to
-// be less or equal than the number of public keys in rawPubKeys
+// - rawPubKeys has to contain three or more public keys
+// - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
 func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
-		str := fmt.Sprintf("Series #%d does not exist, cannot replace it", seriesID)
+		str := fmt.Sprintf("series #%d does not exist, cannot replace it", seriesID)
 		return managerError(ErrSeriesNotExists, str, nil)
 	}
 
 	if series.IsEmpowered() {
-		str := fmt.Sprintf("Series #%d has private keys and cannot be replaced", seriesID)
+		str := fmt.Sprintf("series #%d has private keys and cannot be replaced", seriesID)
 		return managerError(ErrSeriesAlreadyEmpowered, str, nil)
 	}
 
@@ -302,7 +304,8 @@ func (vp *VotingPool) LoadAllSeries() error {
 		privKeys := make([]*hdkeychain.ExtendedKey, len(series.privKeysEncrypted))
 		if len(pubKeys) != len(privKeys) {
 			return managerError(ErrKeysPrivatePublicMismatch,
-				"The pub key and priv key arrays should have the same number of elements", nil)
+				"the pub key and priv key arrays should have the same number of elements",
+				nil)
 		}
 
 		for i, encryptedPub := range series.pubKeysEncrypted {
@@ -327,11 +330,11 @@ func (vp *VotingPool) LoadAllSeries() error {
 			if privKey != nil {
 				checkPubKey, err := privKey.Neuter()
 				if err != nil {
-					str := fmt.Sprintf("Cannot neuter key %v", privKey)
+					str := fmt.Sprintf("cannot neuter key %v", privKey)
 					return managerError(ErrKeyNeuter, str, err)
 				}
 				if pubKey.String() != checkPubKey.String() {
-					str := fmt.Sprintf("Public key %v different than expected %v",
+					str := fmt.Sprintf("public key %v different than expected %v",
 						pubKey, checkPubKey)
 					return managerError(ErrKeyMismatch, str, nil)
 				}
@@ -346,18 +349,18 @@ func (vp *VotingPool) LoadAllSeries() error {
 	return nil
 }
 
-// Change the order of the pubkeys based on branch number
-//  For 3 pubkeys ABC, this would mean:
-// branch 0 - CBA (reversed)
-// branch 1 - ABC (first key priority)
-// branch 2 - BAC (second key priority)
-// branch 3 - CAB (third key priority)
+// Change the order of the pubkeys based on branch number.
+// Given the three pubkeys ABC, this would mean:
+// - branch 0: CBA (reversed)
+// - branch 1: ABC (first key priority)
+// - branch 2: BAC (second key priority)
+// - branch 3: CAB (third key priority)
 func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
 	if pks == nil {
 		return nil
 	}
 
-	//change the order of pks based on branch number.
+	// Change the order of pubkeys based on branch number.
 	if branch == 0 {
 		numKeys := len(pks)
 		res := make([]*btcutil.AddressPubKey, numKeys)
@@ -389,7 +392,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 
 	encryptedScript, err := vp.manager.cryptoKeyScript.Encrypt(script)
 	if err != nil {
-		str := fmt.Sprintf("Error while encrypting multisig script hash")
+		str := fmt.Sprintf("error while encrypting multisig script hash")
 		return nil, managerError(ErrCrypto, str, err)
 	}
 
@@ -401,7 +404,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
-		str := fmt.Sprintf("Series #%d does not exist", seriesID)
+		str := fmt.Sprintf("series #%d does not exist", seriesID)
 		return nil, managerError(ErrSeriesNotExists, str, nil)
 	}
 
@@ -409,20 +412,22 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 
 	for i, key := range series.publicKeys {
 		child, err := key.Child(index)
-		// TODO: implement getting the next index until we find a valid one in case
-		// there is a hdkeychain.ErrInvalidChild
+		// TODO: implement getting the next index until we find a valid one,
+		// in case there is a hdkeychain.ErrInvalidChild.
 		if err != nil {
-			str := fmt.Sprintf("Child #%d for this pubkey %d does not exist", index, i)
+			str := fmt.Sprintf("child #%d for this pubkey %d does not exist", index, i)
 			return nil, managerError(ErrKeyChain, str, err)
 		}
 		pubkey, err := child.ECPubKey()
 		if err != nil {
-			str := fmt.Sprintf("Child #%d for this pubkey %d does not exist", index, i)
+			str := fmt.Sprintf("child #%d for this pubkey %d does not exist", index, i)
 			return nil, managerError(ErrKeyChain, str, err)
 		}
 		pks[i], err = btcutil.NewAddressPubKey(pubkey.SerializeCompressed(), vp.manager.net)
 		if err != nil {
-			str := fmt.Sprintf("Child #%d for this pubkey %d could not be converted to an address", index, i)
+			str := fmt.Sprintf(
+				"child #%d for this pubkey %d could not be converted to an address",
+				index, i)
 			return nil, managerError(ErrKeyChain, str, err)
 		}
 	}
@@ -447,29 +452,31 @@ func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 		return managerError(ErrSeriesNotExists, str, nil)
 	}
 
-	// see if the private key is valid
+	// Check that the private key is valid.
 	privKey, err := hdkeychain.NewKeyFromString(rawPrivKey)
 	if err != nil {
-		str := fmt.Sprintf("Invalid extended private key %v", rawPrivKey)
+		str := fmt.Sprintf("invalid extended private key %v", rawPrivKey)
 		return managerError(ErrKeyChain, str, err)
 	}
 	if !privKey.IsPrivate() {
-		str := fmt.Sprintf("To empower a series, you need the "+
-			"extended private key, not an extended public key %v", privKey)
+		str := fmt.Sprintf(
+			"to empower a series you need the extended private key, not an extended public key %v",
+			privKey)
 		return managerError(ErrKeyIsPublic, str, err)
 	}
 
 	pubKey, err := privKey.Neuter()
 	if err != nil {
-		str := fmt.Sprintf("Invalid extended private key %v, can't convert to public key", rawPrivKey)
+		str := fmt.Sprintf("invalid extended private key %v, can't convert to public key",
+			rawPrivKey)
 		return managerError(ErrKeyNeuter, str, err)
 	}
 
 	lookingFor := pubKey.String()
 	found := false
 
-	// make sure the private key has the corresponding public key in the
-	//  series to "empower" it
+	// Make sure the private key has the corresponding public key in the series,
+	// to be able to empower it.
 	for i, publicKey := range series.publicKeys {
 		if publicKey.String() == lookingFor {
 			found = true
@@ -478,7 +485,8 @@ func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	}
 
 	if !found {
-		str := fmt.Sprintf("Private Key does not have a corresponding public key in this series")
+		str := fmt.Sprintf(
+			"private Key does not have a corresponding public key in this series")
 		return managerError(ErrKeysPrivatePublicMismatch, str, nil)
 	}
 
