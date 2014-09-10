@@ -217,14 +217,11 @@ func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
-	if _, err := pool.DepositScriptAddress(0, 0, 0); err == nil {
-		t.Fatalf("Expected an error, got none")
-	} else {
-		rerr := err.(waddrmgr.ManagerError)
-		if waddrmgr.ErrSeriesNotExists != rerr.ErrorCode {
-			t.Errorf("Expected ErrSeriesNotExists, got %v", rerr.ErrorCode)
-		}
-	}
+	_, err := pool.DepositScriptAddress(0, 0, 0)
+
+	missingErrMsg := "Expected an error, got none"
+	wrongErrMsg := fmt.Sprintf("Got %v, want %v", err, waddrmgr.ErrSeriesNotExists)
+	checkErrorMatches(t, err, waddrmgr.ErrSeriesNotExists, missingErrMsg, wrongErrMsg)
 }
 
 func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
@@ -238,14 +235,9 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 	// fail as we use the extended public keys to derive childs.
 	_, err := pool.DepositScriptAddress(0, 0, uint32(hdkeychain.HardenedKeyStart+1))
 
-	if err == nil {
-		t.Fatalf("Expected an error, got none")
-	} else {
-		rerr := err.(waddrmgr.ManagerError)
-		if waddrmgr.ErrKeyChain != rerr.ErrorCode {
-			t.Errorf("Expected ErrKeyChain, got %v", rerr.ErrorCode)
-		}
-	}
+	missingErrMsg := "Expected an error, got none"
+	wrongErrMsg := fmt.Sprintf("Got %v, want %v", err, waddrmgr.ErrKeyChain)
+	checkErrorMatches(t, err, waddrmgr.ErrKeyChain, missingErrMsg, wrongErrMsg)
 }
 
 func TestCreateVotingPool(t *testing.T) {
@@ -313,50 +305,45 @@ func TestPutSeriesErrors(t *testing.T) {
 	tests := []struct {
 		pubKeys []string
 		reqSigs uint32
-		err     waddrmgr.ManagerError
+		err     waddrmgr.ErrorCode
 		msg     string
 	}{
 		{
 			pubKeys: []string{pubKey0},
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrTooFewPublicKeys},
+			err:     waddrmgr.ErrTooFewPublicKeys,
 			msg:     "Should return error when passed too few pubkeys",
 		},
 		{
 			pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			reqSigs: 5,
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrTooManyReqSignatures},
+			err:     waddrmgr.ErrTooManyReqSignatures,
 			msg:     "Should return error when reqSigs > len(pubKeys)",
 		},
 		{
 			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey0},
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyDuplicate},
+			err:     waddrmgr.ErrKeyDuplicate,
 			msg:     "Should return error when passed duplicate pubkeys",
 		},
 		{
 			pubKeys: []string{"invalidxpub1", "invalidxpub2", "invalidxpub3"},
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyChain},
+			err:     waddrmgr.ErrKeyChain,
 			msg:     "Should return error when passed invalid pubkey",
 		},
 		{
 			pubKeys: []string{privKey0, privKey1, privKey2},
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyIsPrivate},
+			err:     waddrmgr.ErrKeyIsPrivate,
 			msg:     "Should return error when passed private keys",
 		},
 	}
 
 	for i, test := range tests {
 		err := pool.TstPutSeries(uint32(i), test.pubKeys, test.reqSigs)
-		if err == nil {
-			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v", test.pubKeys, test.reqSigs)
-			t.Errorf(str)
-		} else {
-			retErr := err.(waddrmgr.ManagerError)
-			if test.err.ErrorCode != retErr.ErrorCode {
-				t.Errorf(
-					"Create series #%d - Incorrect error type passed back: got %s, want %s",
-					i, retErr.ErrorCode, test.err.ErrorCode)
-			}
-		}
+
+		missingErrMsg := fmt.Sprintf(
+			test.msg+" pubKeys: %v, reqSigs: %v", test.pubKeys, test.reqSigs)
+		wrongErrMsg := fmt.Sprintf("Series #%d - Incorrect error type passed back: got %v, want %v",
+			i, err, test.err)
+		checkErrorMatches(t, err, test.err, missingErrMsg, wrongErrMsg)
 	}
 }
 
@@ -650,7 +637,7 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
-	var seriesId uint32 = 1
+	seriesId := uint32(1)
 
 	if err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1, pubKey2, pubKey3}, 3); err != nil {
 		t.Fatalf("Failed to create series", err)
@@ -660,15 +647,11 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 		t.Fatalf("Failed to empower series", err)
 	}
 
-	if err := pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2); err == nil {
-		t.Errorf("Replaced an empowered series. That should not be possible", err)
-	} else {
-		gotErr := err.(waddrmgr.ManagerError)
-		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesAlreadyEmpowered)
-		if wantErrCode != gotErr.ErrorCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
+	err := pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2)
+
+	missingErrMsg := "Replaced an empowered series. That should not be possible"
+	wrongErrMsg := fmt.Sprintf("Got %s, want %s", err, waddrmgr.ErrSeriesAlreadyEmpowered)
+	checkErrorMatches(t, err, waddrmgr.ErrSeriesAlreadyEmpowered, missingErrMsg, wrongErrMsg)
 }
 
 func TestReplaceNonExistingSeries(t *testing.T) {
@@ -676,15 +659,11 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 	defer tearDown()
 
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	if err := pool.ReplaceSeries(uint32(1), pubKeys, 3); err == nil {
-		t.Errorf("Replaced non-existant series. This should not be possible.")
-	} else {
-		gotErr := err.(waddrmgr.ManagerError)
-		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesNotExists)
-		if wantErrCode != gotErr.ErrorCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
+	err := pool.ReplaceSeries(uint32(1), pubKeys, 3)
+
+	missingErrMsg := "Replaced non-existant series. This should not be possible"
+	wrongErrMsg := fmt.Sprintf("Got %s, want %s", err, waddrmgr.ErrSeriesNotExists)
+	checkErrorMatches(t, err, waddrmgr.ErrSeriesNotExists, missingErrMsg, wrongErrMsg)
 }
 
 type replaceSeriesTestEntry struct {
@@ -791,77 +770,58 @@ func TestEmpowerSeries(t *testing.T) {
 	defer tearDown()
 
 	seriesID := uint32(0)
-	err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2)
-	if err != nil {
+	if err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+
+	if err := pool.EmpowerSeries(seriesID, privKey2); err != nil {
+		t.Errorf("Failed to empower series: %v", err)
+	}
+}
+
+func TestEmpowerSeriesErrors(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	seriesID := uint32(0)
+	if err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
 
 	tests := []struct {
 		seriesID uint32
 		key      string
-		err      error
+		err      waddrmgr.ErrorCode
 	}{
 		{
-			seriesID: 0,
-			key:      privKey0,
-		},
-		{
-			seriesID: 0,
-			key:      privKey1,
-		},
-		{
 			seriesID: 1,
-			key:      privKey0,
-			// invalid series
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesNotExists},
+			key:      privKey0, // Non-existant series
+			err:      waddrmgr.ErrSeriesNotExists,
 		},
 		{
 			seriesID: 0,
-			key:      "NONSENSE",
-			// invalid private key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyChain},
+			key:      "NONSENSE", // Invalid private key
+			err:      waddrmgr.ErrKeyChain,
 		},
 		{
 			seriesID: 0,
-			key:      pubKey5,
-			// wrong type of key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyIsPublic},
+			key:      pubKey5, // Wrong type of key
+			err:      waddrmgr.ErrKeyIsPublic,
 		},
 		{
 			seriesID: 0,
-			key:      privKey5,
-			// key not corresponding to pub key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeysPrivatePublicMismatch},
+			key:      privKey5, // Key not corresponding to any of the pub keys in the series
+			err:      waddrmgr.ErrKeysPrivatePublicMismatch,
 		},
 	}
 
-	for testNum, test := range tests {
+	for i, test := range tests {
 		// add the extended private key to voting pool
 		err := pool.EmpowerSeries(test.seriesID, test.key)
-		if test.err != nil {
-			if err == nil {
-				t.Errorf("EmpowerSeries #%d Expected an error and got none", testNum)
-				continue
-			}
-			if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
-				t.Errorf("DepositScript #%d wrong error type "+
-					"got: %v <%T>, want: %T", testNum, err, err, test.err)
-				continue
-			}
-			rerr := err.(waddrmgr.ManagerError)
-			trerr := test.err.(waddrmgr.ManagerError)
-			if rerr.ErrorCode != trerr.ErrorCode {
-				t.Errorf("DepositScript #%d wrong error code got: %v, want: %v",
-					testNum, rerr.ErrorCode, trerr.ErrorCode)
-				continue
-			}
-			continue
-		}
 
-		if err != nil {
-			t.Errorf("EmpowerSeries #%d Unexpected error %v", testNum, err)
-			continue
-		}
+		missingErrMsg := fmt.Sprintf("EmpowerSeries #%d expected an error and got none", i)
+		wrongErrMsg := fmt.Sprintf("EmpowerSeries #%d, got %s, want %s", i, err, test.err)
+		checkErrorMatches(t, err, test.err, missingErrMsg, wrongErrMsg)
 	}
 
 }
@@ -1163,5 +1123,15 @@ func TestReverse(t *testing.T) {
 				t.Errorf("Reverse failed: Reverse(Reverse(x)) != x. Exp: %v, Got: %v", keys[i], revRevKeys[i])
 			}
 		}
+	}
+}
+
+// checkErrorMatches checks that we got the error we wanted, calling t.Errorf(missingErr) if we
+// got no error or t.Errorf(wrongErr) if the errors are not the same.
+func checkErrorMatches(t *testing.T, got error, want waddrmgr.ErrorCode, missingErr, wrongErr string) {
+	if got == nil {
+		t.Errorf(missingErr)
+	} else if want != got.(waddrmgr.ManagerError).ErrorCode {
+		t.Errorf(wrongErr)
 	}
 }
