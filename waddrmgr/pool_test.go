@@ -702,8 +702,13 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 
 	if err := pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2); err == nil {
 		t.Errorf("Replaced an empowered series. That should not be possible", err)
+	} else {
+		gotErr := err.(waddrmgr.ManagerError)
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesAlreadyEmpowered)
+		if wantErrCode != gotErr.ErrorCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
 	}
-
 }
 
 func TestReplaceNonExistingSeries(t *testing.T) {
@@ -713,6 +718,12 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
 	if err := pool.ReplaceSeries(uint32(1), pubKeys, 3); err == nil {
 		t.Errorf("Replaced non-existant series. This should not be possible.")
+	} else {
+		gotErr := err.(waddrmgr.ManagerError)
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesNotExists)
+		if wantErrCode != gotErr.ErrorCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
 	}
 }
 
