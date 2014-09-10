@@ -704,9 +704,9 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 		t.Errorf("Replaced an empowered series. That should not be possible", err)
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
-		expErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesAlreadyEmpowered)
-		if expErrCode != gotErr.ErrorCode {
-			t.Errorf("Expected %s, got %s", expErrCode.String(), gotErr.ErrorCode.String())
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesAlreadyEmpowered)
+		if wantErrCode != gotErr.ErrorCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
 		}
 	}
 }
@@ -720,9 +720,9 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 		t.Errorf("Replaced non-existant series. This should not be possible.")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
-		expErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesNotExists)
-		if expErrCode != gotErr.ErrorCode {
-			t.Errorf("Expected %s, got %s", expErrCode.String(), gotErr.ErrorCode.String())
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesNotExists)
+		if wantErrCode != gotErr.ErrorCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
 		}
 	}
 }
