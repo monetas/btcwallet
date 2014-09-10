@@ -158,7 +158,7 @@ func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
 	} else {
 		gotErr := err.(ManagerError)
 		wantErrCode := ErrorCode(ErrCrypto)
-		if wantErrCode != gotErr.ErrorCode {
+		if gotErr.ErrorCode != wantErrCode {
 			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
 		}
 	}
@@ -181,7 +181,7 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 	} else {
 		gotErr := err.(ManagerError)
 		wantErrCode := ErrorCode(ErrKeyChain)
-		if wantErrCode != gotErr.ErrorCode {
+		if gotErr.ErrorCode != wantErrCode {
 			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
 		}
 	}
