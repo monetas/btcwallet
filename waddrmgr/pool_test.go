@@ -261,57 +261,6 @@ func TestCreateVotingPool(t *testing.T) {
 	}
 }
 
-func TestCreateSeriesTooFewKeys(t *testing.T) {
-	tearDown, _, pool := setUp(t)
-	defer tearDown()
-
-	if err := pool.CreateSeries(1, []string{pubKey0, pubKey1}, 1); err == nil {
-		t.Errorf("Created series with only two keys - minimum should is 3")
-	}
-}
-
-func TestCreateSeriesTooManyReqSigs(t *testing.T) {
-	tearDown, _, pool := setUp(t)
-	defer tearDown()
-
-	pubKeys := []string{pubKey0, pubKey1, pubKey3}
-	reqSigs := uint32(4)
-	if err := pool.CreateSeries(1, pubKeys, reqSigs); err == nil {
-		t.Errorf("Required signatures (%d) must not be more than the number of keys (%d)", reqSigs, len(pubKeys))
-	}
-}
-
-func TestReplaceSeriesTooFewKeys(t *testing.T) {
-	tearDown, _, pool := setUp(t)
-	defer tearDown()
-
-	if err := pool.CreateSeries(1, []string{pubKey0, pubKey1, pubKey3}, 1); err != nil {
-		t.Fatal("Created series with only two keys - minimum should is 3")
-	}
-
-	if err := pool.CreateSeries(1, []string{pubKey0, pubKey1, pubKey3}, 1); err == nil {
-		t.Errorf("Replaced series with only two keys - minimum should is 3")
-	}
-
-}
-
-func TestReplaceSeriesTooManyReqSigs(t *testing.T) {
-	tearDown, _, pool := setUp(t)
-	defer tearDown()
-
-	var reqSigs uint32 = 2
-	pubKeys := []string{pubKey0, pubKey1, pubKey3}
-	if err := pool.CreateSeries(1, pubKeys, reqSigs); err != nil {
-		t.Fatalf("Failed to create series", err)
-	}
-
-	reqSigs = 4
-	if err := pool.ReplaceSeries(1, pubKeys, reqSigs); err == nil {
-		t.Errorf("Required signatures (%d) <= number of keys (%d) requirement violated.", reqSigs, len(pubKeys))
-	}
-
-}
-
 func TestCreateSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
@@ -357,7 +306,7 @@ func TestCreateSeries(t *testing.T) {
 	}
 }
 
-func TestCreateSeriesErrors(t *testing.T) {
+func TestPutSeriesErrors(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
@@ -367,6 +316,17 @@ func TestCreateSeriesErrors(t *testing.T) {
 		err     waddrmgr.ManagerError
 		msg     string
 	}{
+		{
+			pubKeys: []string{pubKey0},
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrTooFewPublicKeys},
+			msg:     "Should return error when passed too few pubkeys",
+		},
+		{
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
+			reqSigs: 5,
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrTooManyReqSignatures},
+			msg:     "Should return error when reqSigs > len(pubKeys)",
+		},
 		{
 			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey0},
 			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyDuplicate},
@@ -385,7 +345,7 @@ func TestCreateSeriesErrors(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		err := pool.CreateSeries(uint32(i), test.pubKeys, test.reqSigs)
+		err := pool.TstPutSeries(uint32(i), test.pubKeys, test.reqSigs)
 		if err == nil {
 			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v", test.pubKeys, test.reqSigs)
 			t.Errorf(str)

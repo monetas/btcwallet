@@ -141,3 +141,7 @@ func (s *seriesData) TstGetRawPrivateKeys() []string {
 func (s *seriesData) TstGetReqSigs() uint32 {
 	return s.reqSigs
 }
+
+func (vp *VotingPool) TstPutSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
+	return vp.putSeries(seriesID, inRawPubKeys, reqSigs)
+}
