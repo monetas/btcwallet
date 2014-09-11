@@ -1817,7 +1817,7 @@ func CreateSeries(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interfac
 		return nil, btcjson.ErrInternal
 	}
 	err := w.Manager.LoadVotingPoolAndCreateSeries(
-		cmd.PoolID, cmd.SeriesID, cmd.PubKeys, cmd.ReqSigs)
+		cmd.Version, cmd.PoolID, cmd.SeriesID, cmd.ReqSigs, cmd.PubKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -1834,7 +1834,7 @@ func ReplaceSeries(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interfa
 		return nil, btcjson.ErrInternal
 	}
 	err := w.Manager.LoadVotingPoolAndReplaceSeries(
-		cmd.PoolID, cmd.SeriesID, cmd.PubKeys, cmd.ReqSigs)
+		cmd.Version, cmd.PoolID, cmd.SeriesID, cmd.ReqSigs, cmd.PubKeys)
 	if err != nil {
 		return nil, err
 	}
