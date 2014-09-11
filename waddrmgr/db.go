@@ -70,12 +70,19 @@ const (
 	// secretbox.Overhead == overhead for encrypting (16)
 	// actual base58 extended key length = (111)
 	// snacl.NonceSize == nonce size used for encryption (24)
-	keyLength = secretbox.Overhead + 111 + snacl.NonceSize
-	// 4 bytes for number of keys, 4 bytes for required signatures
-	minSerial = 8
+	seriesKeyLength = secretbox.Overhead + 111 + snacl.NonceSize
+	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
+	seriesMinSerial = 13
 	// 15 is the max number of keys in a voting pool, 1 each for
 	// pubkey and privkey
-	maxSerial = minSerial + 15*keyLength*2
+	seriesMaxSerial = seriesMinSerial + 15*seriesKeyLength*2
+	// version of serialized Series that we support
+	seriesMaxVersion = 1
+)
+
+var (
+	// string representing a non-existent private key
+	seriesNullPrivKey = [seriesKeyLength]byte{}
 )
 
 // dbAccountRow houses information stored about an account in the database.
@@ -96,6 +103,8 @@ type dbBIP0044AccountRow struct {
 }
 
 type dbSeriesRow struct {
+	version           uint32
+	active            bool
 	reqSigs           uint32
 	pubKeysEncrypted  [][]byte
 	privKeysEncrypted [][]byte
@@ -158,9 +167,6 @@ var (
 
 	// Account related key names (account bucket).
 	acctNumAcctsName = []byte("numaccts")
-
-	// string representing a non-existent private key
-	nullPrivKey = [keyLength]byte{}
 )
 
 // managerTx represents a database transaction on which all database reads and
@@ -333,24 +339,38 @@ func bytesToUint32(encoded []byte) uint32 {
 // serializeSeriesRow serializes the passed in series information.
 func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	// The serialized series format is:
-	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
+	// <version><active><reqSigs><nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN>
 	//
-	// 4 bytes no. of keys
-	// + keyLength * 2 * number of keys (1 for priv, 1 for pub)
-	// + 4 bytes no. of required sigs
+	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
+	// + seriesKeyLength * 2 * nKeys (1 for priv, 1 for pub)
 
-	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
-		str := fmt.Sprintf("different number of public (%v) keys and private (%v) keys",
+	if len(row.privKeysEncrypted) != 0 &&
+		len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
+		str := fmt.Sprintf("different # of pub (%v) and priv (%v) keys",
 			len(row.pubKeysEncrypted), len(row.privKeysEncrypted))
 		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
-	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
+	if row.version > seriesMaxVersion {
+		str := fmt.Sprintf("serialization supports up to ver. %v not %v",
+			row.version, seriesMaxVersion)
+		return nil, managerError(ErrSeriesVersion, str, nil)
+	}
+
+	serialized := uint32ToBytes(row.version)
+	if row.active {
+		serialized = append(serialized, 0x01)
+	} else {
+		serialized = append(serialized, 0x00)
+	}
+	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
+	nKeys := uint32(len(row.pubKeysEncrypted))
+	serialized = append(serialized, uint32ToBytes(nKeys)...)
 
 	var privKeyEncrypted []byte
 	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
 		// check that the encrypted length is correct
-		if len(pubKeyEncrypted) != keyLength {
+		if len(pubKeyEncrypted) != seriesKeyLength {
 			str := fmt.Sprintf("wrong length of Encrypted Public Key: %v",
 				pubKeyEncrypted)
 			return nil, managerError(ErrSeriesStorage, str, nil)
@@ -358,14 +378,14 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 		serialized = append(serialized, pubKeyEncrypted...)
 
 		if len(row.privKeysEncrypted) == 0 {
-			privKeyEncrypted = nullPrivKey[:]
+			privKeyEncrypted = seriesNullPrivKey[:]
 		} else {
 			privKeyEncrypted = row.privKeysEncrypted[i]
 		}
 
 		if privKeyEncrypted == nil {
-			serialized = append(serialized, nullPrivKey[:]...)
-		} else if len(privKeyEncrypted) != keyLength {
+			serialized = append(serialized, seriesNullPrivKey[:]...)
+		} else if len(privKeyEncrypted) != seriesKeyLength {
 			str := fmt.Sprintf("wrong length of Encrypted Private Key: %v",
 				len(privKeyEncrypted))
 			return nil, managerError(ErrSeriesStorage, str, nil)
@@ -373,24 +393,20 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 			serialized = append(serialized, privKeyEncrypted...)
 		}
 	}
-
-	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
-
 	return serialized, nil
 }
 
 // deserializeSeriesRow deserializes
 func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// The serialized series format is:
-	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
+	// <version><active><nKeys><reqSigs><pubKey1><privKey1>...<pubkeyN><privKeyN>
 	//
-	// 4 bytes no. of keys
-	// + keyLength * 2 * number of keys (1 for priv, 1 for pub)
-	// + 4 bytes no. of required sigs
+	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
+	// + seriesKeyLength * 2 * nKeys (1 for priv, 1 for pub)
 
 	// given the above, the length of the serialized series should be
 	//  at minimum the length of the constants
-	if len(serializedSeries) < minSerial {
+	if len(serializedSeries) < seriesMinSerial {
 		str := fmt.Sprintf("serialized series is too short: %v",
 			serializedSeries)
 		return nil, managerError(ErrSeriesStorage, str, nil)
@@ -398,47 +414,60 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 
 	// maximum number of public keys is 15 and the same for public keys
 	//  this gives us an upper bound
-	if len(serializedSeries) > maxSerial {
+	if len(serializedSeries) > seriesMaxSerial {
 		str := fmt.Sprintf("serialized series is too long: %v",
 			serializedSeries)
 		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
-	// keeps track of the next set of bytes to serialize
+	// keeps track of the next set of bytes to deserialize
 	current := 0
+	row := dbSeriesRow{}
 
-	// number of keys (4 bytes)
+	row.version = bytesToUint32(serializedSeries[current : current+4])
+	if row.version > seriesMaxVersion {
+		str := fmt.Sprintf("deserialization supports up to ver. %v not %v",
+			row.version, seriesMaxVersion)
+		return nil, managerError(ErrSeriesVersion, str, nil)
+	}
+	current += 4
+	if serializedSeries[current] == 0x01 {
+		row.active = true
+	} else {
+		row.active = false
+	}
+	current += 1
+	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
+	current += 4
 	nKeys := bytesToUint32(serializedSeries[current : current+4])
 	current += 4
 
 	// check to see if we have the right number of bytes to consume
-	if len(serializedSeries) < current+int(nKeys)*keyLength*2+4 {
+	if len(serializedSeries) < current+int(nKeys)*seriesKeyLength*2 {
 		str := fmt.Sprintf("serialized series has not enough data: %v",
 			serializedSeries)
 		return nil, managerError(ErrSeriesStorage, str, nil)
-	} else if len(serializedSeries) > current+int(nKeys)*keyLength*2+4 {
+	} else if len(serializedSeries) > current+int(nKeys)*seriesKeyLength*2 {
 		str := fmt.Sprintf("serialized series has too much data: %v",
 			serializedSeries)
 		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
-	// deserialize the pubkey/privkey pair
-	row := dbSeriesRow{}
+	// deserialize the pubkey/privkey pairs
 	row.pubKeysEncrypted = make([][]byte, nKeys)
 	row.privKeysEncrypted = make([][]byte, nKeys)
 	for i := 0; i < int(nKeys); i++ {
-		row.pubKeysEncrypted[i] = serializedSeries[current+keyLength*i*2 : current+keyLength*i*2+keyLength]
-		privKeyEncrypted := serializedSeries[current+keyLength*i*2+keyLength : current+keyLength*(i+1)*2]
-		if bytes.Equal(privKeyEncrypted, nullPrivKey[:]) {
+		pubKeyStart := current + seriesKeyLength*i*2
+		pubKeyEnd := current + seriesKeyLength*i*2 + seriesKeyLength
+		privKeyEnd := current + seriesKeyLength*(i+1)*2
+		row.pubKeysEncrypted[i] = serializedSeries[pubKeyStart:pubKeyEnd]
+		privKeyEncrypted := serializedSeries[pubKeyEnd:privKeyEnd]
+		if bytes.Equal(privKeyEncrypted, seriesNullPrivKey[:]) {
 			row.privKeysEncrypted[i] = nil
 		} else {
 			row.privKeysEncrypted[i] = privKeyEncrypted
 		}
 	}
-
-	current += keyLength * int(nKeys) * 2
-
-	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
 
 	return &row, nil
 }
@@ -616,9 +645,10 @@ func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
 	return bucket != nil
 }
 
-// TODO: check parameter order consistency
-func (mtx *managerTx) PutSeries(votingPoolID []byte, ID, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
+func (mtx *managerTx) PutSeries(votingPoolID []byte, version, ID uint32, active bool, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
 	row := &dbSeriesRow{
+		version:           version,
+		active:            active,
 		reqSigs:           reqSigs,
 		pubKeysEncrypted:  pubKeysEncrypted,
 		privKeysEncrypted: privKeysEncrypted,
