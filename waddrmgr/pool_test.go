@@ -1090,19 +1090,19 @@ func TestBranchOrderNonZero(t *testing.T) {
 }
 
 func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) (origOrder, wantOrder, gotOrder []int) {
-	origOrder := []int{}
+	origOrder = []int{}
 	origMap := make(map[*btcutil.AddressPubKey]int)
 	for i, key := range orig {
 		origMap[key] = i + 1
 		origOrder = append(origOrder, i+1)
 	}
 
-	wantOrder := []int{}
+	wantOrder = []int{}
 	for _, key := range want {
 		wantOrder = append(wantOrder, origMap[key])
 	}
 
-	gotOrder := []int{}
+	gotOrder = []int{}
 	for _, key := range got {
 		gotOrder = append(gotOrder, origMap[key])
 	}
