@@ -31,10 +31,13 @@ const (
 
 // seriesData represents a Series for a given VotingPool.
 type seriesData struct {
+	version uint32
+	// reserved for future use
+	active bool
+	// A.k.a. "m" in "m of n signatures needed".
+	reqSigs     uint32
 	publicKeys  []*hdkeychain.ExtendedKey
 	privateKeys []*hdkeychain.ExtendedKey
-	reqSigs     uint32
-	// A.k.a. "m" in "m of n signatures needed".
 }
 
 // VotingPool represents an arrangement of notary servers to securely
@@ -109,8 +112,8 @@ func (m *Manager) LoadVotingPoolAndDepositScript(
 // creating a new one if it doesn't yet exist, and then creates and returns
 // a Series with the given seriesID, rawPubKeys and reqSigs. See CreateSeries
 // for the constraints enforced on rawPubKeys and reqSigs.
-func (m *Manager) LoadVotingPoolAndCreateSeries(
-	poolID string, seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+func (m *Manager) LoadVotingPoolAndCreateSeries(version uint32,
+	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
 	vp, err := m.LoadVotingPool(pid)
 	if err != nil {
@@ -124,20 +127,20 @@ func (m *Manager) LoadVotingPoolAndCreateSeries(
 			return err
 		}
 	}
-	return vp.CreateSeries(seriesID, rawPubKeys, reqSigs)
+	return vp.CreateSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
 // LoadVotingPoolAndReplaceSeries loads the voting pool with the given ID
 // and calls ReplaceSeries, passing the given series ID, public keys and
 // reqSigs to it.
-func (m *Manager) LoadVotingPoolAndReplaceSeries(
-	poolID string, seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+func (m *Manager) LoadVotingPoolAndReplaceSeries(version uint32,
+	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
 	vp, err := m.LoadVotingPool(pid)
 	if err != nil {
 		return err
 	}
-	return vp.ReplaceSeries(seriesID, rawPubKeys, reqSigs)
+	return vp.ReplaceSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
 // LoadVotingPoolAndEmpowerSeries loads the voting pool with the given ID
@@ -191,8 +194,8 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 	}
 
 	err = vp.manager.db.Update(func(tx *managerTx) error {
-		return tx.PutSeries(vp.ID, seriesID, data.reqSigs,
-			encryptedPubKeys, encryptedPrivKeys)
+		return tx.PutSeries(vp.ID, data.version, seriesID, data.active,
+			data.reqSigs, encryptedPubKeys, encryptedPrivKeys)
 	})
 	if err != nil {
 		str := fmt.Sprintf("cannot put series #%d into db", seriesID)
@@ -245,7 +248,7 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 // pool's seriesLookup map. It also ensures inRawPubKeys has at least
 // MinSeriesPubKeys items and reqSigs is not greater than the number of items in
 // inRawPubKeys.
-func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
+func (vp *VotingPool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
 	if len(inRawPubKeys) < MinSeriesPubKeys {
 		str := fmt.Sprintf("need at least %d public keys to create a series", MinSeriesPubKeys)
 		return managerError(ErrTooFewPublicKeys, str, nil)
@@ -265,9 +268,11 @@ func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs 
 	}
 
 	data := &seriesData{
+		version:     version,
+		active:      false,
+		reqSigs:     reqSigs,
 		publicKeys:  keys,
 		privateKeys: make([]*hdkeychain.ExtendedKey, len(keys)),
-		reqSigs:     reqSigs,
 	}
 
 	err = vp.saveSeriesToDisk(seriesID, data)
@@ -282,20 +287,20 @@ func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs 
 //
 // - rawPubKeys has to contain three or more public keys;
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
-func (vp *VotingPool) CreateSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+func (vp *VotingPool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	if series := vp.GetSeries(seriesID); series != nil {
 		str := fmt.Sprintf("series #%d already exists", seriesID)
 		return managerError(ErrSeriesAlreadyExists, str, nil)
 	}
 
-	return vp.putSeries(seriesID, rawPubKeys, reqSigs)
+	return vp.putSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
 // ReplaceSeries will replace an already existing series.
 //
 // - rawPubKeys has to contain three or more public keys
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
-func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
+func (vp *VotingPool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist, cannot replace it", seriesID)
@@ -307,7 +312,7 @@ func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSig
 		return managerError(ErrSeriesAlreadyEmpowered, str, nil)
 	}
 
-	return vp.putSeries(seriesID, rawPubKeys, reqSigs)
+	return vp.putSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
 // decryptExtendedKey uses the given cryptoKey to decrypt the encrypted
