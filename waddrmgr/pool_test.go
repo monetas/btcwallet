@@ -1159,3 +1159,28 @@ func TestReverse(t *testing.T) {
 		}
 	}
 }
+
+func TestEmpowerSeriesNeuterFailed(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+
+	seriesID := uint32(0)
+	err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2)
+	if err != nil {
+		t.Fatalf("Failed to create series: %v", err)
+	}
+
+	// A private key with bad version (0xffffffff) will trigger an
+	// error in (k *ExtendedKey).Neuter and the associated error path
+	// in EmpowerSeries.
+	badKey := "wM5uZBNTYmaYGiK8VaGi7zPGbZGLuQgDiR2Zk4nGfbRFLXwHGcMUdVdazRpNHFSR7X7WLmzzbAq8dA1ViN6eWKgKqPye1rJTDQTvBiXvZ7E3nmdx"
+	if err := pool.EmpowerSeries(seriesID, badKey); err == nil {
+		t.Errorf("Expected an error, got none")
+	} else {
+		gotErr := err.(waddrmgr.ManagerError)
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrKeyNeuter)
+		if wantErrCode != gotErr.ErrorCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
+}
