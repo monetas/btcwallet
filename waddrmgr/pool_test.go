@@ -62,8 +62,8 @@ func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *wadd
 	t.Parallel()
 
 	// Create a new manager.
-	// we create the file and immediately delete it as the waddrmgr
-	//  needs to be doing the creating.
+	// We create the file and immediately delete it, as the waddrmgr
+	// needs to be doing the creating.
 	file, err := ioutil.TempDir("", "pool_test")
 	if err != nil {
 		t.Fatalf("Failed to create db file: %v", err)
@@ -107,7 +107,7 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 	strScript := hex.EncodeToString(script)
 	want := "5221035e94da75731a2153b20909017f62fcd49474c45f3b46282c0dafa8b40a3a312b2102e983a53dd20b7746dd100dfd2925b777436fc1ab1dd319433798924a5ce143e32102908d52a548ee9ef6b2d0ea67a3781a0381bc3570ad623564451e63757ff9393253ae"
 	if want != strScript {
-		t.Fatalf("Failed to get the right deposit script: got %v, want %v",
+		t.Fatalf("Failed to get the right deposit script. Got %v, want %v",
 			strScript, want)
 	}
 }
@@ -206,7 +206,7 @@ func TestDepositScriptAddress(t *testing.T) {
 			}
 			address := addr.Address().EncodeAddress()
 			if expectedAddress != address {
-				t.Errorf("DepositScript #%d returned the wrong deposit script got: %v, want: %v",
+				t.Errorf("DepositScript #%d returned the wrong deposit script. Got %v, want %v",
 					i, address, expectedAddress)
 			}
 		}
@@ -222,7 +222,7 @@ func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
 	} else {
 		rerr := err.(waddrmgr.ManagerError)
 		if waddrmgr.ErrSeriesNotExists != rerr.ErrorCode {
-			t.Errorf("Expected ErrSeriesNotExists, got %v", rerr.ErrorCode)
+			t.Errorf("Got %v, want ErrSeriesNotExists", rerr.ErrorCode)
 		}
 	}
 }
@@ -243,7 +243,7 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 	} else {
 		rerr := err.(waddrmgr.ManagerError)
 		if waddrmgr.ErrKeyChain != rerr.ErrorCode {
-			t.Errorf("Expected ErrKeyChain, got %v", rerr.ErrorCode)
+			t.Errorf("Got %v, want ErrKeyChain", rerr.ErrorCode)
 		}
 	}
 }
@@ -347,13 +347,14 @@ func TestPutSeriesErrors(t *testing.T) {
 	for i, test := range tests {
 		err := pool.TstPutSeries(uint32(i), test.pubKeys, test.reqSigs)
 		if err == nil {
-			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v", test.pubKeys, test.reqSigs)
+			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v",
+				test.pubKeys, test.reqSigs)
 			t.Errorf(str)
 		} else {
 			retErr := err.(waddrmgr.ManagerError)
 			if test.err.ErrorCode != retErr.ErrorCode {
 				t.Errorf(
-					"Create series #%d - Incorrect error type passed back: got %s, want %s",
+					"Create series #%d - Incorrect error type. Got %s, want %s",
 					i, retErr.ErrorCode, test.err.ErrorCode)
 			}
 		}
@@ -533,7 +534,7 @@ func TestSerialization(t *testing.T) {
 			for i, pubKey := range test.pubKeys {
 				encryptedPubs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(pubKey))
 				if err != nil {
-					t.Errorf("Serialization #%d -  Failed to encrypt public key %v",
+					t.Errorf("Serialization #%d - Failed to encrypt public key %v",
 						testNum, pubKey)
 				}
 			}
@@ -545,23 +546,24 @@ func TestSerialization(t *testing.T) {
 					encryptedPrivs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(privKey))
 				}
 				if err != nil {
-					t.Errorf("Serialization #%d -  Failed to encrypt private key %v",
+					t.Errorf("Serialization #%d - Failed to encrypt private key %v",
 						testNum, privKey)
 				}
 			}
 
-			serialized, err = waddrmgr.SerializeSeries(test.reqSigs, encryptedPubs, encryptedPrivs)
+			serialized, err = waddrmgr.SerializeSeries(
+				test.reqSigs, encryptedPubs, encryptedPrivs)
 			if test.err != nil {
 				if err == nil {
-					t.Errorf("Serialization #%d -  Should have gotten an error and didn't",
+					t.Errorf("Serialization #%d - Should have gotten an error and didn't",
 						testNum)
 					continue
 				}
 				terr := test.err.(waddrmgr.ManagerError)
 				rerr := err.(waddrmgr.ManagerError)
 				if terr.ErrorCode != rerr.ErrorCode {
-					t.Errorf("Serialization #%d -  Incorrect type of error passed back: "+
-						"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
+					t.Errorf("Serialization #%d - Received wrong error type. Got %d, want %d",
+						testNum, rerr.ErrorCode, terr.ErrorCode)
 				}
 				continue
 			} else if err != nil {
@@ -570,8 +572,8 @@ func TestSerialization(t *testing.T) {
 				continue
 			}
 		} else {
-			// shortcut this serialization and pretend we got some other string
-			//  that's defined in the test
+			// Shortcut this serialization and pretend we got some other string
+			// that's defined in the test.
 			serialized = test.serial
 		}
 
@@ -579,68 +581,60 @@ func TestSerialization(t *testing.T) {
 
 		if test.sErr != nil {
 			if err == nil {
-				t.Errorf("Serialization #%d -  Should have gotten an error and didn't",
+				t.Errorf("Serialization #%d - Did not get the expected error",
 					testNum)
 				continue
-
 			}
 			terr := test.sErr.(waddrmgr.ManagerError)
 			rerr := err.(waddrmgr.ManagerError)
 			if terr.ErrorCode != rerr.ErrorCode {
-				t.Errorf("Serialization #%d -  Incorrect type of error passed back: "+
-					"want %d got %d", testNum, terr.ErrorCode, rerr.ErrorCode)
+				t.Errorf("Serialization #%d - Incorrect error type. Got %d, want %d",
+					testNum, rerr.ErrorCode, terr.ErrorCode)
 			}
-
 			continue
 		}
 
 		if err != nil {
-			t.Errorf("Serialization #%d -  Failed to deserialize %v %v", testNum, serialized, err)
+			t.Errorf("Serialization #%d - Failed to deserialize %v %v",
+				testNum, serialized, err)
 			continue
-
 		}
 
 		if row.ReqSigs != test.reqSigs {
-			t.Errorf("Serialization #%d -  row reqSigs off: want %d got %d",
-				testNum, test.reqSigs, row.ReqSigs)
+			t.Errorf("Serialization #%d - row reqSigs off. Got %d, want %d",
+				testNum, row.ReqSigs, test.reqSigs)
 			continue
-
 		}
 
 		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
-			t.Errorf("Serialization #%d -  Number of pubkeys off: want %d got %d",
-				testNum, len(test.pubKeys), len(row.PubKeysEncrypted))
+			t.Errorf("Serialization #%d - Wrong no. of pubkeys. Got %d, want %d",
+				testNum, len(row.PubKeysEncrypted), len(test.pubKeys))
 			continue
-
 		}
 
 		for i, encryptedPub := range encryptedPubs {
 			got := string(row.PubKeysEncrypted[i])
 
 			if got != string(encryptedPub) {
-				t.Errorf("Serialization #%d -  Pubkey deserialization not the same: "+
-					"want %v got %v", testNum, string(encryptedPub), got)
+				t.Errorf("Serialization #%d - Pubkey deserialization. Got %v, want %v",
+					testNum, got, string(encryptedPub))
 				continue
-
 			}
-
 		}
 
 		if len(row.PrivKeysEncrypted) != len(row.PubKeysEncrypted) {
-			t.Errorf("Serialization #%d -  Number of privkeys not the same as number of pubkeys: pub %d priv %d",
-				testNum, len(row.PubKeysEncrypted), len(row.PrivKeysEncrypted))
+			t.Errorf("Serialization #%d - no. privkeys (%d) != no. pubkeys (%d)",
+				testNum, len(row.PrivKeysEncrypted), len(row.PubKeysEncrypted))
 			continue
-
 		}
 
 		for i, encryptedPriv := range encryptedPrivs {
 			got := string(row.PrivKeysEncrypted[i])
 
 			if got != string(encryptedPriv) {
-				t.Errorf("Serialization #%d -  Privkey deserialization not the same: "+
-					"want %v got %v", testNum, string(encryptedPriv), got)
+				t.Errorf("Serialization #%d - Privkey deserialization. Got %v, want %v",
+					testNum, got, string(encryptedPriv))
 				continue
-
 			}
 		}
 	}
@@ -652,7 +646,8 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 
 	var seriesId uint32 = 1
 
-	if err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1, pubKey2, pubKey3}, 3); err != nil {
+	err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1, pubKey2, pubKey3}, 3)
+	if err != nil {
 		t.Fatalf("Failed to create series", err)
 	}
 
@@ -660,8 +655,9 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 		t.Fatalf("Failed to empower series", err)
 	}
 
-	if err := pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2); err == nil {
-		t.Errorf("Replaced an empowered series. That should not be possible", err)
+	err = pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2)
+	if err == nil {
+		t.Errorf("Replaced an empowered series. This should not be possible", err)
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
 		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesAlreadyEmpowered)
@@ -677,7 +673,7 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
 	if err := pool.ReplaceSeries(uint32(1), pubKeys, 3); err == nil {
-		t.Errorf("Replaced non-existant series. This should not be possible.")
+		t.Errorf("Replaced non-existent series. This should not be possible.")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
 		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesNotExists)
@@ -697,43 +693,41 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 	{
 		testId: 0,
 		orig: seriesRaw{
-			id: 0,
-			pubKeys: waddrmgr.CanonicalKeyOrder(
-				[]string{pubKey0, pubKey1, pubKey2, pubKey4}),
+			id:      0,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey4}),
 			reqSigs: 2,
 		},
 		replaceWith: seriesRaw{
-			id: 0,
-			pubKeys: waddrmgr.CanonicalKeyOrder(
-				[]string{pubKey3, pubKey4, pubKey5}),
+			id:      0,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey3, pubKey4, pubKey5}),
 			reqSigs: 1,
 		},
 	},
 	{
 		testId: 1,
 		orig: seriesRaw{
-			id: 2,
-			pubKeys: waddrmgr.CanonicalKeyOrder(
-				[]string{pubKey0, pubKey1, pubKey2}),
+			id:      2,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2}),
 			reqSigs: 2,
 		},
 		replaceWith: seriesRaw{
-			id: 2,
-			pubKeys: waddrmgr.CanonicalKeyOrder(
-				[]string{pubKey3, pubKey4, pubKey5, pubKey6}),
+			id:      2,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey3, pubKey4, pubKey5, pubKey6}),
 			reqSigs: 2,
 		},
 	},
 	{
 		testId: 2,
 		orig: seriesRaw{
-			id:      4,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
+			id: 4,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{
+				pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
 			reqSigs: 8,
 		},
 		replaceWith: seriesRaw{
-			id:      4,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
+			id: 4,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{
+				pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
 			reqSigs: 7,
 		},
 	},
@@ -747,42 +741,47 @@ func TestReplaceExistingSeries(t *testing.T) {
 		seriesID := data.orig.id
 		testID := data.testId
 
-		if err := pool.CreateSeries(seriesID, data.orig.pubKeys, data.orig.reqSigs); err != nil {
-			t.Fatalf("Test #%d: Failed to create series in replace series setup", testID, err)
+		err := pool.CreateSeries(seriesID, data.orig.pubKeys, data.orig.reqSigs)
+		if err != nil {
+			t.Fatalf("Test #%d: failed to create series in replace series setup",
+				testID, err)
 		}
 
-		if err := pool.ReplaceSeries(seriesID, data.replaceWith.pubKeys, data.replaceWith.reqSigs); err != nil {
-			t.Errorf("Test #%d: ReplaceSeries failed: ", testID, err)
+		err = pool.ReplaceSeries(seriesID, data.replaceWith.pubKeys, data.replaceWith.reqSigs)
+		if err != nil {
+			t.Errorf("Test #%d: replaceSeries failed", testID, err)
 		}
 
 		validateReplaceSeries(t, pool, testID, data.replaceWith)
 	}
 }
 
-// validate the created series stored in the system corresponds to the series we replaced the original with.
+// validateReplaceSeries validate the created series stored in the system
+// corresponds to the series we replaced the original with.
 func validateReplaceSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, replacedWith seriesRaw) {
 	seriesID := replacedWith.id
 	series := pool.GetSeries(seriesID)
 	if series == nil {
-		t.Fatalf("Test #%d Series #%d: series not found",
-			testID, seriesID)
+		t.Fatalf("Test #%d Series #%d: series not found", testID, seriesID)
 	}
 
 	pubKeys := series.TstGetRawPublicKeys()
 	// Check that the public keys match what we expect.
 	if !reflect.DeepEqual(replacedWith.pubKeys, pubKeys) {
-		t.Errorf("Test #%d Series #%d: pubkeys mismatch. Expected: %v, got %v",
-			testID, seriesID, replacedWith.pubKeys, pubKeys)
+		t.Errorf("Test #%d, series #%d: pubkeys mismatch. Got %v, want %v",
+			testID, seriesID, pubKeys, replacedWith.pubKeys)
 	}
 
-	// check number of required sigs
+	// Check number of required sigs.
 	if replacedWith.reqSigs != series.TstGetReqSigs() {
-		t.Errorf("Test #%d Series #%d: validate series failed, required signatures mismatch. Exp: %d, got %d", testID, seriesID, replacedWith.reqSigs, series.TstGetReqSigs())
+		t.Errorf("Test #%d, series #%d: required signatures mismatch. Got %d, want %d",
+			testID, seriesID, series.TstGetReqSigs(), replacedWith.reqSigs)
 	}
 
-	// check series is not empowered
+	// Check that the series is not empowered.
 	if series.IsEmpowered() {
-		t.Errorf("Test #%d Series #%d: this series is empowered but should not be", testID, seriesID)
+		t.Errorf("Test #%d, series #%d: series is empowered but should not be",
+			testID, seriesID)
 	}
 }
 
@@ -836,7 +835,7 @@ func TestEmpowerSeries(t *testing.T) {
 	}
 
 	for testNum, test := range tests {
-		// add the extended private key to voting pool
+		// Add the extended private key to voting pool.
 		err := pool.EmpowerSeries(test.seriesID, test.key)
 		if test.err != nil {
 			if err == nil {
@@ -844,14 +843,14 @@ func TestEmpowerSeries(t *testing.T) {
 				continue
 			}
 			if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
-				t.Errorf("DepositScript #%d wrong error type "+
-					"got: %v <%T>, want: %T", testNum, err, err, test.err)
+				t.Errorf("DepositScript #%d wrong error type. Got: %v <%T>, want: %T",
+					testNum, err, err, test.err)
 				continue
 			}
 			rerr := err.(waddrmgr.ManagerError)
 			trerr := test.err.(waddrmgr.ManagerError)
 			if rerr.ErrorCode != trerr.ErrorCode {
-				t.Errorf("DepositScript #%d wrong error code got: %v, want: %v",
+				t.Errorf("DepositScript #%d wrong error code. Got: %v, want: %v",
 					testNum, rerr.ErrorCode, trerr.ErrorCode)
 				continue
 			}
@@ -881,7 +880,7 @@ func TestGetSeries(t *testing.T) {
 	}
 	pubKeys := series.TstGetRawPublicKeys()
 	if !reflect.DeepEqual(pubKeys, expectedPubKeys) {
-		t.Errorf("Series pubKeys mismatch. Expected %v, got %v", expectedPubKeys, pubKeys)
+		t.Errorf("Series pubKeys mismatch. Got %v, want %v", pubKeys, expectedPubKeys)
 	}
 }
 
@@ -941,15 +940,15 @@ func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSer
 	for _, series := range test.series {
 		err := pool.CreateSeries(series.id, series.pubKeys, series.reqSigs)
 		if err != nil {
-			t.Fatalf("Test #%d Series #%d: Failed to create series: %v",
+			t.Fatalf("Test #%d Series #%d: failed to create series: %v",
 				test.id, series.id, err)
 		}
 
 		for _, privKey := range series.privKeys {
 			err := pool.EmpowerSeries(series.id, privKey)
 			if err != nil {
-				t.Fatalf("Test #%d Series #%d: Failed to empower series with privKey"+
-					"%v: %v", test.id, series.id, privKey, err)
+				t.Fatalf("Test #%d Series #%d: empower with privKey %v failed: %v",
+					test.id, series.id, privKey, err)
 			}
 		}
 	}
@@ -965,7 +964,7 @@ func TestLoadAllSeries(t *testing.T) {
 		pool.TstEmptySeriesLookup()
 		err := pool.LoadAllSeries()
 		if err != nil {
-			t.Fatalf("Test #%d: Failed to load voting pool: %v", test.id, err)
+			t.Fatalf("Test #%d: failed to load voting pool: %v", test.id, err)
 		}
 		for _, seriesData := range test.series {
 			validateLoadAllSeries(t, pool, test.id, seriesData)
@@ -973,40 +972,35 @@ func TestLoadAllSeries(t *testing.T) {
 	}
 }
 
-/*
-validateLoadAllSeries checks the following:
-1. series exists
-2. reqSigs is what we inserted
-3. pubkeys and privkeys have the same length
-4. pubkeys are what we inserted (length and content)
-5. privkeys are what we inserted (length and content)
-*/
 func validateLoadAllSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, seriesData seriesRaw) {
-
 	series := pool.GetSeries(seriesData.id)
+
+	// Check that the series exists.
 	if series == nil {
-		t.Errorf("Test #%d Series #%d: series not found",
-			testID, seriesData.id)
+		t.Errorf("Test #%d, series #%d: series not found", testID, seriesData.id)
 	}
 
+	// Check that reqSigs is what we inserted.
 	if seriesData.reqSigs != series.TstGetReqSigs() {
-		t.Errorf("Test #%d Series #%d: required sigs are different want %d got %d",
-			testID, seriesData.id, seriesData.reqSigs, series.TstGetReqSigs())
+		t.Errorf("Test #%d, series #%d: required sigs are different. Got %d, want %d",
+			testID, seriesData.id, series.TstGetReqSigs(), seriesData.reqSigs)
 	}
 
+	// Check that pubkeys and privkeys have the same length.
 	publicKeys := series.TstGetRawPublicKeys()
 	privateKeys := series.TstGetRawPrivateKeys()
 	if len(privateKeys) != len(publicKeys) {
-		t.Errorf("Test #%d Series #%d: wrong number of private keys: want %d got %d",
-			testID, seriesData.id, len(publicKeys), len(privateKeys))
+		t.Errorf("Test #%d, series #%d: wrong number of private keys. Got %d, want %d",
+			testID, seriesData.id, len(privateKeys), len(publicKeys))
 	}
 
 	sortedKeys := waddrmgr.CanonicalKeyOrder(seriesData.pubKeys)
 	if !reflect.DeepEqual(publicKeys, sortedKeys) {
-		t.Errorf("Test #%d Series #%d: public keys mismatch, expected %v, got %v",
-			testID, seriesData.id, publicKeys, sortedKeys)
+		t.Errorf("Test #%d, series #%d: public keys mismatch. Got %d, want %d",
+			testID, seriesData.id, sortedKeys, publicKeys)
 	}
 
+	// Check that privkeys are what we inserted (length and content).
 	foundPrivKeys := make([]string, 0, len(seriesData.pubKeys))
 	for _, privateKey := range privateKeys {
 		if privateKey != "" {
@@ -1016,8 +1010,8 @@ func validateLoadAllSeries(t *testing.T, pool *waddrmgr.VotingPool, testID int, 
 	foundPrivKeys = waddrmgr.CanonicalKeyOrder(foundPrivKeys)
 	privKeys := waddrmgr.CanonicalKeyOrder(seriesData.privKeys)
 	if !reflect.DeepEqual(privKeys, foundPrivKeys) {
-		t.Errorf("Test #%d Series #%d: private keys mismatch, expected %v, got %v",
-			testID, seriesData.id, privKeys, foundPrivKeys)
+		t.Errorf("Test #%d, series #%d: private keys mismatch. Got %d, want %d",
+			testID, seriesData.id, foundPrivKeys, privKeys)
 	}
 }
 
@@ -1038,14 +1032,16 @@ func TestBranchOrderZero(t *testing.T) {
 		resKeys := waddrmgr.BranchOrder(inKeys, 0)
 
 		if len(resKeys) != len(wantKeys) {
-			t.Errorf("BranchOrder failed: returned slice has different length than the argument. Got: %d Exp: %d", len(resKeys), len(inKeys))
+			t.Errorf("BranchOrder: wrong no. of keys. Got: %d, want %d",
+				len(resKeys), len(inKeys))
 			return
 		}
 
 		for keyIdx := 0; i < len(inKeys); i++ {
 			if resKeys[keyIdx] != wantKeys[keyIdx] {
 				fmt.Printf("%p, %p\n", resKeys[i], wantKeys[i])
-				t.Errorf("BranchOrder(keys, 0) failed: Exp: %v, Got: %v", wantKeys[i], resKeys[i])
+				t.Errorf("BranchOrder(keys, 0): got %v, want %v",
+					resKeys[i], wantKeys[i])
 			}
 		}
 	}
@@ -1056,7 +1052,7 @@ func TestBranchOrderNilKeys(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		res := waddrmgr.BranchOrder(nil, uint32(i))
 		if res != nil {
-			t.Errorf("Tried to reorder a nil slice of public keys, but got something non-nil back")
+			t.Errorf("Got non-nil: %v, want nil.", res)
 		}
 	}
 }
@@ -1064,12 +1060,10 @@ func TestBranchOrderNilKeys(t *testing.T) {
 func TestBranchOrderNonZero(t *testing.T) {
 	maxBranch := 5
 	maxTail := 4
-	// Test branch reordering branch > 0. We test all all branch
-	// values in [1,5] in a slice of up to 9 (maxBranch-1 + branch-pivot
-	// + maxTail) keys. Hopefully that covers all combinations and
-	// edge-cases.
-
-	// we test the case branch := 0 elsewhere
+	// Test branch reordering for branch no. > 0. We test all branch values
+	// within [1, 5] in a slice of up to 9 (maxBranch-1 + branch-pivot +
+	// maxTail) keys. Hopefully that covers all combinations and edge-cases.
+	// We test the case where branch no. is 0 elsewhere.
 	for branch := 1; branch <= maxBranch; branch++ {
 		for j := 0; j <= maxTail; j++ {
 			first := createTestPubKeys(t, branch-1, 0)
@@ -1077,40 +1071,38 @@ func TestBranchOrderNonZero(t *testing.T) {
 			last := createTestPubKeys(t, j, branch+1)
 
 			inKeys := append(append(first, pivot...), last...)
-
 			wantKeys := append(append(pivot, first...), last...)
-
 			resKeys := waddrmgr.BranchOrder(inKeys, uint32(branch))
 
 			if len(resKeys) != len(inKeys) {
-				t.Errorf("BranchOrder failed: returned slice has different length than the argument. Got: %d Exp: %d", len(resKeys), len(inKeys))
+				t.Errorf("BranchOrder: wrong no. of keys. Got: %d, want %d",
+					len(resKeys), len(inKeys))
 			}
 
 			for idx := 0; idx < len(inKeys); idx++ {
 				if resKeys[idx] != wantKeys[idx] {
 					o, w, g := branchErrorFormat(inKeys, wantKeys, resKeys)
-					t.Errorf("Branch: %d\nOrig: %v\nWant: %v\nGot:  %v", branch, o, w, g)
+					t.Errorf("Branch: %d\nOrig: %v\nGot: %v\nWant: %v", branch, o, g, w)
 				}
 			}
 		}
 	}
 }
 
-// branchErrorFormat returns orig, want, got in that order
-func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) ([]int, []int, []int) {
-	origOrder := []int{}
+func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) (origOrder, wantOrder, gotOrder []int) {
+	origOrder = []int{}
 	origMap := make(map[*btcutil.AddressPubKey]int)
 	for i, key := range orig {
 		origMap[key] = i + 1
 		origOrder = append(origOrder, i+1)
 	}
 
-	wantOrder := []int{}
+	wantOrder = []int{}
 	for _, key := range want {
 		wantOrder = append(wantOrder, origMap[key])
 	}
 
-	gotOrder := []int{}
+	gotOrder = []int{}
 	for _, key := range got {
 		gotOrder = append(gotOrder, origMap[key])
 	}
@@ -1149,18 +1141,20 @@ func createTestPubKeys(t *testing.T, number, offset int) []*btcutil.AddressPubKe
 }
 
 func TestReverse(t *testing.T) {
-	// this basically just tests that the utility function that
-	// reverses a bunch of public keys. 11 is a random number
+	// Test the utility function that reverses a list of public keys.
+	// 11 is arbitrary.
 	for numKeys := 0; numKeys < 11; numKeys++ {
 		keys := createTestPubKeys(t, numKeys, 0)
 		revRevKeys := reverse(reverse(keys))
 		if len(keys) != len(revRevKeys) {
-			t.Errorf("Reverse twice the list of pubkeys changed the length. Exp: %d, Got: %d", len(keys), len(revRevKeys))
+			t.Errorf("Reverse(Reverse(x)): the no. pubkeys changed. Got %d, want %d",
+				len(revRevKeys), len(keys))
 		}
 
 		for i := 0; i < len(keys); i++ {
 			if keys[i] != revRevKeys[i] {
-				t.Errorf("Reverse failed: Reverse(Reverse(x)) != x. Exp: %v, Got: %v", keys[i], revRevKeys[i])
+				t.Errorf("Reverse(Reverse(x)) != x. Got %v, want %v",
+					revRevKeys[i], keys[i])
 			}
 		}
 	}
