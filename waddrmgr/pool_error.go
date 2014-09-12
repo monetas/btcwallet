@@ -23,6 +23,10 @@ const (
 	// or deserializing one or more series for storing into database.
 	ErrSeriesStorage ErrorCode = iota + 1000
 
+	// ErrSeriesVersion indicates that we've been asked to deal with
+	// a series whose version is unsupported
+	ErrSeriesVersion
+
 	// ErrSeriesNotExists indicates that an attempt has been made to access
 	// a series that does not exist.
 	ErrSeriesNotExists
