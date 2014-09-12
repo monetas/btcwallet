@@ -248,6 +248,25 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 	}
 }
 
+func TestDepositScriptAddressFailureToEncrypt(t *testing.T) {
+	tearDown, manager, pool := setUp(t)
+	defer tearDown()
+	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
+		t.Fatalf("Cannot creates series")
+	}
+
+	var err error
+	// Replace pool.manager.cryptoKeyScript with a fake one that has an Encrypt()
+	// method that always errors out. That should be caught and propagated as
+	// an ErrCrypto by DepositScriptAddress.
+	waddrmgr.RunWithReplacedCryptoKeyScript(
+		manager, &waddrmgr.TstFailingToEncryptCryptoKey{}, func() {
+			_, err = pool.DepositScriptAddress(0, 0, uint32(1))
+		})
+
+	checkManagerError(t, "", err, waddrmgr.ErrCrypto)
+}
+
 func TestCreateVotingPool(t *testing.T) {
 	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
