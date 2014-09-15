@@ -341,58 +341,14 @@ func bytesToUint32(encoded []byte) uint32 {
 	return binary.LittleEndian.Uint32(encoded)
 }
 
-// serializeSeriesRow serializes the passed in series information.
-func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
+// deserializeSeriesRow deserializes
+func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// The serialized series format is:
 	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
 	//
 	// 4 bytes no. of keys
 	// + keyLength * 2 * number of keys (1 for priv, 1 for pub)
 	// + 4 bytes no. of required sigs
-
-	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
-		str := fmt.Sprintf("different number of public (%v) keys and private (%v) keys",
-			len(row.pubKeysEncrypted), len(row.privKeysEncrypted))
-		return nil, managerError(ErrSeriesStorage, str, nil)
-	}
-
-	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
-
-	var privKeyEncrypted []byte
-	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
-		// check that the encrypted length is correct
-		if len(pubKeyEncrypted) != keyLength {
-			str := fmt.Sprintf("wrong length of Encrypted Public Key: %v",
-				pubKeyEncrypted)
-			return nil, managerError(ErrSeriesStorage, str, nil)
-		}
-		serialized = append(serialized, pubKeyEncrypted...)
-
-		if len(row.privKeysEncrypted) == 0 {
-			privKeyEncrypted = nullPrivKey[:]
-		} else {
-			privKeyEncrypted = row.privKeysEncrypted[i]
-		}
-
-		if privKeyEncrypted == nil {
-			serialized = append(serialized, nullPrivKey[:]...)
-		} else if len(privKeyEncrypted) != keyLength {
-			str := fmt.Sprintf("wrong length of Encrypted Private Key: %v",
-				len(privKeyEncrypted))
-			return nil, managerError(ErrSeriesStorage, str, nil)
-		} else {
-			serialized = append(serialized, privKeyEncrypted...)
-		}
-	}
-
-	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
-
-	return serialized, nil
-}
-
-// deserializeSeriesRow deserializes
-func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
-	// See the serializeSeriesRow method for a description of the format.
 
 	// given the above, the length of the serialized series should be
 	//  at minimum the length of the constants
@@ -447,6 +403,50 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
 
 	return &row, nil
+}
+
+// serializeSeriesRow serializes the passed in series information.
+func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
+	// See the deserializeSeriesRow method for a description of the format.
+
+	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
+		str := fmt.Sprintf("different number of public (%v) keys and private (%v) keys",
+			len(row.pubKeysEncrypted), len(row.privKeysEncrypted))
+		return nil, managerError(ErrSeriesStorage, str, nil)
+	}
+
+	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
+
+	var privKeyEncrypted []byte
+	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
+		// check that the encrypted length is correct
+		if len(pubKeyEncrypted) != keyLength {
+			str := fmt.Sprintf("wrong length of Encrypted Public Key: %v",
+				pubKeyEncrypted)
+			return nil, managerError(ErrSeriesStorage, str, nil)
+		}
+		serialized = append(serialized, pubKeyEncrypted...)
+
+		if len(row.privKeysEncrypted) == 0 {
+			privKeyEncrypted = nullPrivKey[:]
+		} else {
+			privKeyEncrypted = row.privKeysEncrypted[i]
+		}
+
+		if privKeyEncrypted == nil {
+			serialized = append(serialized, nullPrivKey[:]...)
+		} else if len(privKeyEncrypted) != keyLength {
+			str := fmt.Sprintf("wrong length of Encrypted Private Key: %v",
+				len(privKeyEncrypted))
+			return nil, managerError(ErrSeriesStorage, str, nil)
+		} else {
+			serialized = append(serialized, privKeyEncrypted...)
+		}
+	}
+
+	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
+
+	return serialized, nil
 }
 
 // deserializeAccountRow deserializes the passed serialized account information.
@@ -582,8 +582,8 @@ func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	return nil, managerError(ErrDatabase, str, nil)
 }
 
-// PutVotingPool stores a voting pool in the database, creating a bucket named after
-// the voting pool id.
+// PutVotingPool stores a voting pool in the database, creating a bucket named
+// after the voting pool id.
 func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	_, err := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).CreateBucket(votingPoolID)
 	if err != nil {
@@ -593,8 +593,8 @@ func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	return nil
 }
 
-// LoadAllSeries returns a  map of all the series stored inside a voting pool bucket,
-// keyed by id.
+// LoadAllSeries returns a  map of all the series stored inside a voting pool
+// bucket, keyed by id.
 func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRow, error) {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
 	c := bucket.Cursor()
