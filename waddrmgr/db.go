@@ -329,19 +329,21 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 	return nil
 }
 
-// uint32ToBytes returns the account key to use in the database for a given account
-// number.
+// uint32ToBytes returns the account key to use in the database for a given
+// account number.
 func uint32ToBytes(number uint32) []byte {
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, number)
 	return buf
 }
 
+// bytesToUint32 returns the account number corresponding to a database account
+// key.
 func bytesToUint32(encoded []byte) uint32 {
 	return binary.LittleEndian.Uint32(encoded)
 }
 
-// deserializeSeriesRow deserializes
+// deserializeSeriesRow deserializes a series storage into a dbSeriesRow struct.
 func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// The serialized series format is:
 	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
@@ -405,7 +407,7 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	return &row, nil
 }
 
-// serializeSeriesRow serializes the passed in series information.
+// serializeSeriesRow serializes a dbSeriesRow struct into storage format.
 func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	// See the deserializeSeriesRow method for a description of the format.
 
