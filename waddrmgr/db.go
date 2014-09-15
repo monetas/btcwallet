@@ -329,16 +329,16 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 	return nil
 }
 
-// uint32ToBytes returns the account key to use in the database for a given
-// account number.
+// uint32ToBytes converts a 32 bit unsigned integer into a 4-byte slice in
+// little-endian order.
 func uint32ToBytes(number uint32) []byte {
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, number)
 	return buf
 }
 
-// bytesToUint32 returns the account number corresponding to a database account
-// key.
+// bytesToUint32 converts a 4-byte slice in little-endian order into a 32 bit
+// unsigned integer.
 func bytesToUint32(encoded []byte) uint32 {
 	return binary.LittleEndian.Uint32(encoded)
 }
