@@ -330,7 +330,7 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 }
 
 // uint32ToBytes converts a 32 bit unsigned integer into a 4-byte slice in
-// little-endian order.
+// little-endian order: 1 -> [1 0 0 0].
 func uint32ToBytes(number uint32) []byte {
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, number)
@@ -338,7 +338,7 @@ func uint32ToBytes(number uint32) []byte {
 }
 
 // bytesToUint32 converts a 4-byte slice in little-endian order into a 32 bit
-// unsigned integer.
+// unsigned integer: [1 0 0 0] -> 1.
 func bytesToUint32(encoded []byte) uint32 {
 	return binary.LittleEndian.Uint32(encoded)
 }
