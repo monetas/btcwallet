@@ -352,9 +352,9 @@ func bytesToUint32(encoded []byte) uint32 {
 // deserializeSeriesRow deserializes a series storage into a dbSeriesRow struct.
 func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// The serialized series format is:
-	// <version><active><nKeys><reqSigs><pubKey1><privKey1>...<pubkeyN><privKeyN>
+	// <version><active><reqSigs><nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN>
 	//
-	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
+	// 4 bytes version + 1 byte active + 4 bytes reqSigs + 4 bytes nKeys
 	// + seriesKeyLength * 2 * nKeys (1 for priv, 1 for pub)
 
 	// given the above, the length of the serialized series should be
@@ -373,7 +373,7 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
-	// keeps track of the next set of bytes to deserialize
+	// Keeps track of the position of the next set of bytes to deserialize.
 	current := 0
 	row := dbSeriesRow{}
 
@@ -384,18 +384,21 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 		return nil, managerError(ErrSeriesVersion, str, nil)
 	}
 	current += 4
+
 	if serializedSeries[current] == 0x01 {
 		row.active = true
 	} else {
 		row.active = false
 	}
 	current += 1
+
 	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
 	current += 4
+
 	nKeys := bytesToUint32(serializedSeries[current : current+4])
 	current += 4
 
-	// check to see if we have the right number of bytes to consume
+	// Check to see if we have the right number of bytes to consume.
 	if len(serializedSeries) < current+int(nKeys)*seriesKeyLength*2 {
 		str := fmt.Sprintf("serialized series has not enough data: %v",
 			serializedSeries)
@@ -406,7 +409,7 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
-	// deserialize the pubkey/privkey pairs
+	// Deserialize the pubkey/privkey pairs.
 	row.pubKeysEncrypted = make([][]byte, nKeys)
 	row.privKeysEncrypted = make([][]byte, nKeys)
 	for i := 0; i < int(nKeys); i++ {
@@ -430,7 +433,7 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	// The serialized series format is:
 	// <version><active><reqSigs><nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN>
 	//
-	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
+	// 4 bytes version + 1 byte active + 4 bytes reqSigs + 4 bytes nKeys
 	// + seriesKeyLength * 2 * nKeys (1 for priv, 1 for pub)
 
 	if len(row.privKeysEncrypted) != 0 &&
