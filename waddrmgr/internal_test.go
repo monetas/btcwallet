@@ -199,3 +199,12 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 		}
 	}
 }
+
+// Replace Manager.cryptoKeyScript with the given one and calls the given function,
+// resetting Manager.cryptoKeyScript to its original value after that.
+func RunWithReplacedCryptoKeyScript(mgr *Manager, cryptoKey EncryptorDecryptor, callback func()) {
+	orig := mgr.cryptoKeyScript
+	mgr.cryptoKeyScript = cryptoKey
+	callback()
+	mgr.cryptoKeyScript = orig
+}
