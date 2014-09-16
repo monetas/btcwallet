@@ -263,7 +263,7 @@ func (c *FailingToEncryptCryptoKey) Encrypt(in []byte) ([]byte, error) {
 func TestDepositScriptAddressFailureToEncrypt(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
-	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
+	if err := pool.CreateSeries(1, 0, 2, []string{pubKey0, pubKey1, pubKey2}); err != nil {
 		t.Fatalf("Cannot creates series")
 	}
 
@@ -449,6 +449,11 @@ func TestSerialization(t *testing.T) {
 			reqSigs:  4,
 		},
 		// Errors
+		{
+			version: 2,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesVersion},
+		},
 		{
 			pubKeys: []string{"NONSENSE"},
 			// not a valid length pub key
