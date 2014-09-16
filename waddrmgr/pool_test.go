@@ -300,7 +300,11 @@ func TestCreateSeries(t *testing.T) {
 		if err != nil {
 			t.Errorf("%d: Cannot create series %d", testNum, test.series)
 		}
-		if !pool.ExistsSeriesTestsOnly(test.series) {
+		exists, err := pool.ExistsSeriesTestsOnly(test.series)
+		if err != nil {
+			t.Errorf("%d: Cannot retrieve series %d: %s", testNum, test.series, err)
+		}
+		if !exists {
 			t.Errorf("%d: Series %d not in database", testNum, test.series)
 		}
 	}
@@ -1180,6 +1184,45 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 		gotErr := err.(waddrmgr.ManagerError)
 		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrKeyNeuter)
 		if wantErrCode != gotErr.ErrorCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
+}
+
+func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
+	cryptoKey, err := waddrmgr.NewCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+	if _, err := waddrmgr.DecryptExtendedKey(cryptoKey, []byte{}); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(waddrmgr.ManagerError)
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrCrypto)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
+}
+
+func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
+	cryptoKey, err := waddrmgr.NewCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+
+	// the plaintext not being base58 encoded triggers the error
+	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
+	if err != nil {
+		t.Fatalf("Failed to encrypt plaintext: %v", err)
+	}
+
+	if _, err := waddrmgr.DecryptExtendedKey(cryptoKey, cipherText); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(waddrmgr.ManagerError)
+		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrKeyChain)
+		if gotErr.ErrorCode != wantErrCode {
 			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
 		}
 	}

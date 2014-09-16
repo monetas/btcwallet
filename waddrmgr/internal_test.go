@@ -24,10 +24,9 @@ interface. The functions are only exported while the tests are being run.
 package waddrmgr
 
 import (
-	"testing"
-
 	"github.com/monetas/bolt"
 	"github.com/monetas/btcutil"
+	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/snacl"
 )
 
@@ -51,13 +50,13 @@ func TstReplaceNewSecretKeyFunc() {
 	}
 }
 
-// TstResetNewSecretKeyFunc resets the new secret key generation function to the
-// original version.
+// TstResetNewSecretKeyFunc resets the new secret key generation function to
+// the original version.
 func TstResetNewSecretKeyFunc() {
 	newSecretKey = defaultNewSecretKey
 }
 
-// TstCheckPublicPassphrase return true if the provided public passphrase is
+// TstCheckPublicPassphrase returns true if the provided public passphrase is
 // correct for the manager.
 func (m *Manager) TstCheckPublicPassphrase(pubPassphrase []byte) bool {
 	secretKey := snacl.SecretKey{Key: &snacl.CryptoKey{}}
@@ -66,20 +65,26 @@ func (m *Manager) TstCheckPublicPassphrase(pubPassphrase []byte) bool {
 	return err == nil
 }
 
+// SeriesRow mimics dbSeriesRow defined in db.go .
 type SeriesRow struct {
 	ReqSigs           uint32
 	PubKeysEncrypted  [][]byte
 	PrivKeysEncrypted [][]byte
 }
 
+// EncryptWithCryptoKeyPub allows using the manager's public key for
+// encryption. Used in serialization tests.
 func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
 	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
 }
 
+// TstEmptySeriesLookup empties the voting pool seriesLookup attribute.
 func (vp *VotingPool) TstEmptySeriesLookup() {
 	vp.seriesLookup = make(map[uint32]*seriesData)
 }
 
+// SerializeSeries wraps serializeSeriesRow by passing it a freshly-built
+// dbSeriesRow.
 func SerializeSeries(reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
 	row := &dbSeriesRow{
 		reqSigs:           reqSigs,
@@ -89,6 +94,8 @@ func SerializeSeries(reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error)
 	return serializeSeriesRow(row)
 }
 
+// DeserializeSeries wraps deserializeSeriesRow and returns a freshly-built
+// SeriesRow.
 func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 	row, err := deserializeSeriesRow(serializedSeries)
 
@@ -103,11 +110,14 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 	}, nil
 }
 
+// BranchOrder transparently wraps branchOrder.
 func BranchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
 	return branchOrder(pks, branch)
 }
 
-func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
+// ExistsSeriesTestsOnly checks whether a series is stored in the database.
+// Used by the series creation test.
+func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) (bool, error) {
 	var exists bool
 	err := vp.manager.db.View(func(mtx *managerTx) error {
 		vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(vp.ID)
@@ -119,13 +129,12 @@ func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) bool {
 		return nil
 	})
 	if err != nil {
-		// If there was an error while retrieving the series, we should
-		// return an error, but we're too lazy for that.
-		return false
+		return false, err
 	}
-	return exists
+	return exists, nil
 }
 
+// TstGetRawPublicKeys gets a series public keys in string format.
 func (s *seriesData) TstGetRawPublicKeys() []string {
 	rawKeys := make([]string, len(s.publicKeys))
 	for i, key := range s.publicKeys {
@@ -134,6 +143,7 @@ func (s *seriesData) TstGetRawPublicKeys() []string {
 	return rawKeys
 }
 
+// TstGetRawPrivateKeys gets a series private keys in string format.
 func (s *seriesData) TstGetRawPrivateKeys() []string {
 	rawKeys := make([]string, len(s.privateKeys))
 	for i, key := range s.privateKeys {
@@ -144,49 +154,22 @@ func (s *seriesData) TstGetRawPrivateKeys() []string {
 	return rawKeys
 }
 
+// TstGetReqSigs expose the series reqSigs attribute.
 func (s *seriesData) TstGetReqSigs() uint32 {
 	return s.reqSigs
 }
 
+// TstPutSeries transparently wraps the voting pool putSeries method.
 func (vp *VotingPool) TstPutSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
 	return vp.putSeries(seriesID, inRawPubKeys, reqSigs)
 }
 
-func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
-	cryptoKey, err := newCryptoKey()
-	if err != nil {
-		t.Fatalf("Failed to generate cryptokey, %v", err)
-	}
-	if _, err := decryptExtendedKey(cryptoKey, []byte{}); err == nil {
-		t.Errorf("Expected function to fail, but it didn't")
-	} else {
-		gotErr := err.(ManagerError)
-		wantErrCode := ErrorCode(ErrCrypto)
-		if gotErr.ErrorCode != wantErrCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
+// NewCryptoKey transparently wraps the newCryptoKey function.
+func NewCryptoKey() (*CryptoKey, error) {
+	return newCryptoKey()
 }
 
-func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
-	cryptoKey, err := newCryptoKey()
-	if err != nil {
-		t.Fatalf("Failed to generate cryptokey, %v", err)
-	}
-
-	// the plaintext not being base58 encoded triggers the error
-	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
-	if err != nil {
-		t.Fatalf("Failed to encrypt plaintext: %v", err)
-	}
-
-	if _, err := decryptExtendedKey(cryptoKey, cipherText); err == nil {
-		t.Errorf("Expected function to fail, but it didn't")
-	} else {
-		gotErr := err.(ManagerError)
-		wantErrCode := ErrorCode(ErrKeyChain)
-		if gotErr.ErrorCode != wantErrCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
+// DecryptExtendedKey transparently wraps the decryptExtendedKey function.
+func DecryptExtendedKey(cryptoKey EncryptorDecryptor, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
+	return decryptExtendedKey(cryptoKey, encrypted)
 }
