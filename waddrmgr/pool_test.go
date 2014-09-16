@@ -92,7 +92,7 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	err := manager.LoadVotingPoolAndCreateSeries(1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
@@ -120,14 +120,14 @@ func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
 
 	// first time, the voting pool is created
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	err := manager.LoadVotingPoolAndCreateSeries(1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
 
 	// create another series where the voting pool is loaded this time
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = manager.LoadVotingPoolAndCreateSeries(poolID, 1, pubKeys, 2)
+	err = manager.LoadVotingPoolAndCreateSeries(1, poolID, 1, 2, pubKeys)
 
 	if err != nil {
 		t.Fatalf("Loading voting pool and Creating series failed: %v", err)
@@ -141,13 +141,13 @@ func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	err := manager.LoadVotingPoolAndCreateSeries(1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = manager.LoadVotingPoolAndReplaceSeries(poolID, 0, pubKeys, 2)
+	err = manager.LoadVotingPoolAndReplaceSeries(1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to replace series: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := manager.LoadVotingPoolAndCreateSeries(poolID, 0, pubKeys, 2)
+	err := manager.LoadVotingPoolAndCreateSeries(1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
@@ -176,16 +176,18 @@ func TestDepositScriptAddress(t *testing.T) {
 	defer tearDown()
 
 	tests := []struct {
-		pubKeys []string
+		version uint32
 		series  uint32
 		reqSigs uint32
+		pubKeys []string
 		// map of branch:address (we only check the branch index at 0)
 		addresses map[uint32]string
 	}{
 		{
-			pubKeys: []string{pubKey0, pubKey1, pubKey2},
+			version: 1,
 			series:  0,
 			reqSigs: 2,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			addresses: map[uint32]string{
 				0: "3Hb4xcebcKg4DiETJfwjh8sF4uDw9rqtVC",
 				1: "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6",
@@ -196,7 +198,8 @@ func TestDepositScriptAddress(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		if err := pool.CreateSeries(test.series, test.pubKeys, test.reqSigs); err != nil {
+		if err := pool.CreateSeries(test.version, test.series,
+			test.reqSigs, test.pubKeys); err != nil {
 			t.Fatalf("Cannot creates series %v", test.series)
 		}
 		for branch, expectedAddress := range test.addresses {
@@ -230,7 +233,7 @@ func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
 func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
-	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
+	if err := pool.CreateSeries(1, 0, 2, []string{pubKey0, pubKey1, pubKey2}); err != nil {
 		t.Fatalf("Cannot creates series")
 	}
 
@@ -266,37 +269,43 @@ func TestCreateSeries(t *testing.T) {
 	defer tearDown()
 
 	tests := []struct {
-		in      []string
+		version uint32
 		series  uint32
 		reqSigs uint32
+		pubKeys []string
 	}{
 		{
-			in:      []string{pubKey0, pubKey1, pubKey2},
+			version: 1,
 			series:  0,
 			reqSigs: 2,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
 		},
 		{
-			in:      []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
+			version: 1,
 			series:  1,
 			reqSigs: 3,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
 		},
 		{
-			in: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
-				pubKey5, pubKey6},
+			version: 1,
 			series:  2,
 			reqSigs: 4,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
+				pubKey5, pubKey6},
 		},
 		{
-			in: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
-				pubKey5, pubKey6, pubKey7, pubKey8},
+			version: 1,
 			series:  3,
 			reqSigs: 5,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4,
+				pubKey5, pubKey6, pubKey7, pubKey8},
 		},
 	}
 
 	t.Logf("CreateSeries: Running %d tests", len(tests))
 	for testNum, test := range tests {
-		err := pool.CreateSeries(uint32(test.series), test.in[:], test.reqSigs)
+		err := pool.CreateSeries(test.version, test.series, test.reqSigs,
+			test.pubKeys[:])
 		if err != nil {
 			t.Errorf("%d: Cannot create series %d", testNum, test.series)
 		}
@@ -311,33 +320,45 @@ func TestPutSeriesErrors(t *testing.T) {
 	defer tearDown()
 
 	tests := []struct {
-		pubKeys []string
+		version uint32
 		reqSigs uint32
+		pubKeys []string
 		err     waddrmgr.ManagerError
 		msg     string
 	}{
 		{
+			version: 2,
+			pubKeys: []string{privKey0},
+			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesVersion},
+			msg:     "Should return error when version > 1",
+		},
+		{
+			version: 1,
 			pubKeys: []string{pubKey0},
 			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrTooFewPublicKeys},
 			msg:     "Should return error when passed too few pubkeys",
 		},
 		{
-			pubKeys: []string{pubKey0, pubKey1, pubKey2},
+			version: 1,
 			reqSigs: 5,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrTooManyReqSignatures},
 			msg:     "Should return error when reqSigs > len(pubKeys)",
 		},
 		{
+			version: 1,
 			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey0},
 			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyDuplicate},
 			msg:     "Should return error when passed duplicate pubkeys",
 		},
 		{
+			version: 1,
 			pubKeys: []string{"invalidxpub1", "invalidxpub2", "invalidxpub3"},
 			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyChain},
 			msg:     "Should return error when passed invalid pubkey",
 		},
 		{
+			version: 1,
 			pubKeys: []string{privKey0, privKey1, privKey2},
 			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeyIsPrivate},
 			msg:     "Should return error when passed private keys",
@@ -345,7 +366,7 @@ func TestPutSeriesErrors(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		err := pool.TstPutSeries(uint32(i), test.pubKeys, test.reqSigs)
+		err := pool.TstPutSeries(test.version, uint32(i), test.reqSigs, test.pubKeys)
 		if err == nil {
 			str := fmt.Sprintf(test.msg+" pubKeys: %v, reqSigs: %v",
 				test.pubKeys, test.reqSigs)
@@ -361,293 +382,13 @@ func TestPutSeriesErrors(t *testing.T) {
 	}
 }
 
-func TestSerialization(t *testing.T) {
-	tearDown, mgr, _ := setUp(t)
-	defer tearDown()
-
-	tests := []struct {
-		pubKeys  []string
-		privKeys []string
-		reqSigs  uint32
-		err      error
-		serial   []byte
-		sErr     error
-	}{
-		{
-			pubKeys: []string{pubKey0},
-			reqSigs: 1,
-		},
-		{
-			pubKeys:  []string{pubKey0},
-			privKeys: []string{privKey0},
-			reqSigs:  1,
-		},
-		{
-			pubKeys: []string{pubKey0, pubKey1, pubKey2},
-			reqSigs: 2,
-		},
-		{
-			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
-			privKeys: []string{privKey0, "", ""},
-			reqSigs:  2,
-		},
-		{
-			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
-			reqSigs: 3,
-		},
-		{
-			pubKeys:  []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6},
-			privKeys: []string{"", privKey1, "", privKey3, "", "", ""},
-			reqSigs:  4,
-		},
-		// Errors
-		{
-			pubKeys: []string{"NONSENSE"},
-			// not a valid length pub key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			pubKeys:  []string{"PUBKEY1", "PUBKEY2"},
-			privKeys: []string{"PRIVKEY1"},
-			// pub and priv keys should be the same length
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			pubKeys:  []string{pubKey0, pubKey1},
-			reqSigs:  2,
-			privKeys: []string{"NONSENSE"},
-			// not a valid length priv key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte("WRONG"),
-			// not enough bytes (under the theoretical minimum)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: make([]byte, 10000),
-			// too many bytes (over the theoretical maximum)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-			// not enough bytes (specifically not enough public keys)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-			},
-			// not enough bytes (specifically no private keys)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-				0x01, 0x00, 0x00, 0x00,
-			},
-			// not enough bytes for serialization
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-				0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-			},
-			// too many bytes for serialization
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-	}
-
-	var err error
-
-	t.Logf("Serialization: Running %d tests", len(tests))
-	for testNum, test := range tests {
-		var serialized []byte
-		var encryptedPubs, encryptedPrivs [][]byte
-		if test.serial == nil {
-			encryptedPubs = make([][]byte, len(test.pubKeys))
-			encryptedPrivs = make([][]byte, len(test.privKeys))
-			for i, pubKey := range test.pubKeys {
-				encryptedPubs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(pubKey))
-				if err != nil {
-					t.Errorf("Serialization #%d - Failed to encrypt public key %v",
-						testNum, pubKey)
-				}
-			}
-
-			for i, privKey := range test.privKeys {
-				if privKey == "" {
-					encryptedPrivs[i] = nil
-				} else {
-					encryptedPrivs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(privKey))
-				}
-				if err != nil {
-					t.Errorf("Serialization #%d - Failed to encrypt private key %v",
-						testNum, privKey)
-				}
-			}
-
-			serialized, err = waddrmgr.SerializeSeries(
-				test.reqSigs, encryptedPubs, encryptedPrivs)
-			if test.err != nil {
-				if err == nil {
-					t.Errorf("Serialization #%d - Should have gotten an error and didn't",
-						testNum)
-					continue
-				}
-				terr := test.err.(waddrmgr.ManagerError)
-				rerr := err.(waddrmgr.ManagerError)
-				if terr.ErrorCode != rerr.ErrorCode {
-					t.Errorf("Serialization #%d - Received wrong error type. Got %d, want %d",
-						testNum, rerr.ErrorCode, terr.ErrorCode)
-				}
-				continue
-			} else if err != nil {
-				t.Errorf("Serialization #%d - Error in serialization %v",
-					testNum, err)
-				continue
-			}
-		} else {
-			// Shortcut this serialization and pretend we got some other string
-			// that's defined in the test.
-			serialized = test.serial
-		}
-
-		row, err := waddrmgr.DeserializeSeries(serialized)
-
-		if test.sErr != nil {
-			if err == nil {
-				t.Errorf("Serialization #%d - Did not get the expected error",
-					testNum)
-				continue
-			}
-			terr := test.sErr.(waddrmgr.ManagerError)
-			rerr := err.(waddrmgr.ManagerError)
-			if terr.ErrorCode != rerr.ErrorCode {
-				t.Errorf("Serialization #%d - Incorrect error type. Got %d, want %d",
-					testNum, rerr.ErrorCode, terr.ErrorCode)
-			}
-			continue
-		}
-
-		if err != nil {
-			t.Errorf("Serialization #%d - Failed to deserialize %v %v",
-				testNum, serialized, err)
-			continue
-		}
-
-		if row.ReqSigs != test.reqSigs {
-			t.Errorf("Serialization #%d - row reqSigs off. Got %d, want %d",
-				testNum, row.ReqSigs, test.reqSigs)
-			continue
-		}
-
-		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
-			t.Errorf("Serialization #%d - Wrong no. of pubkeys. Got %d, want %d",
-				testNum, len(row.PubKeysEncrypted), len(test.pubKeys))
-			continue
-		}
-
-		for i, encryptedPub := range encryptedPubs {
-			got := string(row.PubKeysEncrypted[i])
-
-			if got != string(encryptedPub) {
-				t.Errorf("Serialization #%d - Pubkey deserialization. Got %v, want %v",
-					testNum, got, string(encryptedPub))
-				continue
-			}
-		}
-
-		if len(row.PrivKeysEncrypted) != len(row.PubKeysEncrypted) {
-			t.Errorf("Serialization #%d - no. privkeys (%d) != no. pubkeys (%d)",
-				testNum, len(row.PrivKeysEncrypted), len(row.PubKeysEncrypted))
-			continue
-		}
-
-		for i, encryptedPriv := range encryptedPrivs {
-			got := string(row.PrivKeysEncrypted[i])
-
-			if got != string(encryptedPriv) {
-				t.Errorf("Serialization #%d - Privkey deserialization. Got %v, want %v",
-					testNum, got, string(encryptedPriv))
-				continue
-			}
-		}
-	}
-}
-
 func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
 	var seriesId uint32 = 1
 
-	err := pool.CreateSeries(seriesId, []string{pubKey0, pubKey1, pubKey2, pubKey3}, 3)
-	if err != nil {
+	if err := pool.CreateSeries(1, seriesId, 3, []string{pubKey0, pubKey1, pubKey2, pubKey3}); err != nil {
 		t.Fatalf("Failed to create series", err)
 	}
 
@@ -655,9 +396,8 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 		t.Fatalf("Failed to empower series", err)
 	}
 
-	err = pool.ReplaceSeries(seriesId, []string{pubKey0, pubKey2, pubKey3}, 2)
-	if err == nil {
-		t.Errorf("Replaced an empowered series. This should not be possible", err)
+	if err := pool.ReplaceSeries(1, seriesId, 2, []string{pubKey0, pubKey2, pubKey3}); err == nil {
+		t.Errorf("Replaced an empowered series. That should not be possible", err)
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
 		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrSeriesAlreadyEmpowered)
@@ -672,7 +412,7 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 	defer tearDown()
 
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	if err := pool.ReplaceSeries(uint32(1), pubKeys, 3); err == nil {
+	if err := pool.ReplaceSeries(1, 1, 3, pubKeys); err == nil {
 		t.Errorf("Replaced non-existent series. This should not be possible.")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
@@ -694,41 +434,49 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 		testId: 0,
 		orig: seriesRaw{
 			id:      0,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey4}),
+			version: 1,
 			reqSigs: 2,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey0, pubKey1, pubKey2, pubKey4}),
 		},
 		replaceWith: seriesRaw{
 			id:      0,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey3, pubKey4, pubKey5}),
+			version: 1,
 			reqSigs: 1,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey3, pubKey4, pubKey5}),
 		},
 	},
 	{
 		testId: 1,
 		orig: seriesRaw{
 			id:      2,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2}),
+			version: 1,
 			reqSigs: 2,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey0, pubKey1, pubKey2}),
 		},
 		replaceWith: seriesRaw{
 			id:      2,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey3, pubKey4, pubKey5, pubKey6}),
+			version: 1,
 			reqSigs: 2,
+			pubKeys: waddrmgr.CanonicalKeyOrder(
+				[]string{pubKey3, pubKey4, pubKey5, pubKey6}),
 		},
 	},
 	{
 		testId: 2,
 		orig: seriesRaw{
-			id: 4,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{
-				pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
+			id:      4,
+			version: 1,
 			reqSigs: 8,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
 		},
 		replaceWith: seriesRaw{
-			id: 4,
-			pubKeys: waddrmgr.CanonicalKeyOrder([]string{
-				pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
+			id:      4,
+			version: 1,
 			reqSigs: 7,
+			pubKeys: waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
 		},
 	},
 }
@@ -741,14 +489,13 @@ func TestReplaceExistingSeries(t *testing.T) {
 		seriesID := data.orig.id
 		testID := data.testId
 
-		err := pool.CreateSeries(seriesID, data.orig.pubKeys, data.orig.reqSigs)
-		if err != nil {
+		if err := pool.CreateSeries(data.orig.version, seriesID, data.orig.reqSigs, data.orig.pubKeys); err != nil {
 			t.Fatalf("Test #%d: failed to create series in replace series setup",
 				testID, err)
 		}
 
-		err = pool.ReplaceSeries(seriesID, data.replaceWith.pubKeys, data.replaceWith.reqSigs)
-		if err != nil {
+		if err := pool.ReplaceSeries(data.replaceWith.version, seriesID,
+			data.replaceWith.reqSigs, data.replaceWith.pubKeys); err != nil {
 			t.Errorf("Test #%d: replaceSeries failed", testID, err)
 		}
 
@@ -790,7 +537,7 @@ func TestEmpowerSeries(t *testing.T) {
 	defer tearDown()
 
 	seriesID := uint32(0)
-	err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2)
+	err := pool.CreateSeries(1, seriesID, 2, []string{pubKey0, pubKey1, pubKey2})
 	if err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
@@ -869,7 +616,7 @@ func TestGetSeries(t *testing.T) {
 	tearDown, _, pool := setUp(t)
 	defer tearDown()
 	expectedPubKeys := waddrmgr.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
-	if err := pool.CreateSeries(0, expectedPubKeys, 2); err != nil {
+	if err := pool.CreateSeries(1, 0, 2, expectedPubKeys); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
 
@@ -886,9 +633,10 @@ func TestGetSeries(t *testing.T) {
 
 type seriesRaw struct {
 	id       uint32
+	version  uint32
+	reqSigs  uint32
 	pubKeys  []string
 	privKeys []string
-	reqSigs  uint32
 }
 
 type testLoadAllSeriesTest struct {
@@ -902,20 +650,23 @@ var testLoadAllSeriesTests = []testLoadAllSeriesTest{
 		series: []seriesRaw{
 			{
 				id:      0,
-				pubKeys: []string{pubKey0, pubKey1, pubKey2},
+				version: 1,
 				reqSigs: 2,
+				pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			},
 			{
 				id:       1,
+				version:  1,
+				reqSigs:  2,
 				pubKeys:  []string{pubKey3, pubKey4, pubKey5},
 				privKeys: []string{privKey4},
-				reqSigs:  2,
 			},
 			{
 				id:       2,
+				version:  1,
+				reqSigs:  3,
 				pubKeys:  []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
 				privKeys: []string{privKey0, privKey2},
-				reqSigs:  3,
 			},
 		},
 	},
@@ -924,8 +675,9 @@ var testLoadAllSeriesTests = []testLoadAllSeriesTest{
 		series: []seriesRaw{
 			{
 				id:      0,
-				pubKeys: []string{pubKey0, pubKey1, pubKey2},
+				version: 1,
 				reqSigs: 2,
+				pubKeys: []string{pubKey0, pubKey1, pubKey2},
 			},
 		},
 	},
@@ -938,7 +690,8 @@ func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSer
 	}
 
 	for _, series := range test.series {
-		err := pool.CreateSeries(series.id, series.pubKeys, series.reqSigs)
+		err := pool.CreateSeries(series.version, series.id,
+			series.reqSigs, series.pubKeys)
 		if err != nil {
 			t.Fatalf("Test #%d Series #%d: failed to create series: %v",
 				test.id, series.id, err)
@@ -1165,7 +918,7 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 	defer tearDown()
 
 	seriesID := uint32(0)
-	err := pool.CreateSeries(seriesID, []string{pubKey0, pubKey1, pubKey2}, 2)
+	err := pool.CreateSeries(1, seriesID, 2, []string{pubKey0, pubKey1, pubKey2})
 	if err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
