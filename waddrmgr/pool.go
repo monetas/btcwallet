@@ -25,6 +25,11 @@ import (
 	"github.com/monetas/btcutil/hdkeychain"
 )
 
+const (
+	MinSeriesPubKeys = 3
+)
+
+// seriesData represents a Series for a given VotingPool.
 type seriesData struct {
 	publicKeys  []*hdkeychain.ExtendedKey
 	privateKeys []*hdkeychain.ExtendedKey
@@ -32,12 +37,18 @@ type seriesData struct {
 	// A.k.a. "m" in "m of n signatures needed".
 }
 
+// VotingPool represents an arrangement of notary servers to securely
+// store and account for customer cryptocurrency deposits and to redeem
+// valid withdrawals. For details about how the arrangement works, see
+// http://opentransactions.org/wiki/index.php?title=Category:Voting_Pools
 type VotingPool struct {
 	ID           []byte
 	seriesLookup map[uint32]*seriesData
 	manager      *Manager
 }
 
+// CreateVotingPool creates a new entry in the database with the given ID
+// and returns the VotingPool representing it.
 func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
 	err := m.db.Update(func(tx *managerTx) error {
 		return tx.PutVotingPool(poolID)
@@ -53,6 +64,8 @@ func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
 	}, nil
 }
 
+// LoadVotingPool fetches the entry in the database with the given ID
+// and returns the VotingPool representing it.
 func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 	err := m.db.View(func(tx *managerTx) error {
 		if exists := tx.ExistsVotingPool(poolID); !exists {
@@ -75,6 +88,9 @@ func (m *Manager) LoadVotingPool(poolID []byte) (*VotingPool, error) {
 	return vp, nil
 }
 
+// LoadVotingPoolAndDepositScript generates and returns a deposit script
+// for the given seriesID, branch and index of the VotingPool identified
+// by poolID.
 func (m *Manager) LoadVotingPoolAndDepositScript(
 	poolID string, seriesID, branch, index uint32) ([]byte, error) {
 	pid := []byte(poolID)
@@ -89,6 +105,10 @@ func (m *Manager) LoadVotingPoolAndDepositScript(
 	return script, nil
 }
 
+// LoadVotingPoolAndCreateSeries loads the VotingPool with the given ID,
+// creating a new one if it doesn't yet exist, and then creates and returns
+// a Series with the given seriesID, rawPubKeys and reqSigs. See CreateSeries
+// for the constraints enforced on rawPubKeys and reqSigs.
 func (m *Manager) LoadVotingPoolAndCreateSeries(
 	poolID string, seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	pid := []byte(poolID)
@@ -107,6 +127,9 @@ func (m *Manager) LoadVotingPoolAndCreateSeries(
 	return vp.CreateSeries(seriesID, rawPubKeys, reqSigs)
 }
 
+// LoadVotingPoolAndReplaceSeries loads the voting pool with the given ID
+// and calls ReplaceSeries, passing the given series ID, public keys and
+// reqSigs to it.
 func (m *Manager) LoadVotingPoolAndReplaceSeries(
 	poolID string, seriesID uint32, rawPubKeys []string, reqSigs uint32) error {
 	pid := []byte(poolID)
@@ -117,6 +140,9 @@ func (m *Manager) LoadVotingPoolAndReplaceSeries(
 	return vp.ReplaceSeries(seriesID, rawPubKeys, reqSigs)
 }
 
+// LoadVotingPoolAndEmpowerSeries loads the voting pool with the given ID
+// and calls EmpowerSeries, passing the given series ID and private key
+// to it.
 func (m *Manager) LoadVotingPoolAndEmpowerSeries(
 	poolID string, seriesID uint32, rawPrivKey string) error {
 	pid := []byte(poolID)
@@ -127,6 +153,8 @@ func (m *Manager) LoadVotingPoolAndEmpowerSeries(
 	return pool.EmpowerSeries(seriesID, rawPrivKey)
 }
 
+// GetSeries returns the series with the given ID, or nil if it doesn't
+// exist.
 func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
 	series, exists := vp.seriesLookup[seriesID]
 	if !exists {
@@ -135,6 +163,8 @@ func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
 	return series
 }
 
+// saveSeriesToDisk stores the given series ID and data in the database,
+// first encrypting the public/private extended keys.
 func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
@@ -209,9 +239,15 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 	return keys, nil
 }
 
+// putSeries creates a new seriesData with the given arguments, ordering the
+// given public keys (using CanonicalKeyOrder), validating and converting them
+// to hdkeychain.ExtendedKeys, saves that to disk and adds it to this voting
+// pool's seriesLookup map. It also ensures inRawPubKeys has at least
+// MinSeriesPubKeys items and reqSigs is not greater than the number of items in
+// inRawPubKeys.
 func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
-	if len(inRawPubKeys) < 3 {
-		str := fmt.Sprintf("need at least three public keys to create a series")
+	if len(inRawPubKeys) < MinSeriesPubKeys {
+		str := fmt.Sprintf("need at least %d public keys to create a series", MinSeriesPubKeys)
 		return managerError(ErrTooFewPublicKeys, str, nil)
 	}
 
@@ -242,7 +278,7 @@ func (vp *VotingPool) putSeries(seriesID uint32, inRawPubKeys []string, reqSigs 
 	return nil
 }
 
-// CreateSeries will create a new non-existing series.
+// CreateSeries will create and return a new non-existing series.
 //
 // - rawPubKeys has to contain three or more public keys;
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
@@ -274,6 +310,8 @@ func (vp *VotingPool) ReplaceSeries(seriesID uint32, rawPubKeys []string, reqSig
 	return vp.putSeries(seriesID, rawPubKeys, reqSigs)
 }
 
+// decryptExtendedKey uses the given cryptoKey to decrypt the encrypted
+// byte slice and return an extended (public or private) key representing it.
 func decryptExtendedKey(cryptoKey EncryptorDecryptor, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
 	decrypted, err := cryptoKey.Decrypt(encrypted)
 	if err != nil {
@@ -289,6 +327,11 @@ func decryptExtendedKey(cryptoKey EncryptorDecryptor, encrypted []byte) (*hdkeyc
 	return result, nil
 }
 
+// LoadAllSeries fetches all series (decrypting their public and private
+// extended keys) for this VotingPool from the database and populates the
+// seriesLookup map with them. If there are any private extended keys for
+// a series, it will also ensure they have a matching extended public key
+// in that series.
 func (vp *VotingPool) LoadAllSeries() error {
 	var allSeries map[uint32]*dbSeriesRow
 	err := vp.manager.db.View(func(tx *managerTx) error {
@@ -384,6 +427,8 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 	}
 }
 
+// DepositScriptAddress constructs a multi-signature redemption script using DepositScript
+// and returns the pay-to-script-hash-address for that script.
 func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (ManagedScriptAddress, error) {
 	script, err := vp.DepositScript(seriesID, branch, index)
 	if err != nil {
@@ -401,6 +446,9 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 	return newScriptAddress(vp.manager, ImportedAddrAccount, scriptHash, encryptedScript)
 }
 
+// DepositScript constructs and returns a multi-signature redemption script where
+// a certain number (Series.reqSigs) of the public keys belonging to the series
+// with the given ID are required to sign the transaction for it to be successful.
 func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
@@ -443,6 +491,10 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 	return script, nil
 }
 
+// EmpowerSeries adds the given extended private key (in raw format) to the
+// series with the given ID, thus allowing it to sign deposit/withdrawal
+// scripts. The series with the given ID must exist, the key must be a valid
+// private extended key and must match one of the series' extended public keys.
 func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	// make sure this series exists
 	series := vp.GetSeries(seriesID)
@@ -499,6 +551,8 @@ func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	return nil
 }
 
+// IsEmpowered returns true if this series is empowered (i.e. if it has
+// at least one private key loaded).
 func (s *seriesData) IsEmpowered() bool {
 	for _, key := range s.privateKeys {
 		if key != nil {
