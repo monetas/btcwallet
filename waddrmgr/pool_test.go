@@ -300,7 +300,11 @@ func TestCreateSeries(t *testing.T) {
 		if err != nil {
 			t.Errorf("%d: Cannot create series %d", testNum, test.series)
 		}
-		if !pool.ExistsSeriesTestsOnly(test.series) {
+		exists, err := pool.ExistsSeriesTestsOnly(test.series)
+		if err != nil {
+			t.Errorf("%d: Cannot retrieve series %d: %s", testNum, test.series, err)
+		}
+		if !exists {
 			t.Errorf("%d: Series %d not in database", testNum, test.series)
 		}
 	}
