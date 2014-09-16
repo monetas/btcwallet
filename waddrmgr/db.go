@@ -318,68 +318,21 @@ func (mtx *managerTx) PutWatchingOnly(watchingOnly bool) error {
 	return nil
 }
 
-// uint32ToBytes returns the account key to use in the database for a given account
-// number.
+// uint32ToBytes converts a 32 bit unsigned integer into a 4-byte slice in
+// little-endian order: 1 -> [1 0 0 0].
 func uint32ToBytes(number uint32) []byte {
 	buf := make([]byte, 4)
 	binary.LittleEndian.PutUint32(buf, number)
 	return buf
 }
 
+// bytesToUint32 converts a 4-byte slice in little-endian order into a 32 bit
+// unsigned integer: [1 0 0 0] -> 1.
 func bytesToUint32(encoded []byte) uint32 {
 	return binary.LittleEndian.Uint32(encoded)
 }
 
-// serializeSeriesRow serializes the passed in series information.
-func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
-	// The serialized series format is:
-	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
-	//
-	// 4 bytes no. of keys
-	// + keyLength * 2 * number of keys (1 for priv, 1 for pub)
-	// + 4 bytes no. of required sigs
-
-	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
-		str := fmt.Sprintf("different number of public (%v) keys and private (%v) keys",
-			len(row.pubKeysEncrypted), len(row.privKeysEncrypted))
-		return nil, managerError(ErrSeriesStorage, str, nil)
-	}
-
-	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
-
-	var privKeyEncrypted []byte
-	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
-		// check that the encrypted length is correct
-		if len(pubKeyEncrypted) != keyLength {
-			str := fmt.Sprintf("wrong length of Encrypted Public Key: %v",
-				pubKeyEncrypted)
-			return nil, managerError(ErrSeriesStorage, str, nil)
-		}
-		serialized = append(serialized, pubKeyEncrypted...)
-
-		if len(row.privKeysEncrypted) == 0 {
-			privKeyEncrypted = nullPrivKey[:]
-		} else {
-			privKeyEncrypted = row.privKeysEncrypted[i]
-		}
-
-		if privKeyEncrypted == nil {
-			serialized = append(serialized, nullPrivKey[:]...)
-		} else if len(privKeyEncrypted) != keyLength {
-			str := fmt.Sprintf("wrong length of Encrypted Private Key: %v",
-				len(privKeyEncrypted))
-			return nil, managerError(ErrSeriesStorage, str, nil)
-		} else {
-			serialized = append(serialized, privKeyEncrypted...)
-		}
-	}
-
-	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
-
-	return serialized, nil
-}
-
-// deserializeSeriesRow deserializes
+// deserializeSeriesRow deserializes a series storage into a dbSeriesRow struct.
 func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// The serialized series format is:
 	// <nKeys><pubKey1><privKey1>...<pubkeyN><privKeyN><reqSigs>
@@ -443,6 +396,50 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	return &row, nil
 }
 
+// serializeSeriesRow serializes a dbSeriesRow struct into storage format.
+func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
+	// See the deserializeSeriesRow method for a description of the format.
+
+	if len(row.privKeysEncrypted) != 0 && len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
+		str := fmt.Sprintf("different number of public (%v) keys and private (%v) keys",
+			len(row.pubKeysEncrypted), len(row.privKeysEncrypted))
+		return nil, managerError(ErrSeriesStorage, str, nil)
+	}
+
+	serialized := uint32ToBytes(uint32(len(row.pubKeysEncrypted)))
+
+	var privKeyEncrypted []byte
+	for i, pubKeyEncrypted := range row.pubKeysEncrypted {
+		// check that the encrypted length is correct
+		if len(pubKeyEncrypted) != keyLength {
+			str := fmt.Sprintf("wrong length of Encrypted Public Key: %v",
+				pubKeyEncrypted)
+			return nil, managerError(ErrSeriesStorage, str, nil)
+		}
+		serialized = append(serialized, pubKeyEncrypted...)
+
+		if len(row.privKeysEncrypted) == 0 {
+			privKeyEncrypted = nullPrivKey[:]
+		} else {
+			privKeyEncrypted = row.privKeysEncrypted[i]
+		}
+
+		if privKeyEncrypted == nil {
+			serialized = append(serialized, nullPrivKey[:]...)
+		} else if len(privKeyEncrypted) != keyLength {
+			str := fmt.Sprintf("wrong length of Encrypted Private Key: %v",
+				len(privKeyEncrypted))
+			return nil, managerError(ErrSeriesStorage, str, nil)
+		} else {
+			serialized = append(serialized, privKeyEncrypted...)
+		}
+	}
+
+	serialized = append(serialized, uint32ToBytes(row.reqSigs)...)
+
+	return serialized, nil
+}
+
 // deserializeAccountRow deserializes the passed serialized account information.
 // This is used as a common base for the various account types to deserialize
 // the common parts.
@@ -471,10 +468,7 @@ func deserializeAccountRow(accountID []byte, serializedAccount []byte) (*dbAccou
 
 // serializeAccountRow returns the serialization of the passed account row.
 func serializeAccountRow(row *dbAccountRow) []byte {
-	// The serialized account format is:
-	//   <acctType><rdlen><rawdata>
-	//
-	// 1 byte acctType + 4 bytes raw data length + raw data
+	// See the deserializeAccountRow method for a description of the format.
 	rdlen := len(row.rawData)
 	buf := make([]byte, 5+rdlen)
 	buf[0] = byte(row.acctType)
@@ -531,14 +525,7 @@ func deserializeBIP0044AccountRow(accountID []byte, row *dbAccountRow) (*dbBIP00
 func serializeBIP0044AccountRow(encryptedPubKey,
 	encryptedPrivKey []byte, nextExternalIndex, nextInternalIndex uint32,
 	name string) []byte {
-
-	// The serialized BIP0044 account raw data format is:
-	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey><nextextidx>
-	//   <nextintidx><namelen><name>
-	//
-	// 4 bytes encrypted pubkey len + encrypted pubkey + 4 bytes encrypted
-	// privkey len + encrypted privkey + 4 bytes next external index +
-	// 4 bytes next internal index + 4 bytes name len + name
+	// See the deserializeBIP0044AccountRow method for a description of the format.
 	pubLen := uint32(len(encryptedPubKey))
 	privLen := uint32(len(encryptedPrivKey))
 	nameLen := uint32(len(name))
@@ -586,6 +573,8 @@ func (mtx *managerTx) FetchAccountInfo(account uint32) (interface{}, error) {
 	return nil, managerError(ErrDatabase, str, nil)
 }
 
+// PutVotingPool stores a voting pool in the database, creating a bucket named
+// after the voting pool id.
 func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	_, err := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).CreateBucket(votingPoolID)
 	if err != nil {
@@ -595,6 +584,8 @@ func (mtx *managerTx) PutVotingPool(votingPoolID []byte) error {
 	return nil
 }
 
+// LoadAllSeries returns a  map of all the series stored inside a voting pool
+// bucket, keyed by id.
 func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRow, error) {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
 	c := bucket.Cursor()
@@ -611,12 +602,15 @@ func (mtx *managerTx) LoadAllSeries(votingPoolID []byte) (map[uint32]*dbSeriesRo
 	return allSeries, nil
 }
 
+// ExistsVotingPool checks the existence of a bucket named after the given
+// voting pool id.
 func (mtx *managerTx) ExistsVotingPool(votingPoolID []byte) bool {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(votingPoolID)
 	return bucket != nil
 }
 
-// TODO: check parameter order consistency
+// PutSeries stores the given series inside a voting pool bucket named after
+// votingPoolID. The voting pool bucket does not need to be created beforehand.
 func (mtx *managerTx) PutSeries(votingPoolID []byte, ID, reqSigs uint32, pubKeysEncrypted, privKeysEncrypted [][]byte) error {
 	row := &dbSeriesRow{
 		reqSigs:           reqSigs,
@@ -626,6 +620,9 @@ func (mtx *managerTx) PutSeries(votingPoolID []byte, ID, reqSigs uint32, pubKeys
 	return mtx.putSeriesRow(votingPoolID, ID, row)
 }
 
+// putSeriesRow stores the given series row inside a voting pool bucket named
+// after votingPoolID. The voting pool bucket does not need to be created
+// beforehand.
 func (mtx *managerTx) putSeriesRow(votingPoolID []byte, ID uint32, row *dbSeriesRow) error {
 	bucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName)
 	vpBucket, err := bucket.CreateBucketIfNotExists(votingPoolID)
@@ -741,12 +738,7 @@ func deserializeAddressRow(addressID, serializedAddress []byte) (*dbAddressRow, 
 
 // serializeAddressRow returns the serialization of the passed address row.
 func serializeAddressRow(row *dbAddressRow) []byte {
-	// The serialized address format is:
-	//   <addrType><account><addedTime><syncStatus><commentlen><comment>
-	//   <rawdata>
-	//
-	// 1 byte addrType + 4 bytes account + 8 bytes addTime + 1 byte
-	// syncStatus + 4 bytes raw data length + raw data
+	// See the deserializeAddressRow method for a description of the format.
 	rdlen := len(row.rawData)
 	buf := make([]byte, 18+rdlen)
 	buf[0] = byte(row.addrType)
@@ -784,10 +776,7 @@ func deserializeChainedAddress(addressID []byte, row *dbAddressRow) (*dbChainAdd
 // serializeChainedAddress returns the serialization of the raw data field for
 // a chained address.
 func serializeChainedAddress(branch, index uint32) []byte {
-	// The serialized chain address raw data format is:
-	//   <branch><index>
-	//
-	// 4 bytes branch + 4 bytes address index
+	// See the deserializeChainedAddress method for a description of the format.
 	rawData := make([]byte, 8)
 	binary.LittleEndian.PutUint32(rawData[0:4], branch)
 	binary.LittleEndian.PutUint32(rawData[4:8], index)
@@ -830,11 +819,7 @@ func deserializeImportedAddress(addressID []byte, row *dbAddressRow) (*dbImporte
 // serializeImportedAddress returns the serialization of the raw data field for
 // an imported address.
 func serializeImportedAddress(encryptedPubKey, encryptedPrivKey []byte) []byte {
-	// The serialized imported address raw data format is:
-	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey>
-	//
-	// 4 bytes encrypted pubkey len + encrypted pubkey + 4 bytes encrypted
-	// privkey len + encrypted privkey
+	// See the deserializeImportedAddress method for a description of the format.
 	pubLen := uint32(len(encryptedPubKey))
 	privLen := uint32(len(encryptedPrivKey))
 	rawData := make([]byte, 8+pubLen+privLen)
@@ -883,12 +868,7 @@ func deserializeScriptAddress(addressID []byte, row *dbAddressRow) (*dbScriptAdd
 // serializeScriptAddress returns the serialization of the raw data field for
 // a script address.
 func serializeScriptAddress(encryptedHash, encryptedScript []byte) []byte {
-	// The serialized script address raw data format is:
-	//   <encscripthashlen><encscripthash><encscriptlen><encscript>
-	//
-	// 4 bytes encrypted script hash len + encrypted script hash + 4 bytes
-	// encrypted script len + encrypted script
-
+	// See the deserializeScriptAddress method for a description of the format.
 	hashLen := uint32(len(encryptedHash))
 	scriptLen := uint32(len(encryptedScript))
 	rawData := make([]byte, 8+hashLen+scriptLen)
