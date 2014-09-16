@@ -32,7 +32,8 @@ const (
 // seriesData represents a Series for a given VotingPool.
 type seriesData struct {
 	version uint32
-	// reserved for future use
+	// Whether or not a series is active. This is serialized/deserialized but
+	// for now there's no way to deactivate a series.
 	active bool
 	// A.k.a. "m" in "m of n signatures needed".
 	reqSigs     uint32
