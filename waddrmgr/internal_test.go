@@ -24,9 +24,10 @@ interface. The functions are only exported while the tests are being run.
 package waddrmgr
 
 import (
+	"testing"
+
 	"github.com/monetas/bolt"
 	"github.com/monetas/btcutil"
-	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/snacl"
 )
 
@@ -164,12 +165,41 @@ func (vp *VotingPool) TstPutSeries(seriesID uint32, inRawPubKeys []string, reqSi
 	return vp.putSeries(seriesID, inRawPubKeys, reqSigs)
 }
 
-// NewCryptoKey transparently wraps the newCryptoKey function.
-func NewCryptoKey() (*CryptoKey, error) {
-	return newCryptoKey()
+func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
+	cryptoKey, err := newCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+	if _, err := decryptExtendedKey(cryptoKey, []byte{}); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(ManagerError)
+		wantErrCode := ErrorCode(ErrCrypto)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
 }
 
-// DecryptExtendedKey transparently wraps the decryptExtendedKey function.
-func DecryptExtendedKey(cryptoKey EncryptorDecryptor, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
-	return decryptExtendedKey(cryptoKey, encrypted)
+func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
+	cryptoKey, err := newCryptoKey()
+	if err != nil {
+		t.Fatalf("Failed to generate cryptokey, %v", err)
+	}
+
+	// the plaintext not being base58 encoded triggers the error
+	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
+	if err != nil {
+		t.Fatalf("Failed to encrypt plaintext: %v", err)
+	}
+
+	if _, err := decryptExtendedKey(cryptoKey, cipherText); err == nil {
+		t.Errorf("Expected function to fail, but it didn't")
+	} else {
+		gotErr := err.(ManagerError)
+		wantErrCode := ErrorCode(ErrKeyChain)
+		if gotErr.ErrorCode != wantErrCode {
+			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
+		}
+	}
 }
