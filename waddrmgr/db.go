@@ -77,7 +77,7 @@ const (
 	// snacl.NonceSize == nonce size used for encryption (24)
 	seriesKeyLength = secretbox.Overhead + 111 + snacl.NonceSize
 	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
-	seriesMinSerial = 13
+	seriesMinSerial = 4 + 1 + 4 + 4
 	// 15 is the max number of keys in a voting pool, 1 each for
 	// pubkey and privkey
 	seriesMaxSerial = seriesMinSerial + 15*seriesKeyLength*2
@@ -357,16 +357,16 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	// 4 bytes version + 1 byte active + 4 bytes reqSigs + 4 bytes nKeys
 	// + seriesKeyLength * 2 * nKeys (1 for priv, 1 for pub)
 
-	// given the above, the length of the serialized series should be
-	//  at minimum the length of the constants
+	// Given the above, the length of the serialized series should be
+	// at minimum the length of the constants.
 	if len(serializedSeries) < seriesMinSerial {
 		str := fmt.Sprintf("serialized series is too short: %v",
 			serializedSeries)
 		return nil, managerError(ErrSeriesStorage, str, nil)
 	}
 
-	// maximum number of public keys is 15 and the same for public keys
-	//  this gives us an upper bound
+	// Maximum number of public keys is 15 and the same for public keys
+	// this gives us an upper bound.
 	if len(serializedSeries) > seriesMaxSerial {
 		str := fmt.Sprintf("serialized series is too long: %v",
 			serializedSeries)

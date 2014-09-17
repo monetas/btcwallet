@@ -394,6 +394,102 @@ func TestPutSeriesErrors(t *testing.T) {
 	}
 }
 
+func TestDeserializationErrors(t *testing.T) {
+	tearDown, _, _ := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		serialized []byte
+		err        waddrmgr.ErrorCode
+	}{
+		{
+			serialized: make([]byte, 1000000),
+			// Too many bytes (over the theoretical maximum).
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			serialized: make([]byte, 10),
+			// Not enough bytes.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			serialized: []byte{
+				1, 0, 0, 0, // 4 bytes (version)
+				0,          // 1 byte (active)
+				2, 0, 0, 0, // 4 bytes (reqSigs)
+				3, 0, 0, 0, // 4 bytes (nKeys)
+				// Missing any public/private keys.
+			},
+			// Not enough bytes for deserialization.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			serialized: []byte{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			// Unsupported version.
+			err: waddrmgr.ErrSeriesVersion,
+		},
+	}
+
+	for testNum, test := range tests {
+		_, err := waddrmgr.DeserializeSeries(test.serialized)
+
+		checkManagerError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
+	}
+}
+
+func TestSerializationErrors(t *testing.T) {
+	tearDown, mgr, _ := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		version  uint32
+		pubKeys  []string
+		privKeys []string
+		reqSigs  uint32
+		err      waddrmgr.ErrorCode
+	}{
+		{
+			version: 2,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
+			err:     waddrmgr.ErrSeriesVersion,
+		},
+		{
+			pubKeys: []string{"NONSENSE"},
+			// Not a valid length public key.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
+			privKeys: []string{privKey0},
+			// Public and private keys should be the same length.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			pubKeys:  []string{pubKey0},
+			privKeys: []string{"NONSENSE"},
+			// Not a valid length private key.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+	}
+
+	active := true
+	for testNum, test := range tests {
+		encryptedPubs, err := encryptKeys(test.pubKeys, mgr.EncryptWithCryptoKeyPub)
+		if err != nil {
+			t.Errorf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
+		}
+		encryptedPrivs, err := encryptKeys(test.privKeys, mgr.EncryptWithCryptoKeyPub)
+		if err != nil {
+			t.Errorf("Test #%d - Error encrypting privkeys: %v", testNum, err)
+		}
+
+		_, err = waddrmgr.SerializeSeries(
+			test.version, active, test.reqSigs, encryptedPubs, encryptedPrivs)
+
+		checkManagerError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
+	}
+}
+
 func TestSerialization(t *testing.T) {
 	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
@@ -404,9 +500,6 @@ func TestSerialization(t *testing.T) {
 		pubKeys  []string
 		privKeys []string
 		reqSigs  uint32
-		err      error
-		serial   []byte
-		sErr     error
 	}{
 		{
 			version: 1,
@@ -422,10 +515,6 @@ func TestSerialization(t *testing.T) {
 			reqSigs:  1,
 		},
 		{
-			pubKeys: []string{pubKey0, pubKey1, pubKey2},
-			reqSigs: 2,
-		},
-		{
 			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
 			privKeys: []string{privKey0, "", ""},
 			reqSigs:  2,
@@ -439,233 +528,48 @@ func TestSerialization(t *testing.T) {
 			privKeys: []string{"", privKey1, "", privKey3, "", "", ""},
 			reqSigs:  4,
 		},
-		// Errors
-		{
-			version: 2,
-			pubKeys: []string{pubKey0, pubKey1, pubKey2},
-			err:     waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesVersion},
-		},
-		{
-			pubKeys: []string{"NONSENSE"},
-			// not a valid length pub key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			pubKeys:  []string{"PUBKEY1", "PUBKEY2"},
-			privKeys: []string{"PRIVKEY1"},
-			// pub and priv keys should be the same length
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			pubKeys:  []string{pubKey0, pubKey1},
-			reqSigs:  2,
-			privKeys: []string{"NONSENSE"},
-			// not a valid length priv key
-			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte("WRONG"),
-			// not enough bytes (under the theoretical minimum)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: make([]byte, 10000),
-			// too many bytes (over the theoretical maximum)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-			// not enough bytes (specifically not enough public keys)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-			},
-			// not enough bytes (specifically no private keys)
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-				0x01, 0x00, 0x00, 0x00,
-			},
-			// not enough bytes for serialization
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
-		{
-			serial: []byte{0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-				0x01, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-				0x00,
-			},
-			// too many bytes for serialization
-			sErr: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrSeriesStorage},
-		},
 	}
 
-	var err error
-
-	t.Logf("Serialization: Running %d tests", len(tests))
 	for testNum, test := range tests {
-		var serialized []byte
-		var encryptedPubs, encryptedPrivs [][]byte
-		if test.serial == nil {
-			encryptedPubs = make([][]byte, len(test.pubKeys))
-			encryptedPrivs = make([][]byte, len(test.privKeys))
-			for i, pubKey := range test.pubKeys {
-				encryptedPubs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(pubKey))
-				if err != nil {
-					t.Errorf("Serialization #%d - Failed to encrypt public key %v",
-						testNum, pubKey)
-				}
-			}
+		encryptedPubs, err := encryptKeys(test.pubKeys, mgr.EncryptWithCryptoKeyPub)
+		if err != nil {
+			t.Errorf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
+		}
+		encryptedPrivs, err := encryptKeys(test.privKeys, mgr.EncryptWithCryptoKeyPub)
+		if err != nil {
+			t.Errorf("Test #%d - Error encrypting privkeys: %v", testNum, err)
+		}
 
-			for i, privKey := range test.privKeys {
-				if privKey == "" {
-					encryptedPrivs[i] = nil
-				} else {
-					encryptedPrivs[i], err = mgr.EncryptWithCryptoKeyPub([]byte(privKey))
-				}
-				if err != nil {
-					t.Errorf("Serialization #%d - Failed to encrypt private key %v",
-						testNum, privKey)
-				}
-			}
-
-			serialized, err = waddrmgr.SerializeSeries(
-				test.version, test.active, test.reqSigs, encryptedPubs, encryptedPrivs)
-			if test.err != nil {
-				if err == nil {
-					t.Errorf("Serialization #%d - Should have gotten an error and didn't",
-						testNum)
-					continue
-				}
-				terr := test.err.(waddrmgr.ManagerError)
-				rerr := err.(waddrmgr.ManagerError)
-				if terr.ErrorCode != rerr.ErrorCode {
-					t.Errorf("Serialization #%d - Received wrong error type. Got %d, want %d",
-						testNum, rerr.ErrorCode, terr.ErrorCode)
-				}
-				continue
-			} else if err != nil {
-				t.Errorf("Serialization #%d - Error in serialization %v",
-					testNum, err)
-				continue
-			}
-		} else {
-			// Shortcut this serialization and pretend we got some other string
-			// that's defined in the test.
-			serialized = test.serial
+		serialized, err := waddrmgr.SerializeSeries(
+			test.version, test.active, test.reqSigs, encryptedPubs, encryptedPrivs)
+		if err != nil {
+			t.Errorf("Test #%d - Error in serialization %v", testNum, err)
 		}
 
 		row, err := waddrmgr.DeserializeSeries(serialized)
-
-		if test.sErr != nil {
-			if err == nil {
-				t.Errorf("Serialization #%d - Did not get the expected error",
-					testNum)
-				continue
-			}
-			terr := test.sErr.(waddrmgr.ManagerError)
-			rerr := err.(waddrmgr.ManagerError)
-			if terr.ErrorCode != rerr.ErrorCode {
-				t.Errorf("Serialization #%d - Incorrect error type. Got %d, want %d",
-					testNum, rerr.ErrorCode, terr.ErrorCode)
-			}
-			continue
-		}
-
 		if err != nil {
-			t.Errorf("Serialization #%d - Failed to deserialize %v %v",
-				testNum, serialized, err)
-			continue
+			t.Errorf("Test #%d - Failed to deserialize %v %v", testNum, serialized, err)
 		}
 
+		// TODO: Move all of these checks into one or more separate functions.
 		if row.Version != test.version {
 			t.Errorf("Serialization #%d - version mismatch: got %d want %d",
 				testNum, row.Version, test.version)
-			return
 		}
 
 		if row.Active != test.active {
 			t.Errorf("Serialization #%d - active mismatch: got %d want %d",
 				testNum, row.Active, test.active)
-			return
 		}
 
 		if row.ReqSigs != test.reqSigs {
 			t.Errorf("Serialization #%d - row reqSigs off. Got %d, want %d",
 				testNum, row.ReqSigs, test.reqSigs)
-			continue
 		}
 
 		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
 			t.Errorf("Serialization #%d - Wrong no. of pubkeys. Got %d, want %d",
 				testNum, len(row.PubKeysEncrypted), len(test.pubKeys))
-			continue
 		}
 
 		for i, encryptedPub := range encryptedPubs {
@@ -674,14 +578,12 @@ func TestSerialization(t *testing.T) {
 			if got != string(encryptedPub) {
 				t.Errorf("Serialization #%d - Pubkey deserialization. Got %v, want %v",
 					testNum, got, string(encryptedPub))
-				continue
 			}
 		}
 
 		if len(row.PrivKeysEncrypted) != len(row.PubKeysEncrypted) {
 			t.Errorf("Serialization #%d - no. privkeys (%d) != no. pubkeys (%d)",
 				testNum, len(row.PrivKeysEncrypted), len(row.PubKeysEncrypted))
-			continue
 		}
 
 		for i, encryptedPriv := range encryptedPrivs {
@@ -690,10 +592,25 @@ func TestSerialization(t *testing.T) {
 			if got != string(encryptedPriv) {
 				t.Errorf("Serialization #%d - Privkey deserialization. Got %v, want %v",
 					testNum, got, string(encryptedPriv))
-				continue
 			}
 		}
 	}
+}
+
+func encryptKeys(keys []string, cryptoFunc func([]byte) ([]byte, error)) ([][]byte, error) {
+	encryptedKeys := make([][]byte, len(keys))
+	var err error
+	for i, key := range keys {
+		if key == "" {
+			encryptedKeys[i] = nil
+		} else {
+			encryptedKeys[i], err = cryptoFunc([]byte(key))
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return encryptedKeys, nil
 }
 
 func TestCannotReplaceEmpoweredSeries(t *testing.T) {
