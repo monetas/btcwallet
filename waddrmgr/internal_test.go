@@ -64,6 +64,8 @@ func (m *Manager) TstCheckPublicPassphrase(pubPassphrase []byte) bool {
 
 // SeriesRow mimics dbSeriesRow defined in db.go .
 type SeriesRow struct {
+	Version           uint32
+	Active            bool
 	ReqSigs           uint32
 	PubKeysEncrypted  [][]byte
 	PrivKeysEncrypted [][]byte
@@ -82,8 +84,10 @@ func (vp *VotingPool) TstEmptySeriesLookup() {
 
 // SerializeSeries wraps serializeSeriesRow by passing it a freshly-built
 // dbSeriesRow.
-func SerializeSeries(reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
+func SerializeSeries(version uint32, active bool, reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
 	row := &dbSeriesRow{
+		version:           version,
+		active:            active,
 		reqSigs:           reqSigs,
 		pubKeysEncrypted:  pubKeys,
 		privKeysEncrypted: privKeys,
@@ -101,6 +105,8 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 	}
 
 	return &SeriesRow{
+		Version:           row.version,
+		Active:            row.active,
 		ReqSigs:           row.reqSigs,
 		PubKeysEncrypted:  row.pubKeysEncrypted,
 		PrivKeysEncrypted: row.privKeysEncrypted,
@@ -157,8 +163,8 @@ func (s *seriesData) TstGetReqSigs() uint32 {
 }
 
 // TstPutSeries transparently wraps the voting pool putSeries method.
-func (vp *VotingPool) TstPutSeries(seriesID uint32, inRawPubKeys []string, reqSigs uint32) error {
-	return vp.putSeries(seriesID, inRawPubKeys, reqSigs)
+func (vp *VotingPool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
+	return vp.putSeries(version, seriesID, reqSigs, inRawPubKeys)
 }
 
 func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
