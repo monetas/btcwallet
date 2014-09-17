@@ -19,6 +19,7 @@ package waddrmgr_test
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -246,6 +247,33 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 			t.Errorf("Got %v, want ErrKeyChain", rerr.ErrorCode)
 		}
 	}
+}
+
+type FailingToEncryptCryptoKey struct {
+	waddrmgr.CryptoKey
+}
+
+func (c *FailingToEncryptCryptoKey) Encrypt(in []byte) ([]byte, error) {
+	return nil, errors.New("failed to encrypt")
+}
+
+func TestDepositScriptAddressFailureToEncrypt(t *testing.T) {
+	tearDown, manager, pool := setUp(t)
+	defer tearDown()
+	if err := pool.CreateSeries(0, []string{pubKey0, pubKey1, pubKey2}, 2); err != nil {
+		t.Fatalf("Cannot creates series")
+	}
+
+	var err error
+	// Replace pool.manager.cryptoKeyScript with a fake one that has an Encrypt()
+	// method that always errors out. That should be caught and propagated as
+	// an ErrCrypto by DepositScriptAddress.
+	waddrmgr.RunWithReplacedCryptoKeyScript(
+		manager, &FailingToEncryptCryptoKey{}, func() {
+			_, err = pool.DepositScriptAddress(0, 0, uint32(1))
+		})
+
+	checkManagerError(t, "", err, waddrmgr.ErrCrypto)
 }
 
 func TestCreateVotingPool(t *testing.T) {
