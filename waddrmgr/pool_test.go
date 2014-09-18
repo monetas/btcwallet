@@ -330,12 +330,10 @@ func TestCreateSeries(t *testing.T) {
 		},
 	}
 
-	t.Logf("CreateSeries: Running %d tests", len(tests))
 	for testNum, test := range tests {
-		err := pool.CreateSeries(test.version, test.series, test.reqSigs,
-			test.pubKeys[:])
+		err := pool.CreateSeries(test.version, test.series, test.reqSigs, test.pubKeys[:])
 		if err != nil {
-			t.Errorf("%d: Cannot create series %d", testNum, test.series)
+			t.Fatalf("%d: Cannot create series %d", testNum, test.series)
 		}
 		exists, err := pool.ExistsSeriesTestsOnly(test.series)
 		if err != nil {
@@ -345,6 +343,19 @@ func TestCreateSeries(t *testing.T) {
 			t.Errorf("%d: Series %d not in database", testNum, test.series)
 		}
 	}
+}
+
+func TestCreateSeriesWhenAlreadyExists(t *testing.T) {
+	tearDown, _, pool := setUp(t)
+	defer tearDown()
+	pubKeys := []string{pubKey0, pubKey1, pubKey2}
+	if err := pool.CreateSeries(1, 0, 1, pubKeys); err != nil {
+		t.Fatalf("Cannot create series: %v", err)
+	}
+
+	err := pool.CreateSeries(1, 0, 1, pubKeys)
+
+	checkManagerError(t, "", err, waddrmgr.ErrSeriesAlreadyExists)
 }
 
 func TestPutSeriesErrors(t *testing.T) {
