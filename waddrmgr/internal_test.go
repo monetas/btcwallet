@@ -118,13 +118,13 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 	}, nil
 }
 
-var BranchOrder = branchOrder
+var TstBranchOrder = branchOrder
 
-var ValidateAndDecryptKeys = validateAndDecryptKeys
+var TstValidateAndDecryptKeys = validateAndDecryptKeys
 
-// ExistsSeriesTestsOnly checks whether a series is stored in the database.
+// TstExistsSeries checks whether a series is stored in the database.
 // Used by the series creation test.
-func (vp *VotingPool) ExistsSeriesTestsOnly(seriesID uint32) (bool, error) {
+func (vp *VotingPool) TstExistsSeries(seriesID uint32) (bool, error) {
 	var exists bool
 	err := vp.manager.db.View(func(mtx *managerTx) error {
 		vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(vp.ID)
