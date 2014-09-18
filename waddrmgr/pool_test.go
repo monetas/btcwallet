@@ -348,7 +348,7 @@ func TestCreateSeries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%d: Cannot create series %d", testNum, test.series)
 		}
-		exists, err := pool.ExistsSeriesTestsOnly(test.series)
+		exists, err := pool.TstExistsSeries(test.series)
 		if err != nil {
 			t.Errorf("%d: Cannot retrieve series %d: %s", testNum, test.series, err)
 		}
@@ -440,16 +440,16 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 		t.Fatalf("Failed to encrypt private keys: %v", err)
 	}
 
-	pubKeys, privKeys, err := waddrmgr.ValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, manager)
+	pubKeys, privKeys, err := waddrmgr.TstValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, manager)
 	if err != nil {
 		t.Fatalf("Error when validating/decrypting keys: %v", err)
 	}
 
 	if len(pubKeys) != 2 {
-		t.Errorf("Unexpected number of decrypted public keys: %v", pubKeys)
+		t.Fatalf("Unexpected number of decrypted public keys: got %d, want 2", len(pubKeys))
 	}
 	if len(privKeys) != 2 {
-		t.Errorf("Unexpected number of decrypted private keys: %v", privKeys)
+		t.Fatalf("Unexpected number of decrypted private keys: got %d, want 2", len(privKeys))
 	}
 
 	if pubKeys[0].String() != pubKey0 || pubKeys[1].String() != pubKey1 {
@@ -515,7 +515,7 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		_, _, err := waddrmgr.ValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, manager)
+		_, _, err := waddrmgr.TstValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, manager)
 
 		checkManagerError(t, fmt.Sprintf("Test #%d", i), err, test.err)
 	}
@@ -1139,7 +1139,7 @@ func TestBranchOrderZero(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		inKeys := createTestPubKeys(t, i, 0)
 		wantKeys := reverse(inKeys)
-		resKeys := waddrmgr.BranchOrder(inKeys, 0)
+		resKeys := waddrmgr.TstBranchOrder(inKeys, 0)
 
 		if len(resKeys) != len(wantKeys) {
 			t.Errorf("BranchOrder: wrong no. of keys. Got: %d, want %d",
@@ -1160,7 +1160,7 @@ func TestBranchOrderZero(t *testing.T) {
 func TestBranchOrderNilKeys(t *testing.T) {
 	// Test branchorder with nil input and various branch numbers.
 	for i := 0; i < 10; i++ {
-		res := waddrmgr.BranchOrder(nil, uint32(i))
+		res := waddrmgr.TstBranchOrder(nil, uint32(i))
 		if res != nil {
 			t.Errorf("Got non-nil: %v, want nil.", res)
 		}
@@ -1182,7 +1182,7 @@ func TestBranchOrderNonZero(t *testing.T) {
 
 			inKeys := append(append(first, pivot...), last...)
 			wantKeys := append(append(pivot, first...), last...)
-			resKeys := waddrmgr.BranchOrder(inKeys, uint32(branch))
+			resKeys := waddrmgr.TstBranchOrder(inKeys, uint32(branch))
 
 			if len(resKeys) != len(inKeys) {
 				t.Errorf("BranchOrder: wrong no. of keys. Got: %d, want %d",
