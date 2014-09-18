@@ -404,12 +404,12 @@ func TestDeserializationErrors(t *testing.T) {
 	}{
 		{
 			serialized: make([]byte, 1000000),
-			// Too many bytes (over the theoretical maximum).
+			// Too many bytes (over waddrmgr.seriesMaxSerial).
 			err: waddrmgr.ErrSeriesStorage,
 		},
 		{
 			serialized: make([]byte, 10),
-			// Not enough bytes.
+			// Not enough bytes (under waddrmgr.seriesMinSerial).
 			err: waddrmgr.ErrSeriesStorage,
 		},
 		{
@@ -418,9 +418,8 @@ func TestDeserializationErrors(t *testing.T) {
 				0,          // 1 byte (active)
 				2, 0, 0, 0, // 4 bytes (reqSigs)
 				3, 0, 0, 0, // 4 bytes (nKeys)
-				// Missing any public/private keys.
 			},
-			// Not enough bytes for deserialization.
+			// Here we have the constant data but are missing any public/private keys.
 			err: waddrmgr.ErrSeriesStorage,
 		},
 		{
@@ -461,7 +460,7 @@ func TestSerializationErrors(t *testing.T) {
 		{
 			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
 			privKeys: []string{privKey0},
-			// Public and private keys should be the same length.
+			// The number of public and private keys should be the same.
 			err: waddrmgr.ErrSeriesStorage,
 		},
 		{
@@ -476,11 +475,11 @@ func TestSerializationErrors(t *testing.T) {
 	for testNum, test := range tests {
 		encryptedPubs, err := encryptKeys(test.pubKeys, mgr.EncryptWithCryptoKeyPub)
 		if err != nil {
-			t.Errorf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
+			t.Fatalf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
 		}
 		encryptedPrivs, err := encryptKeys(test.privKeys, mgr.EncryptWithCryptoKeyPub)
 		if err != nil {
-			t.Errorf("Test #%d - Error encrypting privkeys: %v", testNum, err)
+			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
 		}
 
 		_, err = waddrmgr.SerializeSeries(
@@ -533,22 +532,22 @@ func TestSerialization(t *testing.T) {
 	for testNum, test := range tests {
 		encryptedPubs, err := encryptKeys(test.pubKeys, mgr.EncryptWithCryptoKeyPub)
 		if err != nil {
-			t.Errorf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
+			t.Fatalf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
 		}
 		encryptedPrivs, err := encryptKeys(test.privKeys, mgr.EncryptWithCryptoKeyPub)
 		if err != nil {
-			t.Errorf("Test #%d - Error encrypting privkeys: %v", testNum, err)
+			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
 		}
 
 		serialized, err := waddrmgr.SerializeSeries(
 			test.version, test.active, test.reqSigs, encryptedPubs, encryptedPrivs)
 		if err != nil {
-			t.Errorf("Test #%d - Error in serialization %v", testNum, err)
+			t.Fatalf("Test #%d - Error in serialization %v", testNum, err)
 		}
 
 		row, err := waddrmgr.DeserializeSeries(serialized)
 		if err != nil {
-			t.Errorf("Test #%d - Failed to deserialize %v %v", testNum, serialized, err)
+			t.Fatalf("Test #%d - Failed to deserialize %v %v", testNum, serialized, err)
 		}
 
 		// TODO: Move all of these checks into one or more separate functions.
