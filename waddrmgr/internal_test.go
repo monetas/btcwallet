@@ -28,7 +28,6 @@ import (
 	"testing"
 
 	"github.com/monetas/bolt"
-	"github.com/monetas/btcutil"
 	"github.com/monetas/btcwallet/snacl"
 )
 
@@ -76,10 +75,16 @@ type SeriesRow struct {
 	PrivKeysEncrypted [][]byte
 }
 
-// EncryptWithCryptoKeyPub allows using the manager's public key for
-// encryption. Used in serialization tests.
+// EncryptWithCryptoKeyPub allows using the manager's crypto key used for
+// encryption of public keys.
 func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
 	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
+}
+
+// EncryptWithCryptoKeyPriv allows using the manager's crypto key used for
+// encryption of private keys.
+func (m *Manager) EncryptWithCryptoKeyPriv(unencrypted []byte) ([]byte, error) {
+	return m.cryptoKeyPriv.Encrypt([]byte(unencrypted))
 }
 
 // TstEmptySeriesLookup empties the voting pool seriesLookup attribute.
@@ -118,10 +123,9 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 	}, nil
 }
 
-// BranchOrder transparently wraps branchOrder.
-func BranchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
-	return branchOrder(pks, branch)
-}
+var BranchOrder = branchOrder
+
+var ValidateAndDecryptKeys = validateAndDecryptKeys
 
 // ExistsSeriesTestsOnly checks whether a series is stored in the database.
 // Used by the series creation test.

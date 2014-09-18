@@ -64,8 +64,12 @@ const (
 	// keys was not met.
 	ErrTooFewPublicKeys
 
-	// ErrVotingPool indicates that an attempt has been made to access a
-	// voting pool that does not exist.
+	// ErrVotingPoolAlreadyExists indicates that an attempt has been made to
+	// create a voting pool that already exists.
+	ErrVotingPoolAlreadyExists
+
+	// ErrVotingPoolNotExists indicates that an attempt has been made to access
+	// a voting pool that does not exist.
 	ErrVotingPoolNotExists
 
 	// ErrScriptCreation indicates that the creation of a deposit script failed.
