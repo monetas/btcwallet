@@ -279,7 +279,7 @@ func TestDepositScriptAddressFailureToEncrypt(t *testing.T) {
 	checkManagerError(t, "", err, waddrmgr.ErrCrypto)
 }
 
-func TestCreateVotingPool(t *testing.T) {
+func TestLoadVotingPool(t *testing.T) {
 	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
@@ -290,6 +290,28 @@ func TestCreateVotingPool(t *testing.T) {
 	if !bytes.Equal(pool2.ID, pool.ID) {
 		t.Errorf("Voting pool obtained from DB does not match the created one")
 	}
+}
+
+func TestCreateVotingPool(t *testing.T) {
+	tearDown, mgr, _ := setUp(t)
+	defer tearDown()
+
+	pool, err := mgr.CreateVotingPool([]byte{0x02})
+	if err != nil {
+		t.Errorf("Error creating VotingPool: %v", err)
+	}
+	if !bytes.Equal(pool.ID, []byte{0x02}) {
+		t.Errorf("VotingPool ID mismatch: got %v, want %v", pool.ID, []byte{0x02})
+	}
+}
+
+func TestCreateVotingPoolWhenAlreadyExists(t *testing.T) {
+	tearDown, mgr, pool := setUp(t)
+	defer tearDown()
+
+	_, err := mgr.CreateVotingPool(pool.ID)
+
+	checkManagerError(t, "", err, waddrmgr.ErrVotingPoolAlreadyExists)
 }
 
 func TestCreateSeries(t *testing.T) {
@@ -411,6 +433,100 @@ func TestPutSeriesErrors(t *testing.T) {
 					i, retErr.ErrorCode, test.err.ErrorCode)
 			}
 		}
+	}
+}
+
+func TestValidateAndDecryptKeys(t *testing.T) {
+	tearDown, manager, _ := setUp(t)
+	defer tearDown()
+
+	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, manager.EncryptWithCryptoKeyPub)
+	if err != nil {
+		t.Fatalf("Failed to encrypt public keys: %v", err)
+	}
+	rawPrivKeys, err := encryptKeys([]string{privKey0, ""}, manager.EncryptWithCryptoKeyPriv)
+	if err != nil {
+		t.Fatalf("Failed to encrypt private keys: %v", err)
+	}
+
+	pubKeys, privKeys, err := waddrmgr.ValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, manager)
+	if err != nil {
+		t.Fatalf("Error when validating/decrypting keys: %v", err)
+	}
+
+	if len(pubKeys) != 2 {
+		t.Errorf("Unexpected number of decrypted public keys: %v", pubKeys)
+	}
+	if len(privKeys) != 2 {
+		t.Errorf("Unexpected number of decrypted private keys: %v", privKeys)
+	}
+
+	if pubKeys[0].String() != pubKey0 || pubKeys[1].String() != pubKey1 {
+		t.Fatalf("Public keys don't match: %v, %v", []string{pubKey0, pubKey1}, pubKeys)
+	}
+
+	if privKeys[0].String() != privKey0 || privKeys[1] != nil {
+		t.Fatalf("Private keys don't match: %v, %v", []string{privKey0, ""}, privKeys)
+	}
+
+	neuteredKey, err := privKeys[0].Neuter()
+	if err != nil {
+		t.Fatalf("Unable to neuter private key: %v", err)
+	}
+	if pubKeys[0].String() != neuteredKey.String() {
+		t.Errorf("Public key (%v) does not match neutered private key (%v)",
+			pubKeys[0].String(), neuteredKey.String())
+	}
+}
+
+func TestValidateAndDecryptKeysErrors(t *testing.T) {
+	tearDown, manager, _ := setUp(t)
+	defer tearDown()
+
+	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, manager.EncryptWithCryptoKeyPub)
+	if err != nil {
+		t.Fatalf("Failed to encrypt public key: %v", err)
+	}
+	encryptedPrivKeys, err := encryptKeys([]string{privKey1}, manager.EncryptWithCryptoKeyPriv)
+	if err != nil {
+		t.Fatalf("Failed to encrypt private key: %v", err)
+	}
+
+	tests := []struct {
+		rawPubKeys  [][]byte
+		rawPrivKeys [][]byte
+		err         waddrmgr.ErrorCode
+	}{
+		{
+			// Number of public keys does not match number of private keys.
+			rawPubKeys:  [][]byte{[]byte(pubKey0)},
+			rawPrivKeys: [][]byte{},
+			err:         waddrmgr.ErrKeysPrivatePublicMismatch,
+		},
+		{
+			// Failure to decrypt public key.
+			rawPubKeys:  [][]byte{[]byte(pubKey0)},
+			rawPrivKeys: [][]byte{[]byte(privKey0)},
+			err:         waddrmgr.ErrCrypto,
+		},
+		{
+			// Failure to decrypt private key.
+			rawPubKeys:  encryptedPubKeys,
+			rawPrivKeys: [][]byte{[]byte(privKey0)},
+			err:         waddrmgr.ErrCrypto,
+		},
+		{
+			// One public and one private key, but they don't match.
+			rawPubKeys:  encryptedPubKeys,
+			rawPrivKeys: encryptedPrivKeys,
+			err:         waddrmgr.ErrKeyMismatch,
+		},
+	}
+
+	for i, test := range tests {
+		_, _, err := waddrmgr.ValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, manager)
+
+		checkManagerError(t, fmt.Sprintf("Test #%d", i), err, test.err)
 	}
 }
 
