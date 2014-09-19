@@ -59,7 +59,7 @@ func (m *Manager) CreateVotingPool(poolID []byte) (*VotingPool, error) {
 	})
 	if err != nil {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
-		return nil, managerError(ErrDatabase, str, err)
+		return nil, managerError(ErrVotingPoolAlreadyExists, str, err)
 	}
 	return &VotingPool{
 		ID:           poolID,
@@ -333,6 +333,53 @@ func decryptExtendedKey(cryptoKey EncryptorDecryptor, encrypted []byte) (*hdkeyc
 	return result, nil
 }
 
+// validateAndDecryptSeriesKeys checks that the number of public and private
+// keys in the given dbSeriesRow is the same, decrypts them, ensures the
+// non-nil private keys have a matching public key and returns them.
+func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, manager *Manager) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
+	pubKeys = make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
+	privKeys = make([]*hdkeychain.ExtendedKey, len(rawPrivKeys))
+	if len(pubKeys) != len(privKeys) {
+		return nil, nil, managerError(ErrKeysPrivatePublicMismatch,
+			"the pub key and priv key arrays should have the same number of elements",
+			nil)
+	}
+
+	for i, encryptedPub := range rawPubKeys {
+		pubKey, err := decryptExtendedKey(manager.cryptoKeyPub, encryptedPub)
+		if err != nil {
+			return nil, nil, err
+		}
+		pubKeys[i] = pubKey
+
+		encryptedPriv := rawPrivKeys[i]
+		var privKey *hdkeychain.ExtendedKey
+		if encryptedPriv == nil {
+			privKey = nil
+		} else {
+			privKey, err = decryptExtendedKey(manager.cryptoKeyPriv, encryptedPriv)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		privKeys[i] = privKey
+
+		if privKey != nil {
+			checkPubKey, err := privKey.Neuter()
+			if err != nil {
+				str := fmt.Sprintf("cannot neuter key %v", privKey)
+				return nil, nil, managerError(ErrKeyNeuter, str, err)
+			}
+			if pubKey.String() != checkPubKey.String() {
+				str := fmt.Sprintf("public key %v different than expected %v",
+					pubKey, checkPubKey)
+				return nil, nil, managerError(ErrKeyMismatch, str, nil)
+			}
+		}
+	}
+	return pubKeys, privKeys, nil
+}
+
 // LoadAllSeries fetches all series (decrypting their public and private
 // extended keys) for this VotingPool from the database and populates the
 // seriesLookup map with them. If there are any private extended keys for
@@ -349,45 +396,10 @@ func (vp *VotingPool) LoadAllSeries() error {
 		return err
 	}
 	for id, series := range allSeries {
-		pubKeys := make([]*hdkeychain.ExtendedKey, len(series.pubKeysEncrypted))
-		privKeys := make([]*hdkeychain.ExtendedKey, len(series.privKeysEncrypted))
-		if len(pubKeys) != len(privKeys) {
-			return managerError(ErrKeysPrivatePublicMismatch,
-				"the pub key and priv key arrays should have the same number of elements",
-				nil)
-		}
-
-		for i, encryptedPub := range series.pubKeysEncrypted {
-			pubKey, err := decryptExtendedKey(vp.manager.cryptoKeyPub, encryptedPub)
-			if err != nil {
-				return err
-			}
-			pubKeys[i] = pubKey
-
-			encryptedPriv := series.privKeysEncrypted[i]
-			var privKey *hdkeychain.ExtendedKey
-			if encryptedPriv == nil {
-				privKey = nil
-			} else {
-				privKey, err = decryptExtendedKey(vp.manager.cryptoKeyPriv, encryptedPriv)
-				if err != nil {
-					return err
-				}
-			}
-			privKeys[i] = privKey
-
-			if privKey != nil {
-				checkPubKey, err := privKey.Neuter()
-				if err != nil {
-					str := fmt.Sprintf("cannot neuter key %v", privKey)
-					return managerError(ErrKeyNeuter, str, err)
-				}
-				if pubKey.String() != checkPubKey.String() {
-					str := fmt.Sprintf("public key %v different than expected %v",
-						pubKey, checkPubKey)
-					return managerError(ErrKeyMismatch, str, nil)
-				}
-			}
+		pubKeys, privKeys, err := validateAndDecryptKeys(
+			series.pubKeysEncrypted, series.privKeysEncrypted, vp.manager)
+		if err != nil {
+			return err
 		}
 		vp.seriesLookup[id] = &seriesData{
 			publicKeys:  pubKeys,
