@@ -1789,6 +1789,12 @@ func GetDepositScript(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (inte
 		return nil, fmt.Errorf("getting deposit script failed: %v", err)
 	}
 
+	// TODO: According to http://opentransactions.org/wiki/index.php/Getdepositscript
+	// we should update this wallet's lookahead window to ensure we're watching all
+	// possible addresses (for the given BranchID) from index 0 to the given index.
+	// And it probably should not fail if this is called more than once with the
+	// same arguments (currently it does).
+
 	// TEMPORARY:
 	// store address with the OLD wallet. Otherwise we can't get notifications
 	addr, err := w.KeyStore.ImportScript(script, &keystore.BlockStamp{})
