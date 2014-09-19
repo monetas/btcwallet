@@ -416,12 +416,18 @@ func (vp *VotingPool) LoadAllSeries() error {
 // - branch 1: ABC (first key priority)
 // - branch 2: BAC (second key priority)
 // - branch 3: CAB (third key priority)
-func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.AddressPubKey {
+func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.AddressPubKey, error) {
 	if pks == nil {
-		return nil
+		// This really shouldn't happen, but we want to be good citizens, so we
+		// return an error instead of crashing.
+		return nil, managerError(ErrInvalidValue, "pks cannot be nil", nil)
 	}
 
-	// Change the order of pubkeys based on branch number.
+	if branch > uint32(len(pks)) {
+		return nil, managerError(
+			ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
+	}
+
 	if branch == 0 {
 		numKeys := len(pks)
 		res := make([]*btcutil.AddressPubKey, numKeys)
@@ -430,7 +436,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 		for i, j := 0, numKeys-1; i < j; i, j = i+1, j-1 {
 			res[i], res[j] = res[j], res[i]
 		}
-		return res
+		return res, nil
 	} else {
 		tmp := make([]*btcutil.AddressPubKey, len(pks))
 		tmp[0] = pks[branch-1]
@@ -441,7 +447,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) []*btcutil.Address
 				j++
 			}
 		}
-		return tmp
+		return tmp, nil
 	}
 }
 
@@ -455,8 +461,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (Mana
 
 	encryptedScript, err := vp.manager.cryptoKeyScript.Encrypt(script)
 	if err != nil {
-		str := fmt.Sprintf("error while encrypting multisig script hash")
-		return nil, managerError(ErrCrypto, str, err)
+		return nil, managerError(ErrCrypto, "error while encrypting multisig script hash", err)
 	}
 
 	scriptHash := btcutil.Hash160(script)
@@ -498,7 +503,10 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 		}
 	}
 
-	pks = branchOrder(pks, branch)
+	pks, err := branchOrder(pks, branch)
+	if err != nil {
+		return nil, err
+	}
 
 	script, err := btcscript.MultiSigScript(pks, int(series.reqSigs))
 	if err != nil {
