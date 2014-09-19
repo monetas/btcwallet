@@ -78,4 +78,12 @@ const (
 	// ErrTooManyReqSignatures indicates that too many required
 	// signatures are requested.
 	ErrTooManyReqSignatures
+
+	// ErrInvalidBranch indicates that the given branch number is not valid
+	// for a given set of public keys.
+	ErrInvalidBranch
+
+	// ErrInvalidValue indicates that the value of a given function argument
+	// is invalid.
+	ErrInvalidValue
 )

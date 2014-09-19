@@ -1148,7 +1148,10 @@ func TestBranchOrderZero(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		inKeys := createTestPubKeys(t, i, 0)
 		wantKeys := reverse(inKeys)
-		resKeys := waddrmgr.TstBranchOrder(inKeys, 0)
+		resKeys, err := waddrmgr.TstBranchOrder(inKeys, 0)
+		if err != nil {
+			t.Fatalf("Error ordering keys: %v", err)
+		}
 
 		if len(resKeys) != len(wantKeys) {
 			t.Errorf("BranchOrder: wrong no. of keys. Got: %d, want %d",
@@ -1162,16 +1165,6 @@ func TestBranchOrderZero(t *testing.T) {
 				t.Errorf("BranchOrder(keys, 0): got %v, want %v",
 					resKeys[i], wantKeys[i])
 			}
-		}
-	}
-}
-
-func TestBranchOrderNilKeys(t *testing.T) {
-	// Test branchorder with nil input and various branch numbers.
-	for i := 0; i < 10; i++ {
-		res := waddrmgr.TstBranchOrder(nil, uint32(i))
-		if res != nil {
-			t.Errorf("Got non-nil: %v, want nil.", res)
 		}
 	}
 }
@@ -1191,7 +1184,10 @@ func TestBranchOrderNonZero(t *testing.T) {
 
 			inKeys := append(append(first, pivot...), last...)
 			wantKeys := append(append(pivot, first...), last...)
-			resKeys := waddrmgr.TstBranchOrder(inKeys, uint32(branch))
+			resKeys, err := waddrmgr.TstBranchOrder(inKeys, uint32(branch))
+			if err != nil {
+				t.Fatalf("Error ordering keys: %v", err)
+			}
 
 			if len(resKeys) != len(inKeys) {
 				t.Errorf("BranchOrder: wrong no. of keys. Got: %d, want %d",
@@ -1206,6 +1202,18 @@ func TestBranchOrderNonZero(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestBranchOrderNilKeys(t *testing.T) {
+	_, err := waddrmgr.TstBranchOrder(nil, 1)
+
+	checkManagerError(t, "", err, waddrmgr.ErrInvalidValue)
+}
+
+func TestBranchOrderInvalidBranch(t *testing.T) {
+	_, err := waddrmgr.TstBranchOrder(createTestPubKeys(t, 3, 0), 4)
+
+	checkManagerError(t, "", err, waddrmgr.ErrInvalidBranch)
 }
 
 func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) (origOrder, wantOrder, gotOrder []int) {
@@ -1293,13 +1301,7 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 	// error in (k *ExtendedKey).Neuter and the associated error path
 	// in EmpowerSeries.
 	badKey := "wM5uZBNTYmaYGiK8VaGi7zPGbZGLuQgDiR2Zk4nGfbRFLXwHGcMUdVdazRpNHFSR7X7WLmzzbAq8dA1ViN6eWKgKqPye1rJTDQTvBiXvZ7E3nmdx"
-	if err := pool.EmpowerSeries(seriesID, badKey); err == nil {
-		t.Errorf("Expected an error, got none")
-	} else {
-		gotErr := err.(waddrmgr.ManagerError)
-		wantErrCode := waddrmgr.ErrorCode(waddrmgr.ErrKeyNeuter)
-		if wantErrCode != gotErr.ErrorCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
+	err = pool.EmpowerSeries(seriesID, badKey)
+
+	checkManagerError(t, "", err, waddrmgr.ErrKeyNeuter)
 }
