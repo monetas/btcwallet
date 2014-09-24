@@ -20,7 +20,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/monetas/btcwallet/waddrmgr"
+	"github.com/conformal/btcwallet/waddrmgr"
 )
 
 var (

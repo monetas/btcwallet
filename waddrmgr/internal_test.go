@@ -27,8 +27,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/monetas/bolt"
-	"github.com/monetas/btcwallet/snacl"
+	"github.com/conformal/bolt"
+	"github.com/conformal/btcwallet/snacl"
 )
 
 // TstMaxRecentHashes makes the unexported maxRecentHashes constant available

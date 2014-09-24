@@ -25,10 +25,10 @@ import (
 
 	"code.google.com/p/go.crypto/nacl/secretbox"
 
-	"github.com/monetas/bolt"
-	"github.com/monetas/btcwallet/snacl"
-	"github.com/monetas/btcwire"
-	"github.com/monetas/fastsha256"
+	"github.com/conformal/bolt"
+	"github.com/conformal/btcwallet/snacl"
+	"github.com/conformal/btcwire"
+	"github.com/conformal/fastsha256"
 )
 
 const (

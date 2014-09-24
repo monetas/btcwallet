@@ -26,10 +26,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/monetas/btcnet"
-	"github.com/monetas/btcutil"
-	"github.com/monetas/btcutil/hdkeychain"
-	"github.com/monetas/btcwallet/waddrmgr"
+	"github.com/conformal/btcnet"
+	"github.com/conformal/btcutil"
+	"github.com/conformal/btcutil/hdkeychain"
+	"github.com/conformal/btcwallet/waddrmgr"
 )
 
 const (

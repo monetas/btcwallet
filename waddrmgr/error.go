@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/monetas/btcutil/hdkeychain"
+	"github.com/conformal/btcutil/hdkeychain"
 )
 
 var ErrNotImplemented = errors.New("not implemented")

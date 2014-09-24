@@ -10,7 +10,7 @@ import (
 	"code.google.com/p/go.crypto/nacl/secretbox"
 	"code.google.com/p/go.crypto/scrypt"
 
-	"github.com/monetas/fastsha256"
+	"github.com/conformal/fastsha256"
 )
 
 var (

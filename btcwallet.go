@@ -24,7 +24,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/monetas/btcwallet/chain"
+	"github.com/conformal/btcwallet/chain"
 )
 
 var (

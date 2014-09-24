@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/monetas/btcscript"
-	"github.com/monetas/btcutil"
-	"github.com/monetas/btcutil/hdkeychain"
+	"github.com/conformal/btcscript"
+	"github.com/conformal/btcutil"
+	"github.com/conformal/btcutil/hdkeychain"
 )
 
 const (

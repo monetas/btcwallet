@@ -17,7 +17,7 @@
 package main
 
 import (
-	"github.com/monetas/btcnet"
+	"github.com/conformal/btcnet"
 )
 
 var activeNet = &testNet3Params

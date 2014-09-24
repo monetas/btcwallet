@@ -11,7 +11,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/monetas/btcwallet/waddrmgr"
+	"github.com/conformal/btcwallet/waddrmgr"
 )
 
 const (
