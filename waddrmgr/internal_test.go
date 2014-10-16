@@ -23,13 +23,7 @@ interface. The functions are only exported while the tests are being run.
 
 package waddrmgr
 
-import (
-	"errors"
-	"testing"
-
-	"github.com/conformal/bolt"
-	"github.com/conformal/btcwallet/snacl"
-)
+import "github.com/conformal/btcwallet/snacl"
 
 // TstMaxRecentHashes makes the unexported maxRecentHashes constant available
 // when tests are run.
@@ -67,23 +61,6 @@ type SeriesRow struct {
 	PrivKeysEncrypted [][]byte
 }
 
-// EncryptWithCryptoKeyPub allows using the manager's crypto key used for
-// encryption of public keys.
-func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
-	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
-}
-
-// EncryptWithCryptoKeyPriv allows using the manager's crypto key used for
-// encryption of private keys.
-func (m *Manager) EncryptWithCryptoKeyPriv(unencrypted []byte) ([]byte, error) {
-	return m.cryptoKeyPriv.Encrypt([]byte(unencrypted))
-}
-
-// TstEmptySeriesLookup empties the voting pool seriesLookup attribute.
-func (vp *VotingPool) TstEmptySeriesLookup() {
-	vp.seriesLookup = make(map[uint32]*seriesData)
-}
-
 // SerializeSeries wraps serializeSeriesRow by passing it a freshly-built
 // dbSeriesRow.
 func SerializeSeries(version uint32, active bool, reqSigs uint32, pubKeys, privKeys [][]byte) ([]byte, error) {
@@ -115,111 +92,14 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 	}, nil
 }
 
-var TstBranchOrder = branchOrder
-
-var TstValidateAndDecryptKeys = validateAndDecryptKeys
-
-// TstExistsSeries checks whether a series is stored in the database.
-// Used by the series creation test.
-func (vp *VotingPool) TstExistsSeries(seriesID uint32) (bool, error) {
-	var exists bool
-	err := vp.manager.db.View(func(mtx *managerTx) error {
-		vpBucket := (*bolt.Tx)(mtx).Bucket(votingPoolBucketName).Bucket(vp.ID)
-		if vpBucket == nil {
-			exists = false
-			return nil
-		}
-		exists = vpBucket.Get(uint32ToBytes(seriesID)) != nil
-		return nil
-	})
-	if err != nil {
-		return false, err
-	}
-	return exists, nil
+// EncryptWithCryptoKeyPub allows using the manager's crypto key used for
+// encryption of public keys.
+func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
+	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
 }
 
-// TstGetRawPublicKeys gets a series public keys in string format.
-func (s *seriesData) TstGetRawPublicKeys() []string {
-	rawKeys := make([]string, len(s.publicKeys))
-	for i, key := range s.publicKeys {
-		rawKeys[i] = key.String()
-	}
-	return rawKeys
-}
-
-// TstGetRawPrivateKeys gets a series private keys in string format.
-func (s *seriesData) TstGetRawPrivateKeys() []string {
-	rawKeys := make([]string, len(s.privateKeys))
-	for i, key := range s.privateKeys {
-		if key != nil {
-			rawKeys[i] = key.String()
-		}
-	}
-	return rawKeys
-}
-
-// TstGetReqSigs expose the series reqSigs attribute.
-func (s *seriesData) TstGetReqSigs() uint32 {
-	return s.reqSigs
-}
-
-// TstPutSeries transparently wraps the voting pool putSeries method.
-func (vp *VotingPool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
-	return vp.putSeries(version, seriesID, reqSigs, inRawPubKeys)
-}
-
-func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
-	cryptoKey, err := newCryptoKey()
-	if err != nil {
-		t.Fatalf("Failed to generate cryptokey, %v", err)
-	}
-	if _, err := decryptExtendedKey(cryptoKey, []byte{}); err == nil {
-		t.Errorf("Expected function to fail, but it didn't")
-	} else {
-		gotErr := err.(ManagerError)
-		wantErrCode := ErrorCode(ErrCrypto)
-		if gotErr.ErrorCode != wantErrCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
-}
-
-func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
-	cryptoKey, err := newCryptoKey()
-	if err != nil {
-		t.Fatalf("Failed to generate cryptokey, %v", err)
-	}
-
-	// the plaintext not being base58 encoded triggers the error
-	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
-	if err != nil {
-		t.Fatalf("Failed to encrypt plaintext: %v", err)
-	}
-
-	if _, err := decryptExtendedKey(cryptoKey, cipherText); err == nil {
-		t.Errorf("Expected function to fail, but it didn't")
-	} else {
-		gotErr := err.(ManagerError)
-		wantErrCode := ErrorCode(ErrKeyChain)
-		if gotErr.ErrorCode != wantErrCode {
-			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
-		}
-	}
-}
-
-type TstFailingToEncryptCryptoKey struct {
-	cryptoKey
-}
-
-func (c *TstFailingToEncryptCryptoKey) Encrypt(in []byte) ([]byte, error) {
-	return nil, errors.New("failed to encrypt")
-}
-
-// Replace Manager.cryptoKeyScript with the given one and calls the given function,
-// resetting Manager.cryptoKeyScript to its original value after that.
-func RunWithReplacedCryptoKeyScript(mgr *Manager, cryptoKey EncryptorDecryptor, callback func()) {
-	orig := mgr.cryptoKeyScript
-	defer func() { mgr.cryptoKeyScript = orig }()
-	mgr.cryptoKeyScript = cryptoKey
-	callback()
+// EncryptWithCryptoKeyPriv allows using the manager's crypto key used for
+// encryption of private keys.
+func (m *Manager) EncryptWithCryptoKeyPriv(unencrypted []byte) ([]byte, error) {
+	return m.cryptoKeyPriv.Encrypt([]byte(unencrypted))
 }
