@@ -22,9 +22,8 @@ func TestCreateEligibles(t *testing.T) {
 		t.Fatalf("Cannot creates series %v", series)
 	}
 
-	var bsHeight int32 = 11112
-	pkScript := createVotingPoolPkScript(t, mgr, pool, bsHeight, series, branch, index)
-	eligible := createInputs(t, pkScript, []int64{5e6, 6e7}, store)
+	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
+	eligible := createInputs(t, pkScript, []int64{5e6, 6e7})
 	for _, e := range eligible {
 		fmt.Println("e.Amount(): ", e.Amount())
 	}
