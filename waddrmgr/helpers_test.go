@@ -14,23 +14,29 @@ import (
 var activeNet = &btcnet.TestNet3Params
 
 func createInputs(t *testing.T, pkScript []byte, amounts []int64) []txstore.Credit {
-	var inputs []txstore.Credit
+	msgTx := createMsgTx(pkScript, amounts)
 
-	for _, amt := range amounts {
-		input := createInput(t, pkScript, int64(amt))
-		inputs = append(inputs, input...)
+	s := txstore.New("/tmp/tx.bin")
+	// btcutil.NewTx will create a TX with txIndex==TxIndexUnknown, which "is typically
+	// because the transaction has not been inserted into a block". This doesn't seem to
+	// be a problem for us but is worth noting.
+	r, err := s.InsertTx(btcutil.NewTx(msgTx), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	return inputs
-}
-
-func createInput(t *testing.T, pkScript []byte, amount int64) []txstore.Credit {
-	tx := createMsgTx(pkScript, []int64{amount})
-	eligible := inputsFromTx(t, tx, []uint32{0})
+	eligible := make([]txstore.Credit, len(msgTx.TxOut))
+	for i := range msgTx.TxOut {
+		credit, err := r.AddCredit(uint32(i), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eligible[i] = credit
+	}
 	return eligible
 }
 
-func createMsgTx(pkScript []byte, amts []int64) *btcutil.Tx {
+func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
 	msgtx := &btcwire.MsgTx{
 		Version: 1,
 		TxIn: []*btcwire.TxIn{
@@ -49,10 +55,7 @@ func createMsgTx(pkScript []byte, amts []int64) *btcutil.Tx {
 	for _, amt := range amts {
 		msgtx.AddTxOut(btcwire.NewTxOut(amt, pkScript))
 	}
-	// This will create a TX with txIndex==TxIndexUnknown, which "is typically because
-	// the transaction has not been inserted into a block". This doesn't seem to
-	// be a problem for us but is worth noting.
-	return btcutil.NewTx(msgtx)
+	return msgtx
 }
 
 func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool, bsHeight int32, series, branch, index uint32) []byte {
@@ -92,22 +95,4 @@ func importPrivateKeys(t *testing.T, mgr *waddrmgr.Manager, privKeys []string, b
 			t.Fatal(err)
 		}
 	}
-}
-
-func inputsFromTx(t *testing.T, tx *btcutil.Tx, indices []uint32) []txstore.Credit {
-	s := txstore.New("/tmp/tx.bin")
-	r, err := s.InsertTx(tx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	eligible := make([]txstore.Credit, len(indices))
-	for i, idx := range indices {
-		credit, err := r.AddCredit(idx, false)
-		if err != nil {
-			t.Fatal(err)
-		}
-		eligible[i] = credit
-	}
-	return eligible
 }
