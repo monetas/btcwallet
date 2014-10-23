@@ -14,7 +14,6 @@ import (
 	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
-	"github.com/davecgh/go-spew/spew"
 )
 
 var bsHeight int32 = 11112
@@ -43,18 +42,39 @@ func TestStartWithdrawal(t *testing.T) {
 		eligible, _ := createCredits(t, mgr, pool, []int64{5e6, 4e6}, pubKeys, reqSigs)
 		return eligible
 	}
+	outBailment := &OutBailment{poolID: []byte{0x00}, server: "foo", transaction: 1}
+	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
+	amount := btcutil.Amount(4e6)
 	outputs := []*WithdrawalOutput{&WithdrawalOutput{
-		outBailment: &OutBailment{poolID: []byte{0x00}, server: "foo", transaction: 1},
-		address:     "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX",
-		amount:      4e6},
+		outBailment: outBailment, address: address, amount: amount},
 	}
 
-	_, _, err := startWithdrawal(0, VotingPoolAddress{}, VotingPoolAddress{}, VotingPoolAddress{}, 1, outputs)
+	status, _, err := startWithdrawal(0, VotingPoolAddress{}, VotingPoolAddress{}, VotingPoolAddress{}, 1, outputs)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// TODO: Validate the transactions
+	if len(status.outputs) != 1 {
+		t.Fatalf("Unexpected number of outputs in WithdrawalStatus; got %d, want %d",
+			len(status.outputs), 1)
+	}
+
+	withdrawalOutput, found := status.outputs[outBailment]
+	if !found {
+		t.Fatalf("No output found for OutBailment %v", outBailment)
+	}
+
+	if withdrawalOutput.address != address {
+		t.Fatalf("Unexpected address; got %s, want %s", withdrawalOutput.address, address)
+	}
+
+	if withdrawalOutput.status != "success" {
+		t.Fatalf("Unexpected status; got '%s', want success", withdrawalOutput.status)
+	}
+
+	if len(withdrawalOutput.outpoints) != 1 {
+		t.Fatalf("Unexpected number of outpoints; got %d, want %d", len(withdrawalOutput.outpoints), 1)
+	}
 }
 
 type VotingPoolAddress struct {
@@ -199,6 +219,7 @@ func (w *Withdrawal) fulfilNextOutput() error {
 
 	outpoint := OutBailmentOutpoint{index: outputIndex, amount: output.amount}
 	output.addOutpoint(outpoint)
+	output.status = "success"
 	return nil
 }
 
@@ -243,14 +264,8 @@ func (w *Withdrawal) fulfilOutputs() error {
 			continue
 		}
 		w.addChangeOutput(tx)
-
 		w.updateStatusFor(tx)
 	}
-
-	// TODO: Iterate over outputs in every tx, adding a change when necessary and updating
-	// their status in w.status
-
-	spew.Dump(w.status)
 	return nil
 }
 
@@ -264,7 +279,6 @@ func (w *Withdrawal) updateStatusFor(tx *btcwire.MsgTx) {
 
 func (w *Withdrawal) sign() map[string]TxInSignatures {
 	// TODO: Iterate over inputs in every tx and generate signatures for them
-	// A map of ntxid to siglists.
 
 	/*
 		privKey1, err := key1.ECPrivKey()
