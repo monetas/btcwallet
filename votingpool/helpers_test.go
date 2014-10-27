@@ -81,6 +81,7 @@ func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *votingp
 }
 
 func importPrivateKeys(t *testing.T, mgr *waddrmgr.Manager, privKeys []string, bs *waddrmgr.BlockStamp) {
+	// XXX: Should we lock the manager once we're done importing?
 	if err := mgr.Unlock(privPassphrase); err != nil {
 		t.Fatal(err)
 	}
