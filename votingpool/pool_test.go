@@ -33,6 +33,12 @@ import (
 	"github.com/conformal/btcwallet/waddrmgr"
 )
 
+var fastScrypt = &waddrmgr.Options{
+	ScryptN: 16,
+	ScryptR: 8,
+	ScryptP: 1,
+}
+
 // checkManagerError ensures the passed error is a ManagerError with an error
 // code that matches the passed  error code.
 func checkManagerError(t *testing.T, testName string, gotErr error, wantErrCode waddrmgr.ErrorCode) bool {
@@ -88,7 +94,6 @@ var (
 
 func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-	waddrmgr.TstSetScryptParams(16, 8, 1)
 }
 
 func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.VotingPool) {
@@ -103,7 +108,7 @@ func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *voti
 	}
 	os.Remove(file)
 	mgr, err = waddrmgr.Create(file, seed, pubPassphrase, privPassphrase,
-		&btcnet.MainNetParams)
+		&btcnet.MainNetParams, fastScrypt)
 	if err != nil {
 		t.Fatalf("Failed to create Manager: %v", err)
 	}

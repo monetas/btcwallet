@@ -106,11 +106,3 @@ func ExistsSeries(mgr *Manager, poolID []byte, seriesID uint32) (bool, error) {
 	}
 	return exists, nil
 }
-
-// TstSetScryptParams allows the scrypt parameters to be set to much lower
-// values while the tests are running so they are faster.
-func TstSetScryptParams(n, r, p int) {
-	scryptN = n
-	scryptR = r
-	scryptP = p
-}

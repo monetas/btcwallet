@@ -7,6 +7,7 @@ import (
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/txstore"
+	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
@@ -58,7 +59,7 @@ func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
 	return msgtx
 }
 
-func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool, bsHeight int32, series, branch, index uint32) []byte {
+func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, bsHeight int32, series, branch, index uint32) []byte {
 	script, err := pool.DepositScript(series, branch, index)
 	if err != nil {
 		t.Fatalf("Failed to create depositscript for series %d, branch %d, index %d: %v", series, branch, index, err)
