@@ -1,4 +1,4 @@
-package waddrmgr_test
+package votingpool_test
 
 import (
 	"fmt"
