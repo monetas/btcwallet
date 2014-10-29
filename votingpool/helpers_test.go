@@ -14,14 +14,17 @@ import (
 
 var activeNet = &btcnet.TestNet3Params
 
-func createInputs(t *testing.T, pkScript []byte, amounts []int64) []txstore.Credit {
+func createInputs(t *testing.T, pkScript []byte, amounts []int64) ([]txstore.Credit, *txstore.Store) {
 	msgTx := createMsgTx(pkScript, amounts)
 
 	s := txstore.New("/tmp/tx.bin")
-	// btcutil.NewTx will create a TX with txIndex==TxIndexUnknown, which "is typically
-	// because the transaction has not been inserted into a block". This doesn't seem to
-	// be a problem for us but is worth noting.
-	r, err := s.InsertTx(btcutil.NewTx(msgTx), nil)
+
+	// XXX: This duplicates the stuff lars did in one of his branches
+	block := &txstore.Block{Height: int32(10)} // XXX: Hard-coded value warning
+	tx := btcutil.NewTx(msgTx)
+	tx.SetIndex(1) // XXX: Hard-coded value warning
+
+	r, err := s.InsertTx(tx, block)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +37,7 @@ func createInputs(t *testing.T, pkScript []byte, amounts []int64) []txstore.Cred
 		}
 		eligible[i] = credit
 	}
-	return eligible
+	return eligible, s
 }
 
 func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {

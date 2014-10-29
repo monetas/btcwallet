@@ -1,8 +1,6 @@
 package votingpool_test
 
 import (
-	"bytes"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -25,7 +23,7 @@ var bsHeight int32 = 11112
 var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
 var netParams *btcnet.Params = &btcnet.MainNetParams
 var logger btclog.Logger
-var globalPkScript []byte
+var store *txstore.Store
 
 func init() {
 	logger, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
@@ -35,8 +33,10 @@ func TestFulfilOutputs(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 
+	var credits []txstore.Credit
+	credits, store = createCredits(t, mgr, pool, []int64{5e6, 4e6})
 	getEligibleInputs = func(inputStart, inputStop VotingPoolAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
-		return createCredits(t, mgr, pool, []int64{5e6, 4e6})
+		return credits
 	}
 	outBailment := &OutBailment{poolID: pool.ID, server: "foo", transaction: 1}
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
@@ -86,7 +86,7 @@ func TestFulfilOutputs(t *testing.T) {
 		t.Fatalf("Unexpected number of outpoints; got %d, want %d", len(withdrawalOutput.outpoints), 1)
 	}
 
-	// XXX: There should be a separate test to check that signing works.
+	// XXX: There should be a separate test that generates raw signatures and checks them.
 	sigs, err := w.sign(mgr)
 	if err != nil {
 		t.Fatal(err)
@@ -100,6 +100,7 @@ func TestFulfilOutputs(t *testing.T) {
 		t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
 	}
 
+	// XXX: There should be a separate test to check that signing of tx inputs works.
 	if err = SignMultiSigUTXO(mgr, tx, 0, txInSigs); err != nil {
 		t.Fatal(err)
 	}
@@ -387,8 +388,6 @@ func (w *Withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 		ntxid := w.ntxid(tx)
 		for idx := range tx.TxIn {
 			pkScript := w.usedInputs[ntxid][idx].TxOut().PkScript
-			// XXX: Big fat hack to make SignMultiSigUTXO() work
-			globalPkScript = pkScript
 			// XXX: We assume pkScript is always a P2SH here.
 			_, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, netParams)
 			if err != nil {
@@ -428,12 +427,19 @@ func (w *Withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 // SignMultiSigUTXO signs the P2SH UTXO with the given index by constructing a
 // script containing all given signatures plus the redeem (multi-sig) script.
 func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, sigs []rawSig) error {
-	pkScript := globalPkScript
-	// XXX: We assume pkScript is always a P2SH here.
-	_, addresses, nRequired, err := btcscript.ExtractPkScriptAddrs(pkScript, netParams)
+	credit, err := store.UnspentOutput(tx.TxIn[idx].PreviousOutPoint)
+	if err != nil {
+		return err
+	}
+	pkScript := credit.TxOut().PkScript
+	class, addresses, nRequired, err := btcscript.ExtractPkScriptAddrs(pkScript, netParams)
 	if err != nil {
 		// XXX: Again, no idea what's the correct thing to do here.
 		return err
+	}
+	// XXX: We assume pkScript is always a P2SH here.
+	if class != btcscript.ScriptHashTy {
+		return errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
 	}
 	redeemScript, err := getRedeemScript(mgr, addresses[0])
 	if err != nil {
@@ -456,9 +462,6 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, sigs []
 	// Combine the redeem script and the unlocking script to get our signature script.
 	sigScript := unlockingScript.AddData(redeemScript)
 	tx.TxIn[idx].SignatureScript = sigScript.Script()
-	var b bytes.Buffer
-	tx.Serialize(&b)
-	fmt.Println(hex.EncodeToString(b.Bytes()))
 	return nil
 }
 
@@ -469,7 +472,12 @@ func validateMsgTx(msgtx *btcwire.MsgTx) error {
 		flags |= btcscript.ScriptBip16
 	}
 	for i, txin := range msgtx.TxIn {
-		engine, err := btcscript.NewScript(txin.SignatureScript, globalPkScript, i, msgtx, flags)
+		credit, err := store.UnspentOutput(msgtx.TxIn[i].PreviousOutPoint)
+		if err != nil {
+			return err
+		}
+		pkScript := credit.TxOut().PkScript
+		engine, err := btcscript.NewScript(txin.SignatureScript, pkScript, i, msgtx, flags)
 		if err != nil {
 			return fmt.Errorf("cannot create script engine: %s", err)
 		}
@@ -501,7 +509,7 @@ func getEligibleInputsDefault(inputStart, inputStop VotingPoolAddress, dustThres
 
 var getEligibleInputs func(VotingPoolAddress, VotingPoolAddress, uint32, int32) []txstore.Credit = getEligibleInputsDefault
 
-func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64) []txstore.Credit {
+func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64) ([]txstore.Credit, *txstore.Store) {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
 	master1, _ := hdkeychain.NewMaster(seed)
 	master2, _ := hdkeychain.NewMaster(append(seed, byte(0x01)))

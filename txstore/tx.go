@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -1082,6 +1083,31 @@ func (s *Store) UnspentOutputs() ([]Credit, error) {
 	defer s.mtx.RUnlock()
 
 	return s.unspentOutputs()
+}
+
+// When combining raw sigs from multiple auditors we'll need to lookup the
+// pkScript for a given UTXO, but at that point all we have is TxIn.PreviousOutpoint,
+// so this method gives us that.
+func (s *Store) UnspentOutput(outpoint btcwire.OutPoint) (*Credit, error) {
+	var key BlockTxKey
+	found := false
+	// XXX: AIUI, s.unspent may be huge so this would probably never be accepted upstream.
+	for op, k := range s.unspent {
+		if reflect.DeepEqual(outpoint, op) {
+			key = k
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, errors.New("Output not found")
+	}
+	r, err := s.lookupBlockTx(key)
+	if err != nil {
+		return nil, errors.New("Output not found")
+	}
+	t := &TxRecord{key, r, s}
+	return &Credit{t, outpoint.Index}, nil
 }
 
 func (s *Store) unspentOutputs() ([]Credit, error) {

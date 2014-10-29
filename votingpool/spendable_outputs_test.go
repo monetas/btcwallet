@@ -22,7 +22,7 @@ func TestCreateEligibles(t *testing.T) {
 
 	var bsHeight int32 = 11112
 	pkScript := createVotingPoolPkScript(t, mgr, pool, bsHeight, series, branch, index)
-	eligible := createInputs(t, pkScript, []int64{5e6, 6e7})
+	eligible, _ := createInputs(t, pkScript, []int64{5e6, 6e7})
 	for _, e := range eligible {
 		fmt.Println("e.Amount(): ", e.Amount())
 	}
