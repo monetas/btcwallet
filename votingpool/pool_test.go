@@ -92,6 +92,26 @@ var (
 	privPassphrase = []byte("81lUHXnOMZ@?XXd7O9xyDIWIbXX-lj")
 )
 
+var (
+	decryptPub = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
+		return func(in []byte) ([]byte, error) {
+			return m.Decrypt(waddrmgr.CKTPublic, in)
+		}
+	}
+
+	encryptPub = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
+		return func(in []byte) ([]byte, error) {
+			return m.Encrypt(waddrmgr.CKTPublic, in)
+		}
+	}
+
+	encryptPriv = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
+		return func(in []byte) ([]byte, error) {
+			return m.Encrypt(waddrmgr.CKTPrivate, in)
+		}
+	}
+)
+
 func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
@@ -202,6 +222,9 @@ func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
 
+	// We need to unlock the manager in order to empower a series
+	manager.Unlock(privPassphrase)
+
 	err = votingpool.LoadVotingPoolAndEmpowerSeries(manager, poolID, 0, privKey0)
 	if err != nil {
 		t.Fatalf("Load voting pool and Empower series failed: %v", err)
@@ -244,7 +267,7 @@ func TestDepositScriptAddress(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to get DepositScriptAddress #%d: %v", i, err)
 			}
-			address := addr.Address().EncodeAddress()
+			address := addr.EncodeAddress()
 			if expectedAddress != address {
 				t.Errorf("DepositScript #%d returned the wrong deposit script. Got %v, want %v",
 					i, address, expectedAddress)
@@ -449,17 +472,16 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1},
-		func(in []byte) ([]byte, error) {
-			return manager.EncryptPub(in)
-		})
+	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, encryptPub(manager))
 	if err != nil {
 		t.Fatalf("Failed to encrypt public keys: %v", err)
 	}
-	rawPrivKeys, err := encryptKeys([]string{privKey0, ""},
-		func(in []byte) ([]byte, error) {
-			return manager.EncryptPriv(in)
-		})
+
+	// We need to unlock the manager in order to encrypt with the
+	// private key.
+	manager.Unlock(privPassphrase)
+
+	rawPrivKeys, err := encryptKeys([]string{privKey0, ""}, encryptPriv(manager))
 	if err != nil {
 		t.Fatalf("Failed to encrypt private keys: %v", err)
 	}
@@ -498,11 +520,22 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, manager.EncryptPub)
+	encryptedPubKeys, err := encryptKeys([]string{pubKey0},
+		func(in []byte) ([]byte, error) {
+			return manager.Encrypt(waddrmgr.CKTPublic, in)
+		})
 	if err != nil {
 		t.Fatalf("Failed to encrypt public key: %v", err)
 	}
-	encryptedPrivKeys, err := encryptKeys([]string{privKey1}, manager.EncryptPriv)
+
+	// We need to unlock the manager in order to encrypt with the
+	// private key.
+	manager.Unlock(privPassphrase)
+
+	encryptedPrivKeys, err := encryptKeys([]string{privKey1},
+		func(in []byte) ([]byte, error) {
+			return manager.Encrypt(waddrmgr.CKTPrivate, in)
+		})
 	if err != nil {
 		t.Fatalf("Failed to encrypt private key: %v", err)
 	}
@@ -562,7 +595,7 @@ func encryptKeys(keys []string, cryptoFunc func([]byte) ([]byte, error)) ([][]by
 }
 
 func TestCannotReplaceEmpoweredSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
 	var seriesId uint32 = 1
@@ -570,6 +603,9 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 	if err := pool.CreateSeries(1, seriesId, 3, []string{pubKey0, pubKey1, pubKey2, pubKey3}); err != nil {
 		t.Fatalf("Failed to create series", err)
 	}
+
+	// We need to unlock the manager in order to empower a series.
+	manager.Unlock(privPassphrase)
 
 	if err := pool.EmpowerSeries(seriesId, privKey1); err != nil {
 		t.Fatalf("Failed to empower series", err)
@@ -712,7 +748,7 @@ func validateReplaceSeries(t *testing.T, pool *votingpool.VotingPool, testID int
 }
 
 func TestEmpowerSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -759,6 +795,9 @@ func TestEmpowerSeries(t *testing.T) {
 			err: waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrKeysPrivatePublicMismatch},
 		},
 	}
+
+	// We need to unlock the manager in order to empower a series.
+	manager.Unlock(privPassphrase)
 
 	for testNum, test := range tests {
 		// Add the extended private key to voting pool.
@@ -890,6 +929,9 @@ func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSer
 func TestLoadAllSeries(t *testing.T) {
 	tearDown, manager, _ := setUp(t)
 	defer tearDown()
+
+	// We need to unlock the manager in order to empower a series.
+	manager.Unlock(privPassphrase)
 
 	for _, test := range testLoadAllSeriesTests {
 		pool := setUpLoadAllSeries(t, manager, test)
@@ -1119,64 +1161,17 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 	checkManagerError(t, "", err, waddrmgr.ErrKeyNeuter)
 }
 
-// FailingToEncryptCryptoKey is a failing implementation of the
-// waddrmgr.EncryptorDecryptor interface.
-type FailingToEncryptCryptoKey struct{}
-
-func (m FailingToEncryptCryptoKey) Encrypt(in []byte) ([]byte, error) {
-	return nil, waddrmgr.ManagerError{ErrorCode: waddrmgr.ErrCrypto}
-}
-
-func (m FailingToEncryptCryptoKey) Decrypt(in []byte) ([]byte, error) {
-	return nil, nil
-}
-
-func (m FailingToEncryptCryptoKey) Bytes() []byte { return nil }
-
-func (m FailingToEncryptCryptoKey) CopyBytes([]byte) {}
-
-func (m FailingToEncryptCryptoKey) Zero() {}
-
-func TestDepositScriptAddressFailureToEncrypt(t *testing.T) {
-	tearDown, _, pool := setUp(t)
-	defer tearDown()
-
-	if err := pool.CreateSeries(1, 0, 2, []string{pubKey0, pubKey1, pubKey2}); err != nil {
-		t.Fatalf("Cannot creates series")
-	}
-
-	var err error
-
-	badEncryptor := func(in []byte) ([]byte, error) {
-		return nil, waddrmgr.ManagerError{
-			ErrorCode:   waddrmgr.ErrCrypto,
-			Description: "ErrCrypto",
-			Err:         nil,
-		}
-	}
-
-	// Replace votingpool.encryptScript fake one that always errors
-	// out. That should be caught and propagated as an ErrCrypto by
-	// DepositScriptAddress.
-	votingpool.TstRunWithReplacedCryptoKeyScript(
-		pool, badEncryptor, func() {
-			_, err = pool.DepositScriptAddress(0, 0, uint32(1))
-		})
-
-	checkManagerError(t, "", err, waddrmgr.ErrCrypto)
-}
-
 func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
 
 	// the plaintext not being base58 encoded triggers the error
-	cipherText, err := mgr.EncryptPub([]byte("not-base58-encoded"))
+	cipherText, err := mgr.Encrypt(waddrmgr.CKTPublic, []byte("not-base58-encoded"))
 	if err != nil {
 		t.Fatalf("Failed to encrypt plaintext: %v", err)
 	}
 
-	if _, err := votingpool.TstDecryptExtendedKey(mgr.DecryptPub, cipherText); err == nil {
+	if _, err := votingpool.TstDecryptExtendedKey(decryptPub(mgr), cipherText); err == nil {
 		t.Errorf("Expected function to fail, but it didn't")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
@@ -1191,7 +1186,7 @@ func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
 	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
 
-	if _, err := votingpool.TstDecryptExtendedKey(mgr.DecryptPub, []byte{}); err == nil {
+	if _, err := votingpool.TstDecryptExtendedKey(decryptPub(mgr), []byte{}); err == nil {
 		t.Errorf("Expected function to fail, but it didn't")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)

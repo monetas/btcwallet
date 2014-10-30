@@ -6,28 +6,83 @@ import (
 	"github.com/conformal/bolt"
 )
 
-func (m *Manager) EncryptPub(in []byte) ([]byte, error) {
-	return m.cryptoKeyPub.Encrypt(in)
+// CryptoKeyType is used to differentiate between different kinds of
+// crypto keys.
+type CryptoKeyType byte
+
+// Crypto key types.
+const (
+	CKTPrivate CryptoKeyType = iota
+	CKTScript
+	CKTPublic
+)
+
+// Encrypt in using the crypto key type specified by keyType.
+func (m *Manager) Encrypt(keyType CryptoKeyType, in []byte) ([]byte, error) {
+	// Encryption must be performed under the manager mutex since the
+	// keys are cleared when the manager is locked.
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	cryptoKey, err := m.selectCryptoKey(keyType)
+	if err != nil {
+		return nil, err
+	}
+
+	encrypted, err := cryptoKey.Encrypt(in)
+	if err != nil {
+		return nil, managerError(ErrCrypto, "failed to encrypt", err)
+	}
+	return encrypted, nil
 }
 
-func (m *Manager) DecryptPub(in []byte) ([]byte, error) {
-	return m.cryptoKeyPub.Decrypt(in)
+// Decrypt in using the crypto key type specified by keyType.
+func (m *Manager) Decrypt(keyType CryptoKeyType, in []byte) ([]byte, error) {
+	// Encryption must be performed under the manager mutex since the
+	// keys are cleared when the manager is locked.
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+
+	cryptoKey, err := m.selectCryptoKey(keyType)
+	if err != nil {
+		return nil, err
+	}
+
+	encrypted, err := cryptoKey.Decrypt(in)
+	if err != nil {
+		return nil, managerError(ErrCrypto, "failed to decrypt", err)
+	}
+	return encrypted, nil
 }
 
-func (m *Manager) EncryptPriv(in []byte) ([]byte, error) {
-	return m.cryptoKeyPriv.Encrypt(in)
-}
+// selectCryptoKey selects the appropriate crypto key based on the
+// keyType. If the keyType is invalid or the key requested requires
+// the manager to be unlocked and it isn't, an error is returned.
+func (m *Manager) selectCryptoKey(keyType CryptoKeyType) (EncryptorDecryptor, error) {
+	if keyType == CKTPrivate || keyType == CKTScript {
+		// The manager must be unlocked to encrypt with the private keys.
+		if m.locked || m.watchingOnly {
+			return nil, managerError(ErrLocked, errLocked, nil)
+		}
+	}
 
-func (m *Manager) DecryptPriv(in []byte) ([]byte, error) {
-	return m.cryptoKeyPriv.Decrypt(in)
-}
+	var cryptoKey EncryptorDecryptor
+	switch keyType {
+	case CKTPrivate:
+		cryptoKey = m.cryptoKeyPriv
 
-func (m *Manager) EncryptScript(in []byte) ([]byte, error) {
-	return m.cryptoKeyScript.Encrypt(in)
-}
+	case CKTScript:
+		cryptoKey = m.cryptoKeyScript
 
-func (m *Manager) DecryptScript(in []byte) ([]byte, error) {
-	return m.cryptoKeyScript.Decrypt(in)
+	case CKTPublic:
+		cryptoKey = m.cryptoKeyPub
+
+	default:
+		return nil, managerError(ErrInvalidKeyType, "invalid key type",
+			nil)
+	}
+
+	return cryptoKey, nil
 }
 
 // Added here since we do not have access to the managerTx type
@@ -35,12 +90,6 @@ func PutVotingPool(m *Manager, poolID []byte) error {
 	return m.db.Update(func(tx *managerTx) error {
 		return tx.PutVotingPool(poolID)
 	})
-}
-
-// Move the function to the manager?
-func NewScriptAddress(m *Manager, account uint32, scriptHash, scriptEncrypted []byte) (ManagedScriptAddress, error) {
-	return newScriptAddress(m, account, scriptHash, scriptEncrypted)
-
 }
 
 // Added here since we do not have access to the managerTx type

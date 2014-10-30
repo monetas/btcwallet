@@ -107,12 +107,26 @@ func newVotingPool(m *waddrmgr.Manager, poolID []byte) *VotingPool {
 		ID:            poolID,
 		seriesLookup:  make(map[uint32]*seriesData),
 		manager:       m,
-		encryptPub:    m.EncryptPub,
-		decryptPub:    m.DecryptPub,
-		encryptPriv:   m.EncryptPriv,
-		decryptPriv:   m.DecryptPriv,
-		encryptScript: m.EncryptScript,
-		decryptScript: m.DecryptScript,
+		encryptPub:    genEncryptFunc(m, waddrmgr.CKTPublic),
+		decryptPub:    genDecryptFunc(m, waddrmgr.CKTPublic),
+		encryptPriv:   genEncryptFunc(m, waddrmgr.CKTPrivate),
+		decryptPriv:   genDecryptFunc(m, waddrmgr.CKTPrivate),
+		encryptScript: genEncryptFunc(m, waddrmgr.CKTScript),
+		decryptScript: genDecryptFunc(m, waddrmgr.CKTScript),
+	}
+}
+
+func genEncryptFunc(m *waddrmgr.Manager,
+	keyType waddrmgr.CryptoKeyType) func([]byte) ([]byte, error) {
+	return func(in []byte) ([]byte, error) {
+		return m.Encrypt(keyType, in)
+	}
+}
+
+func genDecryptFunc(m *waddrmgr.Manager,
+	keyType waddrmgr.CryptoKeyType) func([]byte) ([]byte, error) {
+	return func(in []byte) ([]byte, error) {
+		return m.Decrypt(keyType, in)
 	}
 }
 
@@ -468,20 +482,14 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.Addres
 
 // DepositScriptAddress constructs a multi-signature redemption script using DepositScript
 // and returns the pay-to-script-hash-address for that script.
-func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (waddrmgr.ManagedScriptAddress, error) {
+func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (btcutil.Address, error) {
 	script, err := vp.DepositScript(seriesID, branch, index)
 	if err != nil {
 		return nil, err
 	}
-
-	encryptedScript, err := vp.encryptScript(script)
-	if err != nil {
-		return nil, managerError(waddrmgr.ErrCrypto, "error while encrypting multisig script hash", err)
-	}
-
 	scriptHash := btcutil.Hash160(script)
 
-	return waddrmgr.NewScriptAddress(vp.manager, waddrmgr.ImportedAddrAccount, scriptHash, encryptedScript)
+	return btcutil.NewAddressScriptHashFromHash(scriptHash, vp.manager.Net())
 }
 
 // DepositScript constructs and returns a multi-signature redemption script where
