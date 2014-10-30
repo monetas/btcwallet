@@ -175,7 +175,7 @@ type TxInSignatures [][]rawSig
 
 type rawSig []byte
 
-type Withdrawal struct {
+type withdrawal struct {
 	roundID        uint32
 	transactions   []*btcwire.MsgTx
 	pendingOutputs []*WithdrawalOutput
@@ -193,8 +193,8 @@ type Withdrawal struct {
 	outputTotal btcutil.Amount
 }
 
-func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore.Credit, changeStart VotingPoolAddress) *Withdrawal {
-	return &Withdrawal{
+func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore.Credit, changeStart VotingPoolAddress) *withdrawal {
+	return &withdrawal{
 		roundID:        roundID,
 		currentTx:      btcwire.NewMsgTx(),
 		pendingOutputs: outputs,
@@ -206,19 +206,19 @@ func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore
 }
 
 // Add the given output to the current Tx.
-func (w *Withdrawal) addOutput(output *WithdrawalOutput, pkScript []byte) uint32 {
+func (w *withdrawal) addOutput(output *WithdrawalOutput, pkScript []byte) uint32 {
 	w.currentTx.AddTxOut(btcwire.NewTxOut(int64(output.amount), pkScript))
 	w.outputTotal += output.amount
 	w.currentOutputs = append(w.currentOutputs, output)
 	return uint32(len(w.currentTx.TxOut) - 1)
 }
 
-func (w *Withdrawal) rollBackLastOutput() {
+func (w *withdrawal) rollBackLastOutput() {
 	// TODO: Remove output from w.currentTx.TxOut
 	// TODO: Subtract its amount from w.outputTotal
 }
 
-func (w *Withdrawal) currentTxTooBig() bool {
+func (w *withdrawal) currentTxTooBig() bool {
 	// TODO: Implement me!
 	return estimateSize(w.currentTx) > 1000
 }
@@ -226,7 +226,7 @@ func (w *Withdrawal) currentTxTooBig() bool {
 // If this returns it means we have added an output and the necessary inputs to fulfil that
 // output plus the required fees. It also means the tx won't reach the size limit even
 // after we add a change output and sign all inputs.
-func (w *Withdrawal) fulfilNextOutput() error {
+func (w *withdrawal) fulfilNextOutput() error {
 	output := w.pendingOutputs[0]
 	w.pendingOutputs = w.pendingOutputs[1:]
 
@@ -277,7 +277,7 @@ func (w *Withdrawal) fulfilNextOutput() error {
 	return nil
 }
 
-func (w *Withdrawal) finalizeCurrentTx() {
+func (w *withdrawal) finalizeCurrentTx() {
 	if len(w.currentTx.TxOut) == 0 {
 		return
 	}
@@ -310,7 +310,7 @@ func (w *Withdrawal) finalizeCurrentTx() {
 	w.outputTotal = btcutil.Amount(0)
 }
 
-func (w *Withdrawal) fulfilOutputs() error {
+func (w *withdrawal) fulfilOutputs() error {
 	// TODO: Drop outputs (in descending amount order) if the input total is smaller than output total
 
 	if len(w.pendingOutputs) == 0 {
@@ -353,7 +353,7 @@ func (w *Withdrawal) fulfilOutputs() error {
 	return nil
 }
 
-func (w *Withdrawal) updateStatusFor(tx *btcwire.MsgTx) {
+func (w *withdrawal) updateStatusFor(tx *btcwire.MsgTx) {
 	// TODO
 }
 
@@ -400,7 +400,7 @@ func ntxid(tx *btcwire.MsgTx) string {
 // lists.
 // TODO: Add a test that uses a fixed transaction and compares the well known signatures
 // (including their order) against the list returned here.
-func (w *Withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, error) {
+func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, error) {
 	sigs := make(map[string]TxInSignatures)
 	for _, tx := range w.transactions {
 		txSigs := make(TxInSignatures, len(tx.TxIn))
