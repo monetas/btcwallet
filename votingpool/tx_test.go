@@ -40,10 +40,11 @@ func TestFulfilOutputs(t *testing.T) {
 		return credits
 	}
 	outBailment := &OutBailment{poolID: pool.ID, server: "foo", transaction: 1}
+	outBailment2 := &OutBailment{poolID: pool.ID, server: "foo", transaction: 2}
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
-	amount := btcutil.Amount(4e6)
-	outputs := []*WithdrawalOutput{&WithdrawalOutput{
-		outBailment: outBailment, address: address, amount: amount},
+	outputs := []*WithdrawalOutput{
+		&WithdrawalOutput{outBailment: outBailment, address: address, amount: btcutil.Amount(4e6)},
+		&WithdrawalOutput{outBailment: outBailment2, address: address, amount: btcutil.Amount(1e6)},
 	}
 
 	changeStart := VotingPoolAddress{pool: pool, seriesID: 0, branch: 1, index: 0}
@@ -60,31 +61,22 @@ func TestFulfilOutputs(t *testing.T) {
 	}
 
 	tx := w.transactions[0]
-	if len(tx.TxOut) != 2 {
-		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), 2)
+	if len(tx.TxOut) != 3 {
+		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), 3)
 	}
 
 	status := w.status
-	if len(status.outputs) != 1 {
+	if len(status.outputs) != 2 {
 		t.Fatalf("Unexpected number of outputs in WithdrawalStatus; got %d, want %d",
-			len(status.outputs), 1)
+			len(status.outputs), 2)
 	}
 
-	withdrawalOutput, found := status.outputs[outBailment]
-	if !found {
-		t.Fatalf("No output found for OutBailment %v", outBailment)
-	}
-
-	if withdrawalOutput.address != address {
-		t.Fatalf("Unexpected address; got %s, want %s", withdrawalOutput.address, address)
-	}
-
-	if withdrawalOutput.status != "success" {
-		t.Fatalf("Unexpected status; got '%s', want success", withdrawalOutput.status)
-	}
-
-	if len(withdrawalOutput.outpoints) != 1 {
-		t.Fatalf("Unexpected number of outpoints; got %d, want %d", len(withdrawalOutput.outpoints), 1)
+	for _, outb := range []*OutBailment{outBailment, outBailment2} {
+		withdrawalOutput, found := status.outputs[outb]
+		if !found {
+			t.Fatalf("No output found for OutBailment %v", outb)
+		}
+		checkWithdrawalOutput(t, withdrawalOutput, address, "success", 1)
 	}
 
 	// XXX: There should be a separate test that generates raw signatures and checks them.
@@ -93,8 +85,8 @@ func TestFulfilOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	txSigs := sigs[ntxid(tx)]
-	if len(txSigs) != 1 {
-		t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 1)
+	if len(txSigs) != 2 {
+		t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
 	}
 	txInSigs := txSigs[0]
 	if len(txInSigs) != 3 {
@@ -107,9 +99,26 @@ func TestFulfilOutputs(t *testing.T) {
 	if err = SignMultiSigUTXO(mgr, t2, 0, txInSigs); err != nil {
 		t.Fatal(err)
 	}
+	if err = SignMultiSigUTXO(mgr, t2, 1, txSigs[1]); err != nil {
+		t.Fatal(err)
+	}
 
 	if err = validateSigScripts(tx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func checkWithdrawalOutput(t *testing.T, withdrawalOutput *WithdrawalOutput, address, status string, nOutpoints int) {
+	if withdrawalOutput.address != address {
+		t.Fatalf("Unexpected address; got %s, want %s", withdrawalOutput.address, address)
+	}
+
+	if withdrawalOutput.status != status {
+		t.Fatalf("Unexpected status; got '%s', want '%s'", withdrawalOutput.status, status)
+	}
+
+	if len(withdrawalOutput.outpoints) != nOutpoints {
+		t.Fatalf("Unexpected number of outpoints; got %d, want %d", len(withdrawalOutput.outpoints), nOutpoints)
 	}
 }
 
@@ -169,8 +178,9 @@ type OutBailmentOutpoint struct {
 }
 
 // A list of raw signatures (one for every pubkey in the multi-sig script)
-// for a given transaction input. If the privkey for a given pubkey is not
-// available, an empty rawSig will be used.
+// for a given transaction input. They should match the order of pubkeys in
+// the script and an empty rawSig should be used when the private key for
+// a pubkey is not known.
 type TxInSignatures [][]rawSig
 
 type rawSig []byte
