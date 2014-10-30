@@ -15,24 +15,6 @@ func (vp *VotingPool) TstExistsSeries(seriesID uint32) (bool, error) {
 	return waddrmgr.ExistsSeries(vp.manager, vp.ID, seriesID)
 }
 
-// EncryptWithCryptoKeyPub allows using the manager's crypto key used for
-// encryption of public keys.
-func EncryptWithCryptoKeyPub(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
-	fun := func(unencrypted []byte) ([]byte, error) {
-		return m.CryptoKeyPub().Encrypt([]byte(unencrypted))
-	}
-	return fun
-}
-
-// EncryptWithCryptoKeyPriv allows using the manager's crypto key used for
-// encryption of private keys.
-func EncryptWithCryptoKeyPriv(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
-	fun := func(unencrypted []byte) ([]byte, error) {
-		return m.CryptoKeyPriv().Encrypt([]byte(unencrypted))
-	}
-	return fun
-}
-
 // TstGetRawPublicKeys gets a series public keys in string format.
 func (s *seriesData) TstGetRawPublicKeys() []string {
 	rawKeys := make([]string, len(s.publicKeys))
@@ -67,12 +49,11 @@ var TstValidateAndDecryptKeys = validateAndDecryptKeys
 
 // Replace Manager.cryptoKeyScript with the given one and calls the given function,
 // resetting Manager.cryptoKeyScript to its original value after that.
-func TstRunWithReplacedCryptoKeyScript(p *VotingPool, cryptoKey waddrmgr.EncryptorDecryptor, callback func()) {
-	orig := p.cryptoKeyScript
-	defer func() { p.cryptoKeyScript = orig }()
-	p.cryptoKeyScript = func() waddrmgr.EncryptorDecryptor {
-		return cryptoKey
-	}
+func TstRunWithReplacedCryptoKeyScript(p *VotingPool,
+	encryptScript func([]byte) ([]byte, error), callback func()) {
+	orig := p.encryptScript
+	defer func() { p.encryptScript = orig }()
+	p.encryptScript = encryptScript
 	callback()
 }
 

@@ -446,19 +446,25 @@ func TestPutSeriesErrors(t *testing.T) {
 }
 
 func TestValidateAndDecryptKeys(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, votingpool.EncryptWithCryptoKeyPub(manager))
+	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1},
+		func(in []byte) ([]byte, error) {
+			return manager.EncryptPub(in)
+		})
 	if err != nil {
 		t.Fatalf("Failed to encrypt public keys: %v", err)
 	}
-	rawPrivKeys, err := encryptKeys([]string{privKey0, ""}, votingpool.EncryptWithCryptoKeyPriv(manager))
+	rawPrivKeys, err := encryptKeys([]string{privKey0, ""},
+		func(in []byte) ([]byte, error) {
+			return manager.EncryptPriv(in)
+		})
 	if err != nil {
 		t.Fatalf("Failed to encrypt private keys: %v", err)
 	}
 
-	pubKeys, privKeys, err := votingpool.TstValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, manager)
+	pubKeys, privKeys, err := votingpool.TstValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, pool)
 	if err != nil {
 		t.Fatalf("Error when validating/decrypting keys: %v", err)
 	}
@@ -489,14 +495,14 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 }
 
 func TestValidateAndDecryptKeysErrors(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, votingpool.EncryptWithCryptoKeyPub(manager))
+	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, manager.EncryptPub)
 	if err != nil {
 		t.Fatalf("Failed to encrypt public key: %v", err)
 	}
-	encryptedPrivKeys, err := encryptKeys([]string{privKey1}, votingpool.EncryptWithCryptoKeyPriv(manager))
+	encryptedPrivKeys, err := encryptKeys([]string{privKey1}, manager.EncryptPriv)
 	if err != nil {
 		t.Fatalf("Failed to encrypt private key: %v", err)
 	}
@@ -533,7 +539,7 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		_, _, err := votingpool.TstValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, manager)
+		_, _, err := votingpool.TstValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, pool)
 
 		checkManagerError(t, fmt.Sprintf("Test #%d", i), err, test.err)
 	}
@@ -1141,11 +1147,19 @@ func TestDepositScriptAddressFailureToEncrypt(t *testing.T) {
 
 	var err error
 
-	// Replace pool.manager.cryptoKeyScript with a fake one that has an Encrypt()
-	// method that always errors out. That should be caught and propagated as
-	// an ErrCrypto by DepositScriptAddress.
+	badEncryptor := func(in []byte) ([]byte, error) {
+		return nil, waddrmgr.ManagerError{
+			ErrorCode:   waddrmgr.ErrCrypto,
+			Description: "ErrCrypto",
+			Err:         nil,
+		}
+	}
+
+	// Replace votingpool.encryptScript fake one that always errors
+	// out. That should be caught and propagated as an ErrCrypto by
+	// DepositScriptAddress.
 	votingpool.TstRunWithReplacedCryptoKeyScript(
-		pool, &FailingToEncryptCryptoKey{}, func() {
+		pool, badEncryptor, func() {
 			_, err = pool.DepositScriptAddress(0, 0, uint32(1))
 		})
 
@@ -1156,15 +1170,13 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
 
-	cryptoKey := mgr.CryptoKeyPub()
-
 	// the plaintext not being base58 encoded triggers the error
-	cipherText, err := cryptoKey.Encrypt([]byte("not-base58-encoded"))
+	cipherText, err := mgr.EncryptPub([]byte("not-base58-encoded"))
 	if err != nil {
 		t.Fatalf("Failed to encrypt plaintext: %v", err)
 	}
 
-	if _, err := votingpool.TstDecryptExtendedKey(cryptoKey, cipherText); err == nil {
+	if _, err := votingpool.TstDecryptExtendedKey(mgr.DecryptPub, cipherText); err == nil {
 		t.Errorf("Expected function to fail, but it didn't")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
@@ -1179,9 +1191,7 @@ func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
 	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
 
-	cryptoKey := mgr.CryptoKeyPub()
-
-	if _, err := votingpool.TstDecryptExtendedKey(cryptoKey, []byte{}); err == nil {
+	if _, err := votingpool.TstDecryptExtendedKey(mgr.DecryptPub, []byte{}); err == nil {
 		t.Errorf("Expected function to fail, but it didn't")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)

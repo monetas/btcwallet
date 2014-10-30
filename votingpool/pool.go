@@ -51,10 +51,29 @@ type VotingPool struct {
 	seriesLookup map[uint32]*seriesData
 	manager      *waddrmgr.Manager
 
-	// cryptoKeyScript is a local reference to the function
-	// manager.CryptoKeyScript which we need to be able to replace to
-	// facilitate testing
-	cryptoKeyScript func() waddrmgr.EncryptorDecryptor
+	// encryptPub contains a reference to Manager.EncryptPub in order
+	// to facilitate testing.
+	encryptPub func(in []byte) ([]byte, error)
+
+	// encryptPub contains a reference to Manager.DecryptPub in order
+	// to facilitate testing.
+	decryptPub func(in []byte) ([]byte, error)
+
+	// encryptPub contains a reference to Manager.EncryptPriv in order
+	// to facilitate testing.
+	encryptPriv func(in []byte) ([]byte, error)
+
+	// encryptPub contains a reference to Manager.DecryptPriv in order
+	// to facilitate testing.
+	decryptPriv func(in []byte) ([]byte, error)
+
+	// encryptPub contains a reference to Manager.EncryptScript in
+	// order to facilitate testing.
+	encryptScript func(in []byte) ([]byte, error)
+
+	// encryptPub contains a reference to Manager.DecryptScript in
+	// order to facilitate testing.
+	decryptScript func(in []byte) ([]byte, error)
 }
 
 // CreateVotingPool creates a new entry in the database with the given ID
@@ -65,12 +84,7 @@ func CreateVotingPool(m *waddrmgr.Manager, poolID []byte) (*VotingPool, error) {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
 		return nil, managerError(waddrmgr.ErrVotingPoolAlreadyExists, str, err)
 	}
-	return &VotingPool{
-		ID:              poolID,
-		seriesLookup:    make(map[uint32]*seriesData),
-		manager:         m,
-		cryptoKeyScript: m.CryptoKeyScript,
-	}, nil
+	return newVotingPool(m, poolID), nil
 }
 
 // LoadVotingPool fetches the entry in the database with the given ID
@@ -80,15 +94,26 @@ func LoadVotingPool(m *waddrmgr.Manager, poolID []byte) (*VotingPool, error) {
 	if err != nil {
 		return nil, err
 	}
-	vp := &VotingPool{
-		ID:           poolID,
-		manager:      m,
-		seriesLookup: make(map[uint32]*seriesData),
-	}
+	vp := newVotingPool(m, poolID)
 	if err = vp.LoadAllSeries(); err != nil {
 		return nil, err
 	}
 	return vp, nil
+}
+
+// newVotingPool creates a new VotingPool instance.
+func newVotingPool(m *waddrmgr.Manager, poolID []byte) *VotingPool {
+	return &VotingPool{
+		ID:            poolID,
+		seriesLookup:  make(map[uint32]*seriesData),
+		manager:       m,
+		encryptPub:    m.EncryptPub,
+		decryptPub:    m.DecryptPub,
+		encryptPriv:   m.EncryptPriv,
+		decryptPriv:   m.DecryptPriv,
+		encryptScript: m.EncryptScript,
+		decryptScript: m.DecryptScript,
+	}
 }
 
 // LoadVotingPoolAndDepositScript generates and returns a deposit script
@@ -171,7 +196,7 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
 	for i, pubKey := range data.publicKeys {
-		encryptedPubKeys[i], err = vp.manager.CryptoKeyPub().Encrypt(
+		encryptedPubKeys[i], err = vp.encryptPub(
 			[]byte(pubKey.String()))
 		if err != nil {
 			str := fmt.Sprintf("key %v failed encryption", pubKey)
@@ -183,7 +208,7 @@ func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error 
 		if privKey == nil {
 			encryptedPrivKeys[i] = nil
 		} else {
-			encryptedPrivKeys[i], err = vp.manager.CryptoKeyPriv().Encrypt(
+			encryptedPrivKeys[i], err = vp.encryptPriv(
 				[]byte(privKey.String()))
 		}
 		if err != nil {
@@ -314,8 +339,8 @@ func (vp *VotingPool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKey
 
 // decryptExtendedKey uses the given cryptoKey to decrypt the encrypted
 // byte slice and return an extended (public or private) key representing it.
-func decryptExtendedKey(cryptoKey waddrmgr.EncryptorDecryptor, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
-	decrypted, err := cryptoKey.Decrypt(encrypted)
+func decryptExtendedKey(decryptor func([]byte) ([]byte, error), encrypted []byte) (*hdkeychain.ExtendedKey, error) {
+	decrypted, err := decryptor(encrypted)
 	if err != nil {
 		str := fmt.Sprintf("cannot decrypt key %v", encrypted)
 		return nil, managerError(waddrmgr.ErrCrypto, str, err)
@@ -332,7 +357,7 @@ func decryptExtendedKey(cryptoKey waddrmgr.EncryptorDecryptor, encrypted []byte)
 // validateAndDecryptSeriesKeys checks that the number of public and private
 // keys in the given dbSeriesRow is the same, decrypts them, ensures the
 // non-nil private keys have a matching public key and returns them.
-func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, manager *waddrmgr.Manager) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
+func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *VotingPool) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
 	pubKeys = make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	privKeys = make([]*hdkeychain.ExtendedKey, len(rawPrivKeys))
 	if len(pubKeys) != len(privKeys) {
@@ -342,7 +367,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, manager *waddrmgr.
 	}
 
 	for i, encryptedPub := range rawPubKeys {
-		pubKey, err := decryptExtendedKey(manager.CryptoKeyPub(), encryptedPub)
+		pubKey, err := decryptExtendedKey(vp.decryptPub, encryptedPub)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -353,7 +378,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, manager *waddrmgr.
 		if encryptedPriv == nil {
 			privKey = nil
 		} else {
-			privKey, err = decryptExtendedKey(manager.CryptoKeyPriv(), encryptedPriv)
+			privKey, err = decryptExtendedKey(vp.decryptPriv, encryptedPriv)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -388,7 +413,7 @@ func (vp *VotingPool) LoadAllSeries() error {
 	}
 	for id, series := range series {
 		pubKeys, privKeys, err := validateAndDecryptKeys(
-			series.PubKeysEncrypted, series.PrivKeysEncrypted, vp.manager)
+			series.PubKeysEncrypted, series.PrivKeysEncrypted, vp)
 		if err != nil {
 			return err
 		}
@@ -449,7 +474,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (wadd
 		return nil, err
 	}
 
-	encryptedScript, err := vp.cryptoKeyScript().Encrypt(script)
+	encryptedScript, err := vp.encryptScript(script)
 	if err != nil {
 		return nil, managerError(waddrmgr.ErrCrypto, "error while encrypting multisig script hash", err)
 	}

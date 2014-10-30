@@ -6,16 +6,28 @@ import (
 	"github.com/conformal/bolt"
 )
 
-func (m *Manager) CryptoKeyPub() EncryptorDecryptor {
-	return m.cryptoKeyPub
+func (m *Manager) EncryptPub(in []byte) ([]byte, error) {
+	return m.cryptoKeyPub.Encrypt(in)
 }
 
-func (m *Manager) CryptoKeyPriv() EncryptorDecryptor {
-	return m.cryptoKeyPriv
+func (m *Manager) DecryptPub(in []byte) ([]byte, error) {
+	return m.cryptoKeyPub.Decrypt(in)
 }
 
-func (m *Manager) CryptoKeyScript() EncryptorDecryptor {
-	return m.cryptoKeyScript
+func (m *Manager) EncryptPriv(in []byte) ([]byte, error) {
+	return m.cryptoKeyPriv.Encrypt(in)
+}
+
+func (m *Manager) DecryptPriv(in []byte) ([]byte, error) {
+	return m.cryptoKeyPriv.Decrypt(in)
+}
+
+func (m *Manager) EncryptScript(in []byte) ([]byte, error) {
+	return m.cryptoKeyScript.Encrypt(in)
+}
+
+func (m *Manager) DecryptScript(in []byte) ([]byte, error) {
+	return m.cryptoKeyScript.Decrypt(in)
 }
 
 // Added here since we do not have access to the managerTx type
