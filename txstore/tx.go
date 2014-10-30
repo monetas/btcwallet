@@ -991,6 +991,17 @@ func (s *Store) UnminedDebitTxs() []*btcutil.Tx {
 	return unmined
 }
 
+// UnminedTx returns the wallet transaction with the given hash that
+// is not known to have been mined in a block.
+func (s *Store) UnminedTx(sha *btcwire.ShaHash) *btcutil.Tx {
+	for _, t := range s.UnminedDebitTxs() {
+		if *sha == *t.Sha() {
+			return t
+		}
+	}
+	return nil
+}
+
 // removeDoubleSpends checks for any unconfirmed transactions which would
 // introduce a double spend if tx was added to the store (either as a confirmed
 // or unconfirmed transaction).  If one is found, it and all transactions which

@@ -101,10 +101,10 @@ func TestFulfilOutputs(t *testing.T) {
 		t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
 	}
 
-	// TODO: Use store.UnminedDebitTxs() to get the tx we want, instead of using the tx from the Withdrawal instance.
-
 	// XXX: There should be a separate test to check that signing of tx inputs works.
-	if err = SignMultiSigUTXO(mgr, tx, 0, txInSigs); err != nil {
+	sha, _ := btcwire.NewShaHashFromStr(w.ntxid(tx))
+	t2 := store.UnminedTx(sha).MsgTx()
+	if err = SignMultiSigUTXO(mgr, t2, 0, txInSigs); err != nil {
 		t.Fatal(err)
 	}
 
