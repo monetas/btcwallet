@@ -1085,29 +1085,20 @@ func (s *Store) UnspentOutputs() ([]Credit, error) {
 	return s.unspentOutputs()
 }
 
-// When combining raw sigs from multiple auditors we'll need to lookup the
-// pkScript for a given UTXO, but at that point all we have is TxIn.PreviousOutpoint,
-// so this method gives us that.
-func (s *Store) UnspentOutput(outpoint btcwire.OutPoint) (*Credit, error) {
-	var key BlockTxKey
-	found := false
-	// XXX: AIUI, s.unspent may be huge so this would probably never be accepted upstream.
-	for op, k := range s.unspent {
+// XXX: Maybe return the PkScript directly as that's the only thing we need from the returned TxOut
+// UnconfirmedSpent returns the output with the given outpoint, spent by an unconfirmed
+// transaction.
+func (s *Store) UnconfirmedSpent(outpoint btcwire.OutPoint) (*btcwire.TxOut, error) {
+	for op, key := range s.unconfirmed.spentBlockOutPointKeys {
 		if reflect.DeepEqual(outpoint, op) {
-			key = k
-			found = true
-			break
+			r, err := s.lookupBlockTx(key.BlockTxKey)
+			if err != nil {
+				return nil, fmt.Errorf("BlockOutputKey not found: %v", err)
+			}
+			return r.Tx().MsgTx().TxOut[outpoint.Index], nil
 		}
 	}
-	if !found {
-		return nil, errors.New("Output not found")
-	}
-	r, err := s.lookupBlockTx(key)
-	if err != nil {
-		return nil, errors.New("Output not found")
-	}
-	t := &TxRecord{key, r, s}
-	return &Credit{t, outpoint.Index}, nil
+	return nil, errors.New(fmt.Sprintf("Outpoint not found: %v", outpoint))
 }
 
 func (s *Store) unspentOutputs() ([]Credit, error) {

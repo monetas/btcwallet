@@ -1,6 +1,7 @@
 package votingpool_test
 
 import (
+	"io/ioutil"
 	"testing"
 
 	"github.com/conformal/btcnet"
@@ -17,7 +18,13 @@ var activeNet = &btcnet.TestNet3Params
 func createInputs(t *testing.T, pkScript []byte, amounts []int64) ([]txstore.Credit, *txstore.Store) {
 	msgTx := createMsgTx(pkScript, amounts)
 
-	s := txstore.New("/tmp/tx.bin")
+	// XXX: Change this to take a store as argument, or else we need to provide a tearDown method
+	// that removes the temp file.
+	dir, err := ioutil.TempDir("", "tx.bin")
+	if err != nil {
+		t.Fatalf("Failed to create db file: %v", err)
+	}
+	s := txstore.New(dir)
 
 	// XXX: This duplicates the stuff lars did in one of his branches
 	block := &txstore.Block{Height: int32(10)} // XXX: Hard-coded value warning
