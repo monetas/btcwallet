@@ -193,7 +193,8 @@ type withdrawal struct {
 	eligibleInputs []txstore.Credit
 	// A map of ntxids to lists of txstore.Credit
 	usedInputs map[string][]txstore.Credit
-	// A list containing the Credits added as inputs to currentTx; needed so that we can sign them later on.
+	// A list containing the Credits added as inputs to currentTx; needed so that we
+	// can sign them later on.
 	currentInputs []txstore.Credit
 	status        WithdrawalStatus
 	changeStart   VotingPoolAddress
@@ -438,13 +439,17 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 				var sig rawSig
 				privKey, err := getPrivKey(mgr, addr.(*btcutil.AddressPubKey))
 				if err == nil {
-					logger.Infof("Signing input %d of tx %s with privkey of %s", idx, ntxid, addr)
-					sig, err = btcscript.RawTxInSignature(tx, idx, redeemScript, btcscript.SigHashAll, privKey)
+					logger.Infof("Signing input %d of tx %s with privkey of %s",
+						idx, ntxid, addr)
+					sig, err = btcscript.RawTxInSignature(
+						tx, idx, redeemScript, btcscript.SigHashAll, privKey)
 					if err != nil {
 						panic(err) // XXX: Again, no idea what's the correct thing to do here.
 					}
 				} else {
-					logger.Infof("Not signing input %d of %s because private key for %s was not found: %v", idx, ntxid, addr, err)
+					logger.Infof(
+						"Not signing input %d of %s because private key for %s was "+
+							"not found: %v", idx, ntxid, addr, err)
 					sig = []byte{}
 				}
 				txInSigs[addrIdx] = sig
@@ -499,7 +504,7 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, sigs []
 		unlockingScript.AddData(sig)
 	}
 
-	// Combine the redeem script and the unlocking script to get our signature script.
+	// Combine the redeem script and the unlocking script to get the actual signature script.
 	sigScript := unlockingScript.AddData(redeemScript)
 	tx.TxIn[idx].SignatureScript = sigScript.Script()
 	return nil
@@ -538,12 +543,13 @@ func calculateFee(tx *btcwire.MsgTx) btcutil.Amount {
 	return btcutil.Amount(1)
 }
 
-func getEligibleInputsDefault(inputStart, inputStop VotingPoolAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
+func getEligibleInputsDefault(inputStart, inputStop VotingPoolAddress, dustThreshold uint32,
+	bsHeight int32) []txstore.Credit {
 	// TODO:
 	return make([]txstore.Credit, 0)
 }
 
-var getEligibleInputs func(VotingPoolAddress, VotingPoolAddress, uint32, int32) []txstore.Credit = getEligibleInputsDefault
+var getEligibleInputs = getEligibleInputsDefault
 
 func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64) ([]txstore.Credit, *txstore.Store) {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
