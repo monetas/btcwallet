@@ -19,7 +19,6 @@ package votingpool_test
 import (
 	"testing"
 
-	"github.com/conformal/btcnet"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/txstore"
@@ -30,7 +29,6 @@ import (
 
 var bsHeight int32 = 11112
 var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
-var netParams *btcnet.Params = &btcnet.MainNetParams
 
 func TestFulfilOutputs(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
@@ -51,23 +49,13 @@ func TestFulfilOutputs(t *testing.T) {
 	changeStart := votingpool.NewVotingPoolAddress(pool, 0, 1, 0)
 	dustThreshold := uint32(1)
 	eligible := getEligibleInputs(&votingpool.VotingPoolAddress{}, &votingpool.VotingPoolAddress{}, dustThreshold, bsHeight)
-	w := votingpool.NewWithdrawal(0, outputs, eligible, changeStart, netParams)
 
-	if err := w.FulfilOutputs(store); err != nil {
+	status, sigs, err := votingpool.Withdrawal(0, outputs, eligible, changeStart, mgr, store)
+
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	transactions := w.Transactions()
-	if len(transactions) != 1 {
-		t.Fatalf("Unexpected number of transactions; got %d, want %d", len(transactions), 1)
-	}
-
-	tx := transactions[0]
-	if len(tx.TxOut) != 3 {
-		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), 3)
-	}
-
-	status := w.Status()
 	fulfiled := status.Outputs()
 	if len(fulfiled) != 2 {
 		t.Fatalf("Unexpected number of outputs in WithdrawalStatus; got %d, want %d",
@@ -82,35 +70,42 @@ func TestFulfilOutputs(t *testing.T) {
 		checkWithdrawalOutput(t, withdrawalOutput, address, "success", 1)
 	}
 
-	// XXX: There should be a separate test that generates raw signatures and checks them.
-	sigs, err := w.Sign(mgr)
-	if err != nil {
-		t.Fatal(err)
+	if len(sigs) != 1 {
+		t.Fatalf("Unexpected number of tx signature lists; got %d, want 1", len(sigs))
 	}
-	txSigs := sigs[votingpool.Ntxid(tx)]
-	if len(txSigs) != 2 {
-		t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
-	}
-	txInSigs := txSigs[0]
-	if len(txInSigs) != 3 {
-		t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
+
+	var ntxid string
+	var txSigs votingpool.TxInSignatures
+	var txInSigs []votingpool.RawSig
+	for ntxid, txSigs = range sigs {
+		// We should have 2 TxInSignatures entries as the transaction created by
+		// votingpool.Withdrawal() should have two inputs.
+		if len(txSigs) != 2 {
+			t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
+		}
+		// And we should have 3 raw signatures as we have all 3 private keys for this
+		// voting pool series loaded in the address manager.
+		txInSigs = txSigs[0]
+		if len(txInSigs) != 3 {
+			t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
+		}
 	}
 
 	// XXX: There should be a separate test to check that signing of tx inputs works.
-	sha, _ := btcwire.NewShaHashFromStr(votingpool.Ntxid(tx))
-	t2 := store.UnminedTx(sha).MsgTx()
-	txOut, err := store.UnconfirmedSpent(t2.TxIn[0].PreviousOutPoint)
+	sha, _ := btcwire.NewShaHashFromStr(ntxid)
+	tx := store.UnminedTx(sha).MsgTx()
+	txOut, err := store.UnconfirmedSpent(tx.TxIn[0].PreviousOutPoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = votingpool.SignMultiSigUTXO(mgr, t2, 0, txOut.PkScript, txInSigs, netParams); err != nil {
+	if err = votingpool.SignMultiSigUTXO(mgr, tx, 0, txOut.PkScript, txInSigs, mgr.Net()); err != nil {
 		t.Fatal(err)
 	}
-	txOut, err = store.UnconfirmedSpent(t2.TxIn[1].PreviousOutPoint)
+	txOut, err = store.UnconfirmedSpent(tx.TxIn[1].PreviousOutPoint)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = votingpool.SignMultiSigUTXO(mgr, t2, 1, txOut.PkScript, txSigs[1], netParams); err != nil {
+	if err = votingpool.SignMultiSigUTXO(mgr, tx, 1, txOut.PkScript, txSigs[1], mgr.Net()); err != nil {
 		t.Fatal(err)
 	}
 

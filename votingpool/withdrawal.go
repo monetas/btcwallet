@@ -31,6 +31,13 @@ import (
 	"github.com/conformal/btcwire"
 )
 
+var log btclog.Logger
+
+func init() {
+	// XXX: Make it possible to switch this on/off like in txstore/log.go
+	log, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
+}
+
 type VotingPoolAddress struct {
 	pool     *VotingPool
 	seriesID uint32
@@ -44,6 +51,7 @@ func NewVotingPoolAddress(
 }
 
 func (a *VotingPoolAddress) Address() (btcutil.Address, error) {
+	// TODO: Cache the result
 	return a.pool.DepositScriptAddress(a.seriesID, a.branch, a.index)
 }
 
@@ -52,6 +60,7 @@ func (a *VotingPoolAddress) Next() *VotingPoolAddress {
 	return a
 }
 
+// OutBailment represents an outbailment request received from a notary server.
 type OutBailment struct {
 	poolID      []byte
 	server      string
@@ -73,6 +82,9 @@ func (s *WithdrawalStatus) Outputs() map[*OutBailment]*WithdrawalOutput {
 	return s.outputs
 }
 
+// XXX: This data type is used by clients when specifying the requested outbailments,
+// but it's also used in WithdrawalStatus to convey the state of a fulfilled outbailment.
+// That is quite confusing; we should probably use separate types for those two things.
 type WithdrawalOutput struct {
 	outBailment *OutBailment
 	address     string
@@ -118,11 +130,11 @@ type OutBailmentOutpoint struct {
 
 // A list of raw signatures (one for every pubkey in the multi-sig script)
 // for a given transaction input. They should match the order of pubkeys in
-// the script and an empty rawSig should be used when the private key for
+// the script and an empty RawSig should be used when the private key for
 // a pubkey is not known.
-type TxInSignatures [][]rawSig
+type TxInSignatures [][]RawSig
 
-type rawSig []byte
+type RawSig []byte
 
 type withdrawal struct {
 	roundID        uint32
@@ -135,38 +147,68 @@ type withdrawal struct {
 	// A list containing the Credits added as inputs to currentTx; needed so that we
 	// can sign them later on.
 	currentInputs []txstore.Credit
-	status        WithdrawalStatus
+	status        *WithdrawalStatus
+	sigs          map[string]TxInSignatures
 	changeStart   *VotingPoolAddress
 	currentTx     *btcwire.MsgTx
 	net           *btcnet.Params
 	// Totals for the current transaction
 	inputTotal  btcutil.Amount
 	outputTotal btcutil.Amount
-	// XXX: This should probably not be here
-	logger btclog.Logger
 }
 
-func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore.Credit, changeStart *VotingPoolAddress, net *btcnet.Params) *withdrawal {
-	logger, _ := btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
-	return &withdrawal{
+func Withdrawal(
+	roundID uint32,
+	outputs []*WithdrawalOutput,
+	inputs []txstore.Credit,
+	changeStart *VotingPoolAddress,
+	mgr *waddrmgr.Manager,
+	txStore *txstore.Store,
+) (*WithdrawalStatus, map[string]TxInSignatures, error) {
+	w := &withdrawal{
 		roundID:        roundID,
 		currentTx:      btcwire.NewMsgTx(),
 		pendingOutputs: outputs,
 		usedInputs:     make(map[string][]txstore.Credit),
+		sigs:           make(map[string]TxInSignatures),
 		eligibleInputs: inputs,
-		status:         WithdrawalStatus{outputs: make(map[*OutBailment]*WithdrawalOutput)},
+		status:         &WithdrawalStatus{outputs: make(map[*OutBailment]*WithdrawalOutput)},
 		changeStart:    changeStart,
-		net:            net,
-		logger:         logger,
+		net:            mgr.Net(),
 	}
-}
+	if err := w.fulfilOutputs(txStore); err != nil {
+		return nil, nil, err
+	}
+	if err := w.sign(mgr); err != nil {
+		return nil, nil, err
+	}
 
-func (w *withdrawal) Transactions() []*btcwire.MsgTx {
-	return w.transactions
-}
+	// Store the transactions in the txStore and write it to disk.
+	for _, tx := range w.transactions {
+		txr, err := txStore.InsertTx(btcutil.NewTx(tx), nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, err = txr.AddDebits(); err != nil {
+			return nil, nil, err
+		}
+		// XXX: Must only do this if the transaction has a change output.
+		if _, err = txr.AddCredit(uint32(len(tx.TxOut)-1), true); err != nil {
+			return nil, nil, err
+		}
+	}
+	txStore.MarkDirty()
+	if err := txStore.WriteIfDirty(); err != nil {
+		return nil, nil, err
+	}
 
-func (w *withdrawal) Status() WithdrawalStatus {
-	return w.status
+	// TODO: Store the raw signatures in the DB.
+
+	// XXX: Using separate DBs for the transactions and the signatures may be problematic.
+	// What happens if we store the transactions and fail to store the signatures? We
+	// could store the siglists first and roll them back (which should be easy) if we fail
+	// to store the txs.
+	return w.status, w.sigs, nil
 }
 
 // Add the given output to the current Tx.
@@ -201,7 +243,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		return nil
 	}
 	outputIndex := w.addOutput(output, pkScript)
-	w.logger.Infof("Added output sending %s to %s", output.amount, output.address)
+	log.Infof("Added output sending %s to %s", output.amount, output.address)
 
 	if w.currentTxTooBig() {
 		// TODO: Roll back last added output, finalize w.currentTx and assign a new
@@ -218,7 +260,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
 		w.currentTx.AddTxIn(btcwire.NewTxIn(input.OutPoint(), nil))
-		w.logger.Infof("Added input with amount %v", input.Amount())
+		log.Infof("Added input with amount %v", input.Amount())
 		w.currentInputs = append(w.currentInputs, input)
 		w.inputTotal += input.Amount()
 		fee = calculateFee(w.currentTx)
@@ -257,7 +299,7 @@ func (w *withdrawal) finalizeCurrentTx() {
 			panic(err) // XXX: Really no idea what to do if we get an error here...
 		}
 		w.currentTx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
-		w.logger.Infof("Added change output with amount %v", change)
+		log.Infof("Added change output with amount %v", change)
 		w.changeStart = w.changeStart.Next()
 	}
 
@@ -274,7 +316,7 @@ func (w *withdrawal) finalizeCurrentTx() {
 	w.outputTotal = btcutil.Amount(0)
 }
 
-func (w *withdrawal) FulfilOutputs(store *txstore.Store) error {
+func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 	// TODO: Drop outputs (in descending amount order) if the input total is smaller than output total
 
 	if len(w.pendingOutputs) == 0 {
@@ -358,13 +400,12 @@ func Ntxid(tx *btcwire.MsgTx) string {
 	return sha.String()
 }
 
-// Sign iterates over inputs in each transaction generated by this withdrawal,
+// sign iterates over inputs in each transaction generated by this withdrawal,
 // constructing the raw signature for them. It returns a map of ntxids to signature
 // lists.
 // TODO: Add a test that uses a fixed transaction and compares the well known signatures
 // (including their order) against the list returned here.
-func (w *withdrawal) Sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, error) {
-	sigs := make(map[string]TxInSignatures)
+func (w *withdrawal) sign(mgr *waddrmgr.Manager) error {
 	for _, tx := range w.transactions {
 		txSigs := make(TxInSignatures, len(tx.TxIn))
 		ntxid := Ntxid(tx)
@@ -376,22 +417,22 @@ func (w *withdrawal) Sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 			}
 			if class != btcscript.ScriptHashTy {
 				// Assume pkScript is a P2SH because all voting pool addresses are P2SH.
-				return nil, errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
+				return errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
 			}
 			redeemScript, err := getRedeemScript(mgr, addresses[0].(*btcutil.AddressScriptHash))
 			if err != nil {
-				return nil, err // XXX: Again, no idea what's the correct thing to do here.
+				return err // XXX: Again, no idea what's the correct thing to do here.
 			}
 			// The order of the signatures in txInSigs must match the order of the corresponding
 			// pubkeys in the redeem script, but ExtractPkScriptAddrs() returns the pubkeys in
 			// the original order, so we don't need to do anything special here.
 			_, addresses, _, err = btcscript.ExtractPkScriptAddrs(redeemScript, w.net)
-			txInSigs := make([]rawSig, len(addresses))
+			txInSigs := make([]RawSig, len(addresses))
 			for addrIdx, addr := range addresses {
-				var sig rawSig
+				var sig RawSig
 				privKey, err := getPrivKey(mgr, addr.(*btcutil.AddressPubKey))
 				if err == nil {
-					w.logger.Infof("Signing input %d of tx %s with privkey of %s",
+					log.Infof("Signing input %d of tx %s with privkey of %s",
 						idx, ntxid, addr)
 					sig, err = btcscript.RawTxInSignature(
 						tx, idx, redeemScript, btcscript.SigHashAll, privKey)
@@ -399,7 +440,7 @@ func (w *withdrawal) Sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 						panic(err) // XXX: Again, no idea what's the correct thing to do here.
 					}
 				} else {
-					w.logger.Infof(
+					log.Infof(
 						"Not signing input %d of %s because private key for %s was "+
 							"not found: %v", idx, ntxid, addr, err)
 					sig = []byte{}
@@ -408,24 +449,23 @@ func (w *withdrawal) Sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 			}
 			txSigs[idx] = txInSigs
 		}
-		sigs[ntxid] = txSigs
+		w.sigs[ntxid] = txSigs
 	}
-	// TODO: Need to store the raw signatures somewhere. Not sure this would be the correct
-	// place to do that, though.
-	return sigs, nil
+	return nil
 }
 
 // SignMultiSigUTXO signs the P2SH UTXO with the given index by constructing a
-// script containing all given signatures plus the redeem (multi-sig) script.
+// script containing all given signatures plus the redeem (multi-sig) script. The
+// redeem script is obtained by looking up the address of the given P2SH pkScript
+// on the address manager.
 // The order of the signatures must match that of the public keys in the multi-sig
 // script as OP_CHECKMULTISIG expects that.
-func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScript []byte, sigs []rawSig, net *btcnet.Params) error {
+func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScript []byte, sigs []RawSig, net *btcnet.Params) error {
 	class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, net)
 	if err != nil {
 		panic(err) // XXX: Again, no idea what's the correct thing to do here.
 	}
 	if class != btcscript.ScriptHashTy {
-		// XXX: Is it ok to assume class is always a P2SH here?
 		return errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
 	}
 	redeemScript, err := getRedeemScript(mgr, addresses[0].(*btcutil.AddressScriptHash))
