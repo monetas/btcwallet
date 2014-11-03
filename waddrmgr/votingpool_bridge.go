@@ -1,5 +1,11 @@
 package waddrmgr
 
+// XXX(lars): This file exists only to expose functionality needed in
+// the votingpool package, hence the name votingpool_bridge.  The
+// functionality herein is supposed to be obsoleted as soon as
+// conformal adds the new database framework to the master branch, and
+// users of these functions need to be updated accordingly.
+
 import (
 	"fmt"
 
