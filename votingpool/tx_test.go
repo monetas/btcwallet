@@ -1,4 +1,4 @@
-package waddrmgr_test
+package votingpool_test
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/txstore"
+	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 	"github.com/davecgh/go-spew/spew"
@@ -309,7 +310,7 @@ func getEligibleInputsDefault(inputStart, inputStop VotingPoolAddress, dustThres
 
 var getEligibleInputs func(VotingPoolAddress, VotingPoolAddress, uint32, int32) []txstore.Credit = getEligibleInputsDefault
 
-func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool,
+func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool,
 	amounts []int64, pubKeys []string, reqSigs uint32) (credits []txstore.Credit, redeemScript []byte) {
 	seriesID := uint32(0)
 	if err := pool.CreateSeries(1, seriesID, reqSigs, pubKeys); err != nil {
