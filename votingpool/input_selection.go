@@ -130,7 +130,7 @@ func InputSelection(store *txstore.Store, vp *VotingPool,
 		return nil, err
 	}
 
-	addrMap, err := UtxosToAddrMap(unspents, vp.manager.Net())
+	addrMap, err := AddrToUtxosMap(unspents, vp.manager.Net())
 	if err != nil {
 		// TODO: consider if we need to create a new error.
 		return nil, err
@@ -166,10 +166,10 @@ func InputSelection(store *txstore.Store, vp *VotingPool,
 	return inputs, nil
 }
 
-// UtxosToAddrMap converts a slice of credits to a map from the string
+// AddrToUtxosMap converts a slice of credits to a map from the string
 // representation of an encoded address to the unspent outputs
 // associated with that address.
-func UtxosToAddrMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]txstore.Credit, error) {
+func AddrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]txstore.Credit, error) {
 	addrMap := make(map[string][]txstore.Credit)
 	for _, o := range utxos {
 		_, addrs, _, err := o.Addresses(net)
