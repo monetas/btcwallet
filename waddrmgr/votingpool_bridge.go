@@ -40,6 +40,7 @@ func ExistsVotingPool(m *Manager, poolID []byte) error {
 }
 
 // DBSeries mimics dbSeriesRow defined in waddrmgr/db.go.
+// XXX(lars): maybe we can get dbSeriesRow made public in db.go?
 type DBSeries struct {
 	Version           uint32
 	Active            bool

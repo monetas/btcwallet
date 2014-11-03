@@ -619,6 +619,10 @@ func managerError(c waddrmgr.ErrorCode, desc string, err error) waddrmgr.Manager
 
 // zero sets all bytes in the passed slice to zero.  This is used to
 // explicitly clear private key material from memory.
+//
+// XXX(lars) there exists currently around 4-5 other zero functions
+// with at least 3 different implementations. We should try to
+// consolidate these.
 func zero(b []byte) {
 	for i := range b {
 		b[i] ^= b[i]
