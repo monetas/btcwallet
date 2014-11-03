@@ -33,6 +33,20 @@ const (
 	pubKey8 = "xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E"
 )
 
+var (
+	encryptPub = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
+		return func(in []byte) ([]byte, error) {
+			return m.Encrypt(waddrmgr.CKTPublic, in)
+		}
+	}
+
+	encryptPriv = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
+		return func(in []byte) ([]byte, error) {
+			return m.Encrypt(waddrmgr.CKTPrivate, in)
+		}
+	}
+)
+
 func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.VotingPool) {
 	t.Parallel()
 
@@ -95,13 +109,17 @@ func TestSerializationErrors(t *testing.T) {
 		},
 	}
 
+	// We need to unlock the manager in order to encrypt with the
+	// private key.
+	mgr.Unlock(privPassphrase)
+
 	active := true
 	for testNum, test := range tests {
-		encryptedPubs, err := encryptKeys(test.pubKeys, mgr.EncryptWithCryptoKeyPub)
+		encryptedPubs, err := encryptKeys(test.pubKeys, encryptPub(mgr))
 		if err != nil {
 			t.Fatalf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
 		}
-		encryptedPrivs, err := encryptKeys(test.privKeys, mgr.EncryptWithCryptoKeyPub)
+		encryptedPrivs, err := encryptKeys(test.privKeys, encryptPriv(mgr))
 		if err != nil {
 			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
 		}
@@ -153,12 +171,16 @@ func TestSerialization(t *testing.T) {
 		},
 	}
 
+	// We need to unlock the manager in order to encrypt with the
+	// private key.
+	mgr.Unlock(privPassphrase)
+
 	for testNum, test := range tests {
-		encryptedPubs, err := encryptKeys(test.pubKeys, mgr.EncryptWithCryptoKeyPub)
+		encryptedPubs, err := encryptKeys(test.pubKeys, encryptPub(mgr))
 		if err != nil {
 			t.Fatalf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
 		}
-		encryptedPrivs, err := encryptKeys(test.privKeys, mgr.EncryptWithCryptoKeyPub)
+		encryptedPrivs, err := encryptKeys(test.privKeys, encryptPriv(mgr))
 		if err != nil {
 			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
 		}

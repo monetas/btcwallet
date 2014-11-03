@@ -91,15 +91,3 @@ func DeserializeSeries(serializedSeries []byte) (*SeriesRow, error) {
 		PrivKeysEncrypted: row.privKeysEncrypted,
 	}, nil
 }
-
-// EncryptWithCryptoKeyPub allows using the manager's crypto key used for
-// encryption of public keys.
-func (m *Manager) EncryptWithCryptoKeyPub(unencrypted []byte) ([]byte, error) {
-	return m.cryptoKeyPub.Encrypt([]byte(unencrypted))
-}
-
-// EncryptWithCryptoKeyPriv allows using the manager's crypto key used for
-// encryption of private keys.
-func (m *Manager) EncryptWithCryptoKeyPriv(unencrypted []byte) ([]byte, error) {
-	return m.cryptoKeyPriv.Encrypt([]byte(unencrypted))
-}
