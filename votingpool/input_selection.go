@@ -1,4 +1,4 @@
-package waddrmgr
+package votingpool
 
 import (
 	"bytes"
@@ -145,7 +145,7 @@ func InputSelection(store *txstore.Store, vp *VotingPool,
 					// Also consider if we need to create a new error.
 					return nil, err
 				}
-				encAddr := addr.Address().EncodeAddress()
+				encAddr := addr.EncodeAddress()
 
 				if candidates, ok := addrMap[encAddr]; ok {
 					var eligibles VotingPoolCredits

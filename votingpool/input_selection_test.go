@@ -1,4 +1,4 @@
-package waddrmgr_test
+package votingpool_test
 
 import (
 	"reflect"
@@ -7,7 +7,7 @@ import (
 
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/waddrmgr"
+	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwire"
 )
 
@@ -21,7 +21,7 @@ var (
 
 // A test version of credit implementing the CreditInterface.
 type FakeTxIDCredit struct {
-	addr        waddrmgr.VotingPoolAddress
+	addr        votingpool.VotingPoolAddress
 	txid        *btcwire.ShaHash
 	outputIndex uint32
 }
@@ -30,7 +30,7 @@ func newFakeTxIDCredit(series, index, branch int, txid []byte, outputIdx int) Fa
 	var hash btcwire.ShaHash
 	copy(hash[:], txid)
 	return FakeTxIDCredit{
-		addr: waddrmgr.VotingPoolAddress{
+		addr: votingpool.VotingPoolAddress{
 			SeriesID: uint32(series),
 			Index:    uint32(index),
 			Branch:   uint32(branch),
@@ -48,13 +48,13 @@ func (c FakeTxIDCredit) OutputIndex() uint32 {
 	return c.outputIndex
 }
 
-func (c FakeTxIDCredit) Address() waddrmgr.VotingPoolAddress {
+func (c FakeTxIDCredit) Address() votingpool.VotingPoolAddress {
 	return c.addr
 }
 
 // Compile time check that FakeTxIDCredit implements the
 // CreditInterface.
-var _ waddrmgr.CreditInterface = (*FakeTxIDCredit)(nil)
+var _ votingpool.CreditInterface = (*FakeTxIDCredit)(nil)
 
 // TestCreditInterfaceSort checks that the sorting algorithm correctly
 // sorts lexicographically by series, index, branch, txid,
@@ -68,13 +68,13 @@ func TestCreditInterfaceSort(t *testing.T) {
 	c5 := newFakeTxIDCredit(0, 1, 0, []byte{0x00, 0x00}, 0)
 	c6 := newFakeTxIDCredit(1, 0, 0, []byte{0x00, 0x00}, 0)
 
-	randomCredits := []waddrmgr.VotingPoolCredits{
-		waddrmgr.VotingPoolCredits{c6, c5, c4, c3, c2, c1, c0},
-		waddrmgr.VotingPoolCredits{c2, c1, c0, c6, c5, c4, c3},
-		waddrmgr.VotingPoolCredits{c6, c4, c5, c2, c3, c0, c1},
+	randomCredits := []votingpool.VotingPoolCredits{
+		votingpool.VotingPoolCredits{c6, c5, c4, c3, c2, c1, c0},
+		votingpool.VotingPoolCredits{c2, c1, c0, c6, c5, c4, c3},
+		votingpool.VotingPoolCredits{c6, c4, c5, c2, c3, c0, c1},
 	}
 
-	want := waddrmgr.VotingPoolCredits{c0, c1, c2, c3, c4, c5, c6}
+	want := votingpool.VotingPoolCredits{c0, c1, c2, c3, c4, c5, c6}
 
 	for _, random := range randomCredits {
 		sort.Sort(random)
@@ -94,7 +94,7 @@ func TestCreditInterfaceSort(t *testing.T) {
 	}
 }
 
-func checkUniqueness(t *testing.T, credits waddrmgr.VotingPoolCredits) {
+func checkUniqueness(t *testing.T, credits votingpool.VotingPoolCredits) {
 	type uniq struct {
 		series      uint32
 		branch      uint32
@@ -124,12 +124,12 @@ func TestInputSelectionOneSeriesOnly(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
-	start := waddrmgr.VotingPoolAddress{
+	start := votingpool.VotingPoolAddress{
 		SeriesID: 0,
 		Branch:   0,
 		Index:    0,
 	}
-	stop := waddrmgr.VotingPoolAddress{
+	stop := votingpool.VotingPoolAddress{
 		SeriesID: 0,
 		Branch:   2,
 		Index:    4,
@@ -166,7 +166,7 @@ func TestInputSelectionOneSeriesOnly(t *testing.T) {
 	}
 
 	// Call InputSelection on that range.
-	eligibles, err := waddrmgr.InputSelection(
+	eligibles, err := votingpool.InputSelection(
 		store, pool, start, stop, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
@@ -202,7 +202,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	c := createInputs(t, pkScript, []int64{int64(dustThreshold)})[0]
 	c.BlockHeight = int32(100)
 
-	if !waddrmgr.Eligible(c, minConf, chainHeight, dustThreshold) {
+	if !votingpool.Eligible(c, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is not eligible and it should be.")
 	}
 }
@@ -221,7 +221,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 
 	c1 := createInputs(t, pkScript, []int64{int64(dustThreshold - 1)})[0]
 	c1.BlockHeight = int32(100)
-	if waddrmgr.Eligible(c1, minConf, currentBlockHeight, dustThreshold) {
+	if votingpool.Eligible(c1, minConf, currentBlockHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
@@ -231,32 +231,32 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	// reason why I need to put 902 as *that* makes 1000 - 902 +1 = 99 >=
 	// 100 false
 	c2.BlockHeight = int32(902)
-	if waddrmgr.Eligible(c2, minConf, currentBlockHeight, dustThreshold) {
+	if votingpool.Eligible(c2, minConf, currentBlockHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
 }
 
 func TestDistance(t *testing.T) {
-	zero := waddrmgr.VotingPoolAddress{
+	zero := votingpool.VotingPoolAddress{
 		SeriesID: 0,
 		Branch:   0,
 		Index:    0,
 	}
 
-	two := waddrmgr.VotingPoolAddress{
+	two := votingpool.VotingPoolAddress{
 		SeriesID: 0,
 		Branch:   0,
 		Index:    1,
 	}
 
-	four := waddrmgr.VotingPoolAddress{
+	four := votingpool.VotingPoolAddress{
 		SeriesID: 0,
 		Branch:   1,
 		Index:    1,
 	}
 
-	eight := waddrmgr.VotingPoolAddress{
+	eight := votingpool.VotingPoolAddress{
 		SeriesID: 1,
 		Branch:   1,
 		Index:    1,

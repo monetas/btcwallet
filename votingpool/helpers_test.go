@@ -9,6 +9,7 @@ import (
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/txstore"
+	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
@@ -80,7 +81,7 @@ func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
 	return msgtx
 }
 
-func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *waddrmgr.VotingPool, series, branch, index uint32) []byte {
+func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, series, branch, index uint32) []byte {
 	script, err := pool.DepositScript(series, branch, index)
 	if err != nil {
 		t.Fatalf("Failed to create depositscript for series %d, branch %d, index %d: %v", series, branch, index, err)
@@ -140,7 +141,7 @@ type seriesDef struct {
 	seriesID uint32
 }
 
-func createSeries(t *testing.T, pool *waddrmgr.VotingPool,
+func createSeries(t *testing.T, pool *votingpool.VotingPool,
 	definitions []seriesDef) {
 
 	for _, def := range definitions {
@@ -151,8 +152,8 @@ func createSeries(t *testing.T, pool *waddrmgr.VotingPool,
 }
 
 func createPkScripts(t *testing.T, mgr *waddrmgr.Manager,
-	pool *waddrmgr.VotingPool,
-	start, stop waddrmgr.VotingPoolAddress) [][]byte {
+	pool *votingpool.VotingPool,
+	start, stop votingpool.VotingPoolAddress) [][]byte {
 
 	var pkScripts [][]byte
 	for index := start.Index; index <= stop.Index; index++ {
