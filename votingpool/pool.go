@@ -51,28 +51,28 @@ type VotingPool struct {
 	seriesLookup map[uint32]*seriesData
 	manager      *waddrmgr.Manager
 
-	// encryptPub contains a reference to Manager.EncryptPub in order
-	// to facilitate testing.
+	// encryptPub encapsulates the manager public key encryption
+	// functionality, so it can be replaced by a test double.
 	encryptPub func(in []byte) ([]byte, error)
 
-	// encryptPub contains a reference to Manager.DecryptPub in order
-	// to facilitate testing.
+	// decryptPub encapsulates the manager public key decryption
+	// functionality, so it can be replaced by a test double.
 	decryptPub func(in []byte) ([]byte, error)
 
-	// encryptPub contains a reference to Manager.EncryptPriv in order
-	// to facilitate testing.
+	// encryptPriv encapsulates the manager private key encryption
+	// functionality, so it can be replaced by a test double.
 	encryptPriv func(in []byte) ([]byte, error)
 
-	// encryptPub contains a reference to Manager.DecryptPriv in order
-	// to facilitate testing.
+	// decryptPriv encapsulates the manager private key decryption
+	// functionality, so it can be replaced by a test double.
 	decryptPriv func(in []byte) ([]byte, error)
 
-	// encryptPub contains a reference to Manager.EncryptScript in
-	// order to facilitate testing.
+	// encryptScript encapsulates the manager script key encryption
+	// functionality, so it can be replaced by a test double.
 	encryptScript func(in []byte) ([]byte, error)
 
-	// encryptPub contains a reference to Manager.DecryptScript in
-	// order to facilitate testing.
+	// decryptScript encapsulates the manager script key decryption
+	// functionality, so it can be replaced by a test double.
 	decryptScript func(in []byte) ([]byte, error)
 }
 
