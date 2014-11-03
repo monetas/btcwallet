@@ -612,6 +612,7 @@ func (s *seriesData) IsEmpowered() bool {
 }
 
 // managerError creates a waddrmgr.ManagerError given a set of arguments.
+// XXX(lars): We should probably make our own votingpoolError function.
 func managerError(c waddrmgr.ErrorCode, desc string, err error) waddrmgr.ManagerError {
 	return waddrmgr.ManagerError{ErrorCode: c, Description: desc, Err: err}
 }
