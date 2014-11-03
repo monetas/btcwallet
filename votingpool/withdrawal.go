@@ -1,141 +1,55 @@
-package votingpool_test
+/*
+ * Copyright (c) 2014 Conformal Systems LLC <info@conformal.com>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+package votingpool
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"testing"
 
 	"github.com/conformal/btcec"
 	"github.com/conformal/btclog"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
-	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
 
-var bsHeight int32 = 11112
-var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
-var netParams *btcnet.Params = &btcnet.MainNetParams
-var logger btclog.Logger
-
-// XXX: The txstore should not be a global, obviously.
-var store *txstore.Store
-
-func init() {
-	logger, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
-}
-
-func TestFulfilOutputs(t *testing.T) {
-	teardown, mgr, pool := setUp(t)
-	defer teardown()
-
-	var credits []txstore.Credit
-	credits, store = createCredits(t, mgr, pool, []int64{5e6, 4e6})
-	getEligibleInputs = func(inputStart, inputStop VotingPoolAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
-		return credits
-	}
-	outBailment := &OutBailment{poolID: pool.ID, server: "foo", transaction: 1}
-	outBailment2 := &OutBailment{poolID: pool.ID, server: "foo", transaction: 2}
-	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
-	outputs := []*WithdrawalOutput{
-		&WithdrawalOutput{outBailment: outBailment, address: address, amount: btcutil.Amount(4e6)},
-		&WithdrawalOutput{outBailment: outBailment2, address: address, amount: btcutil.Amount(1e6)},
-	}
-
-	changeStart := VotingPoolAddress{pool: pool, seriesID: 0, branch: 1, index: 0}
-	dustThreshold := uint32(1)
-	eligible := getEligibleInputs(VotingPoolAddress{}, VotingPoolAddress{}, dustThreshold, bsHeight)
-	w := NewWithdrawal(0, outputs, eligible, changeStart)
-
-	if err := w.fulfilOutputs(); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(w.transactions) != 1 {
-		t.Fatalf("Unexpected number of transactions; got %d, want %d", len(w.transactions), 1)
-	}
-
-	tx := w.transactions[0]
-	if len(tx.TxOut) != 3 {
-		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), 3)
-	}
-
-	status := w.status
-	if len(status.outputs) != 2 {
-		t.Fatalf("Unexpected number of outputs in WithdrawalStatus; got %d, want %d",
-			len(status.outputs), 2)
-	}
-
-	for _, outb := range []*OutBailment{outBailment, outBailment2} {
-		withdrawalOutput, found := status.outputs[outb]
-		if !found {
-			t.Fatalf("No output found for OutBailment %v", outb)
-		}
-		checkWithdrawalOutput(t, withdrawalOutput, address, "success", 1)
-	}
-
-	// XXX: There should be a separate test that generates raw signatures and checks them.
-	sigs, err := w.sign(mgr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	txSigs := sigs[ntxid(tx)]
-	if len(txSigs) != 2 {
-		t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
-	}
-	txInSigs := txSigs[0]
-	if len(txInSigs) != 3 {
-		t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
-	}
-
-	// XXX: There should be a separate test to check that signing of tx inputs works.
-	sha, _ := btcwire.NewShaHashFromStr(ntxid(tx))
-	t2 := store.UnminedTx(sha).MsgTx()
-	if err = SignMultiSigUTXO(mgr, t2, 0, txInSigs); err != nil {
-		t.Fatal(err)
-	}
-	if err = SignMultiSigUTXO(mgr, t2, 1, txSigs[1]); err != nil {
-		t.Fatal(err)
-	}
-
-	if err = validateSigScripts(tx); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func checkWithdrawalOutput(t *testing.T, withdrawalOutput *WithdrawalOutput, address, status string, nOutpoints int) {
-	if withdrawalOutput.address != address {
-		t.Fatalf("Unexpected address; got %s, want %s", withdrawalOutput.address, address)
-	}
-
-	if withdrawalOutput.status != status {
-		t.Fatalf("Unexpected status; got '%s', want '%s'", withdrawalOutput.status, status)
-	}
-
-	if len(withdrawalOutput.outpoints) != nOutpoints {
-		t.Fatalf("Unexpected number of outpoints; got %d, want %d", len(withdrawalOutput.outpoints), nOutpoints)
-	}
-}
-
 type VotingPoolAddress struct {
-	pool     *votingpool.VotingPool
+	pool     *VotingPool
 	seriesID uint32
 	branch   uint32
 	index    uint32
 }
 
-func (a *VotingPoolAddress) Address(netParams *btcnet.Params) (btcutil.Address, error) {
+func NewVotingPoolAddress(
+	pool *VotingPool, seriesID uint32, branch uint32, index uint32) *VotingPoolAddress {
+	return &VotingPoolAddress{pool: pool, seriesID: seriesID, branch: branch, index: index}
+}
+
+func (a *VotingPoolAddress) Address() (btcutil.Address, error) {
 	return a.pool.DepositScriptAddress(a.seriesID, a.branch, a.index)
 }
 
-func (a *VotingPoolAddress) Next() VotingPoolAddress {
+func (a *VotingPoolAddress) Next() *VotingPoolAddress {
 	// TODO:
-	return *a
+	return a
 }
 
 type OutBailment struct {
@@ -144,11 +58,19 @@ type OutBailment struct {
 	transaction uint32
 }
 
+func NewOutBailment(poolID []byte, server string, transaction uint32) *OutBailment {
+	return &OutBailment{poolID: poolID, server: server, transaction: transaction}
+}
+
 type WithdrawalStatus struct {
 	nextInputStart  VotingPoolAddress
 	nextChangeStart VotingPoolAddress
 	fees            btcutil.Amount
 	outputs         map[*OutBailment]*WithdrawalOutput
+}
+
+func (s *WithdrawalStatus) Outputs() map[*OutBailment]*WithdrawalOutput {
+	return s.outputs
 }
 
 type WithdrawalOutput struct {
@@ -159,16 +81,33 @@ type WithdrawalOutput struct {
 	outpoints   []OutBailmentOutpoint
 }
 
+func NewWithdrawalOutput(
+	outBailment *OutBailment, address string, amount btcutil.Amount) *WithdrawalOutput {
+	return &WithdrawalOutput{outBailment: outBailment, address: address, amount: amount}
+}
+
 func (o *WithdrawalOutput) addOutpoint(outpoint OutBailmentOutpoint) {
 	o.outpoints = append(o.outpoints, outpoint)
 }
 
-func (o *WithdrawalOutput) pkScript() ([]byte, error) {
-	address, err := btcutil.DecodeAddress(o.address, netParams)
+func (o *WithdrawalOutput) pkScript(net *btcnet.Params) ([]byte, error) {
+	address, err := btcutil.DecodeAddress(o.address, net)
 	if err != nil {
 		return nil, err
 	}
 	return btcscript.PayToAddrScript(address)
+}
+
+func (o *WithdrawalOutput) Status() string {
+	return o.status
+}
+
+func (o *WithdrawalOutput) Address() string {
+	return o.address
+}
+
+func (o *WithdrawalOutput) Outpoints() []OutBailmentOutpoint {
+	return o.outpoints
 }
 
 type OutBailmentOutpoint struct {
@@ -197,14 +136,18 @@ type withdrawal struct {
 	// can sign them later on.
 	currentInputs []txstore.Credit
 	status        WithdrawalStatus
-	changeStart   VotingPoolAddress
+	changeStart   *VotingPoolAddress
 	currentTx     *btcwire.MsgTx
+	net           *btcnet.Params
 	// Totals for the current transaction
 	inputTotal  btcutil.Amount
 	outputTotal btcutil.Amount
+	// XXX: This should probably not be here
+	logger btclog.Logger
 }
 
-func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore.Credit, changeStart VotingPoolAddress) *withdrawal {
+func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore.Credit, changeStart *VotingPoolAddress, net *btcnet.Params) *withdrawal {
+	logger, _ := btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
 	return &withdrawal{
 		roundID:        roundID,
 		currentTx:      btcwire.NewMsgTx(),
@@ -213,7 +156,17 @@ func NewWithdrawal(roundID uint32, outputs []*WithdrawalOutput, inputs []txstore
 		eligibleInputs: inputs,
 		status:         WithdrawalStatus{outputs: make(map[*OutBailment]*WithdrawalOutput)},
 		changeStart:    changeStart,
+		net:            net,
+		logger:         logger,
 	}
+}
+
+func (w *withdrawal) Transactions() []*btcwire.MsgTx {
+	return w.transactions
+}
+
+func (w *withdrawal) Status() WithdrawalStatus {
+	return w.status
 }
 
 // Add the given output to the current Tx.
@@ -242,13 +195,13 @@ func (w *withdrawal) fulfilNextOutput() error {
 	w.pendingOutputs = w.pendingOutputs[1:]
 
 	w.status.outputs[output.outBailment] = output
-	pkScript, err := output.pkScript()
+	pkScript, err := output.pkScript(w.net)
 	if err != nil {
 		output.status = "invalid"
 		return nil
 	}
 	outputIndex := w.addOutput(output, pkScript)
-	logger.Infof("Added output sending %s to %s", output.amount, output.address)
+	w.logger.Infof("Added output sending %s to %s", output.amount, output.address)
 
 	if w.currentTxTooBig() {
 		// TODO: Roll back last added output, finalize w.currentTx and assign a new
@@ -265,7 +218,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
 		w.currentTx.AddTxIn(btcwire.NewTxIn(input.OutPoint(), nil))
-		logger.Infof("Added input with amount %v", input.Amount())
+		w.logger.Infof("Added input with amount %v", input.Amount())
 		w.currentInputs = append(w.currentInputs, input)
 		w.inputTotal += input.Amount()
 		fee = calculateFee(w.currentTx)
@@ -295,7 +248,7 @@ func (w *withdrawal) finalizeCurrentTx() {
 	fee := calculateFee(w.currentTx)
 	change := w.inputTotal - w.outputTotal - fee
 	if change > 0 {
-		addr, err := w.changeStart.Address(netParams)
+		addr, err := w.changeStart.Address()
 		if err != nil {
 			panic(err) // XXX: Really no idea what to do if we get an error here...
 		}
@@ -304,11 +257,11 @@ func (w *withdrawal) finalizeCurrentTx() {
 			panic(err) // XXX: Really no idea what to do if we get an error here...
 		}
 		w.currentTx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
-		logger.Infof("Added change output with amount %v", change)
+		w.logger.Infof("Added change output with amount %v", change)
 		w.changeStart = w.changeStart.Next()
 	}
 
-	w.usedInputs[ntxid(w.currentTx)] = w.currentInputs
+	w.usedInputs[Ntxid(w.currentTx)] = w.currentInputs
 	w.transactions = append(w.transactions, w.currentTx)
 	w.status.fees += fee
 
@@ -321,7 +274,7 @@ func (w *withdrawal) finalizeCurrentTx() {
 	w.outputTotal = btcutil.Amount(0)
 }
 
-func (w *withdrawal) fulfilOutputs() error {
+func (w *withdrawal) FulfilOutputs(store *txstore.Store) error {
 	// TODO: Drop outputs (in descending amount order) if the input total is smaller than output total
 
 	if len(w.pendingOutputs) == 0 {
@@ -384,7 +337,6 @@ func getRedeemScript(mgr *waddrmgr.Manager, addr *btcutil.AddressScriptHash) ([]
 func getPrivKey(mgr *waddrmgr.Manager, addr *btcutil.AddressPubKey) (*btcec.PrivateKey, error) {
 	address, err := mgr.Address(addr.AddressPubKeyHash())
 	if err != nil {
-		logger.Errorf("Address not found: %v", addr.AddressPubKeyHash())
 		return nil, err
 	}
 
@@ -395,8 +347,8 @@ func getPrivKey(mgr *waddrmgr.Manager, addr *btcutil.AddressPubKey) (*btcec.Priv
 	return pka.PrivKey()
 }
 
-// ntxid returns a unique ID for the given transaction.
-func ntxid(tx *btcwire.MsgTx) string {
+// Ntxid returns a unique ID for the given transaction.
+func Ntxid(tx *btcwire.MsgTx) string {
 	// According to https://blockchain.info/q, the ntxid is the "hash of the serialized
 	// transaction with its input scripts blank". But since we store the tx with
 	// blank SignatureScripts anyway, we can use tx.TxSha() as the ntxid, which makes
@@ -406,19 +358,19 @@ func ntxid(tx *btcwire.MsgTx) string {
 	return sha.String()
 }
 
-// sign() iterates over inputs in each transaction generated by this withdrawal,
+// Sign iterates over inputs in each transaction generated by this withdrawal,
 // constructing the raw signature for them. It returns a map of ntxids to signature
 // lists.
 // TODO: Add a test that uses a fixed transaction and compares the well known signatures
 // (including their order) against the list returned here.
-func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, error) {
+func (w *withdrawal) Sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, error) {
 	sigs := make(map[string]TxInSignatures)
 	for _, tx := range w.transactions {
 		txSigs := make(TxInSignatures, len(tx.TxIn))
-		ntxid := ntxid(tx)
+		ntxid := Ntxid(tx)
 		for idx := range tx.TxIn {
 			pkScript := w.usedInputs[ntxid][idx].TxOut().PkScript
-			class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, netParams)
+			class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, w.net)
 			if err != nil {
 				panic(err) // XXX: Again, no idea what's the correct thing to do here.
 			}
@@ -433,13 +385,13 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 			// The order of the signatures in txInSigs must match the order of the corresponding
 			// pubkeys in the redeem script, but ExtractPkScriptAddrs() returns the pubkeys in
 			// the original order, so we don't need to do anything special here.
-			_, addresses, _, err = btcscript.ExtractPkScriptAddrs(redeemScript, netParams)
+			_, addresses, _, err = btcscript.ExtractPkScriptAddrs(redeemScript, w.net)
 			txInSigs := make([]rawSig, len(addresses))
 			for addrIdx, addr := range addresses {
 				var sig rawSig
 				privKey, err := getPrivKey(mgr, addr.(*btcutil.AddressPubKey))
 				if err == nil {
-					logger.Infof("Signing input %d of tx %s with privkey of %s",
+					w.logger.Infof("Signing input %d of tx %s with privkey of %s",
 						idx, ntxid, addr)
 					sig, err = btcscript.RawTxInSignature(
 						tx, idx, redeemScript, btcscript.SigHashAll, privKey)
@@ -447,7 +399,7 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 						panic(err) // XXX: Again, no idea what's the correct thing to do here.
 					}
 				} else {
-					logger.Infof(
+					w.logger.Infof(
 						"Not signing input %d of %s because private key for %s was "+
 							"not found: %v", idx, ntxid, addr, err)
 					sig = []byte{}
@@ -467,12 +419,8 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 // script containing all given signatures plus the redeem (multi-sig) script.
 // The order of the signatures must match that of the public keys in the multi-sig
 // script as OP_CHECKMULTISIG expects that.
-func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, sigs []rawSig) error {
-	txOut, err := store.UnconfirmedSpent(tx.TxIn[idx].PreviousOutPoint)
-	if err != nil {
-		return err
-	}
-	class, addresses, _, err := btcscript.ExtractPkScriptAddrs(txOut.PkScript, netParams)
+func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScript []byte, sigs []rawSig, net *btcnet.Params) error {
+	class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, net)
 	if err != nil {
 		panic(err) // XXX: Again, no idea what's the correct thing to do here.
 	}
@@ -485,7 +433,7 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, sigs []
 		panic(err) // XXX: Again, no idea what's the correct thing to do here.
 	}
 
-	class, _, nRequired, err := btcscript.ExtractPkScriptAddrs(redeemScript, netParams)
+	class, _, nRequired, err := btcscript.ExtractPkScriptAddrs(redeemScript, net)
 	if err != nil {
 		panic(err) // XXX: Again, no idea what's the correct thing to do here.
 	}
@@ -510,9 +458,9 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, sigs []
 	return nil
 }
 
-// validateSigScripts executes the signature script of every input in the given transaction
+// ValidateSigScripts executes the signature script of every input in the given transaction
 // and returns an error if any of them fail.
-func validateSigScripts(msgtx *btcwire.MsgTx) error {
+func ValidateSigScripts(msgtx *btcwire.MsgTx, store *txstore.Store) error {
 	flags := btcscript.ScriptCanonicalSignatures | btcscript.ScriptStrictMultiSig | btcscript.ScriptBip16
 	for i, txin := range msgtx.TxIn {
 		txOut, err := store.UnconfirmedSpent(msgtx.TxIn[i].PreviousOutPoint)
@@ -541,50 +489,4 @@ func estimateSize(tx *btcwire.MsgTx) uint32 {
 func calculateFee(tx *btcwire.MsgTx) btcutil.Amount {
 	// TODO
 	return btcutil.Amount(1)
-}
-
-func getEligibleInputsDefault(inputStart, inputStop VotingPoolAddress, dustThreshold uint32,
-	bsHeight int32) []txstore.Credit {
-	// TODO:
-	return make([]txstore.Credit, 0)
-}
-
-var getEligibleInputs = getEligibleInputsDefault
-
-func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64) ([]txstore.Credit, *txstore.Store) {
-	// Create 3 master extended keys, as if we had 3 voting pool members.
-	master1, _ := hdkeychain.NewMaster(seed)
-	master2, _ := hdkeychain.NewMaster(append(seed, byte(0x01)))
-	master3, _ := hdkeychain.NewMaster(append(seed, byte(0x02)))
-	masters := []*hdkeychain.ExtendedKey{master1, master2, master3}
-	rawPubKeys := make([]string, 3)
-	for i, key := range masters {
-		pubkey, _ := key.Neuter()
-		rawPubKeys[i] = pubkey.String()
-	}
-
-	// Create a series with the master pubkeys of our voting pool members.
-	reqSigs := uint32(2)
-	seriesID := uint32(0)
-	if err := pool.CreateSeries(1, seriesID, reqSigs, rawPubKeys); err != nil {
-		t.Fatalf("Cannot creates series: %v", err)
-	}
-
-	idx := uint32(0)
-	// Import the 0th child of our master keys into the address manager as we're going
-	// to need them when signing the transactions later on.
-	wifs := make([]string, 3)
-	for i, master := range masters {
-		child, _ := master.Child(idx)
-		ecPrivKey, _ := child.ECPrivKey()
-		wif, _ := btcutil.NewWIF(ecPrivKey, netParams, true)
-		wifs[i] = wif.String()
-	}
-	importPrivateKeys(t, mgr, wifs, bs)
-
-	// Finally create the Credit instances, locked to the voting pool's deposit
-	// address with branch==0, index==0.
-	branch := uint32(0)
-	pkScript := createVotingPoolPkScript(t, mgr, pool, bsHeight, seriesID, branch, idx)
-	return createInputs(t, pkScript, amounts)
 }
