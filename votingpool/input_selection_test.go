@@ -68,13 +68,13 @@ func TestCreditInterfaceSort(t *testing.T) {
 	c5 := newFakeTxIDCredit(0, 1, 0, []byte{0x00, 0x00}, 0)
 	c6 := newFakeTxIDCredit(1, 0, 0, []byte{0x00, 0x00}, 0)
 
-	randomCredits := []votingpool.VotingPoolCredits{
-		votingpool.VotingPoolCredits{c6, c5, c4, c3, c2, c1, c0},
-		votingpool.VotingPoolCredits{c2, c1, c0, c6, c5, c4, c3},
-		votingpool.VotingPoolCredits{c6, c4, c5, c2, c3, c0, c1},
+	randomCredits := []votingpool.Credits{
+		votingpool.Credits{c6, c5, c4, c3, c2, c1, c0},
+		votingpool.Credits{c2, c1, c0, c6, c5, c4, c3},
+		votingpool.Credits{c6, c4, c5, c2, c3, c0, c1},
 	}
 
-	want := votingpool.VotingPoolCredits{c0, c1, c2, c3, c4, c5, c6}
+	want := votingpool.Credits{c0, c1, c2, c3, c4, c5, c6}
 
 	for _, random := range randomCredits {
 		sort.Sort(random)
@@ -94,7 +94,7 @@ func TestCreditInterfaceSort(t *testing.T) {
 	}
 }
 
-func checkUniqueness(t *testing.T, credits votingpool.VotingPoolCredits) {
+func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	type uniq struct {
 		series      uint32
 		branch      uint32
@@ -167,7 +167,7 @@ func TestInputSelectionOneSeriesOnly(t *testing.T) {
 
 	// Call InputSelection on that range.
 	eligibles, err := pool.InputSelection(
-		store, pool, start, stop, dustThreshold, int32(currentBlockHeight), minConf)
+		store, start, stop, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}

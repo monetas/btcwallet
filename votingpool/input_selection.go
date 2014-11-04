@@ -45,25 +45,25 @@ type CreditInterface interface {
 	Address() VotingPoolAddress
 }
 
-type VotingPoolCredit struct {
+type Credit struct {
 	Addr   VotingPoolAddress
 	Credit txstore.Credit
 }
 
-func (c VotingPoolCredit) TxID() *btcwire.ShaHash {
+func (c Credit) TxID() *btcwire.ShaHash {
 	return c.Credit.TxRecord.Tx().Sha()
 }
 
-func (c VotingPoolCredit) OutputIndex() uint32 {
+func (c Credit) OutputIndex() uint32 {
 	return c.Credit.OutputIndex
 }
 
-func (c VotingPoolCredit) Address() VotingPoolAddress {
+func (c Credit) Address() VotingPoolAddress {
 	return c.Addr
 }
 
-func newCredit(credit txstore.Credit, seriesID, branch, index uint32) VotingPoolCredit {
-	return VotingPoolCredit{
+func newCredit(credit txstore.Credit, seriesID, branch, index uint32) Credit {
+	return Credit{
 		Credit: credit,
 		Addr: VotingPoolAddress{
 			SeriesID: seriesID,
@@ -73,13 +73,13 @@ func newCredit(credit txstore.Credit, seriesID, branch, index uint32) VotingPool
 	}
 }
 
-type VotingPoolCredits []CreditInterface
+type Credits []CreditInterface
 
-func (c VotingPoolCredits) Len() int {
+func (c Credits) Len() int {
 	return len(c)
 }
 
-func (c VotingPoolCredits) Less(i, j int) bool {
+func (c Credits) Less(i, j int) bool {
 	if c[i].Address().SeriesID < c[j].Address().SeriesID {
 		return true
 	}
@@ -114,16 +114,16 @@ func (c VotingPoolCredits) Less(i, j int) bool {
 	return false
 }
 
-func (c VotingPoolCredits) Swap(i, j int) {
+func (c Credits) Swap(i, j int) {
 	c[i], c[j] = c[j], c[i]
 }
 
-var _ sort.Interface = (*VotingPoolCredits)(nil)
+var _ sort.Interface = (*Credits)(nil)
 
 func (vp *VotingPool) InputSelection(store *txstore.Store,
 	start, stop VotingPoolAddress,
 	dustThreshold btcutil.Amount, chainHeight int32,
-	minConf int) (VotingPoolCredits, error) {
+	minConf int) (Credits, error) {
 	unspents, err := store.UnspentOutputs()
 	if err != nil {
 		// TODO: consider if we need to create a new error.
@@ -135,7 +135,7 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 		// TODO: consider if we need to create a new error.
 		return nil, err
 	}
-	var inputs VotingPoolCredits
+	var inputs Credits
 	for series := start.SeriesID; series <= stop.SeriesID; series++ {
 		for index := start.Index; index <= stop.Index; index++ {
 			for branch := start.Branch; branch <= stop.Branch; branch++ {
@@ -148,7 +148,7 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 				encAddr := addr.EncodeAddress()
 
 				if candidates, ok := addrMap[encAddr]; ok {
-					var eligibles VotingPoolCredits
+					var eligibles Credits
 					for _, c := range candidates {
 						if Eligible(c, minConf, chainHeight, dustThreshold) {
 							vpc := newCredit(c, series, branch, index)
