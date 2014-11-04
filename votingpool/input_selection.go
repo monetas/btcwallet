@@ -137,9 +137,9 @@ func (c Credits) Swap(i, j int) {
 // Check at compile time that Credits implements sort.Interface.
 var _ sort.Interface = (*Credits)(nil)
 
-// InputSelection returns a slice of eligible inputs in the address
+// getEligibleInputs returns a slice of eligible inputs in the address
 // ranged specified by the start and stop parameters.
-func (vp *VotingPool) InputSelection(store *txstore.Store,
+func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
 	start, stop VotingPoolAddress,
 	dustThreshold btcutil.Amount, chainHeight int32,
 	minConf int) (Credits, error) {
@@ -150,7 +150,7 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 		return nil, err
 	}
 
-	addrMap, err := AddrToUtxosMap(unspents, vp.manager.Net())
+	addrMap, err := addrToUtxosMap(unspents, vp.manager.Net())
 	if err != nil {
 		// TODO: consider if we need to create a new error.
 		return nil, compositeError("input selection failed:", err)
@@ -170,7 +170,7 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 				if candidates, ok := addrMap[encAddr]; ok {
 					var eligibles Credits
 					for _, c := range candidates {
-						if Eligible(c, minConf, chainHeight, dustThreshold) {
+						if vp.eligible(c, minConf, chainHeight, dustThreshold) {
 							vpc := newCredit(c, series, branch, index)
 							eligibles = append(eligibles, vpc)
 						}
@@ -190,10 +190,10 @@ func compositeError(errString string, err error) error {
 	return errors.New(errString + ": " + err.Error())
 }
 
-// AddrToUtxosMap converts a slice of credits to a map from the string
+// addrToUtxosMap converts a slice of credits to a map from the string
 // representation of an encoded address to the unspent outputs
 // associated with that address.
-func AddrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]txstore.Credit, error) {
+func addrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]txstore.Credit, error) {
 	addrMap := make(map[string][]txstore.Credit)
 	for _, o := range utxos {
 		_, addrs, _, err := o.Addresses(net)
@@ -217,17 +217,17 @@ func AddrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]tx
 	return addrMap, nil
 }
 
-// Eligible tests a given credit for eligibilty with respect to number
+// eligible tests a given credit for eligibilty with respect to number
 // of confirmations, the dust threshold and that it is not the charter
 // output.
-func Eligible(c txstore.Credit, minConf int, currentBlockHeight int32, dustThreshold btcutil.Amount) bool {
+func (vp *VotingPool) eligible(c txstore.Credit, minConf int, currentBlockHeight int32, dustThreshold btcutil.Amount) bool {
 	if c.Amount() < dustThreshold {
 		return false
 	}
 	if !c.Confirmed(minConf, currentBlockHeight) {
 		return false
 	}
-	if isCharterOutput(c) {
+	if vp.isCharterOutput(c) {
 		return false
 	}
 
@@ -236,6 +236,6 @@ func Eligible(c txstore.Credit, minConf int, currentBlockHeight int32, dustThres
 
 // isCharterInput - TODO: In order to determine this, we need the txid
 // and the output index of the current charter output
-func isCharterOutput(c txstore.Credit) bool {
+func (vp *VotingPool) isCharterOutput(c txstore.Credit) bool {
 	return false
 }

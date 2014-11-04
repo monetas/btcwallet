@@ -1,6 +1,10 @@
 package votingpool
 
-import "github.com/conformal/btcwallet/waddrmgr"
+import (
+	"github.com/conformal/btcutil"
+	"github.com/conformal/btcwallet/txstore"
+	"github.com/conformal/btcwallet/waddrmgr"
+)
 
 // TstPutSeries transparently wraps the voting pool putSeries method.
 func (vp *VotingPool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
@@ -57,4 +61,21 @@ func TstRunWithReplacedCryptoKeyScript(p *VotingPool,
 	callback()
 }
 
+// TstDecryptExtendedKey exposes the private decryptExtendedKey for
+// testing.
 var TstDecryptExtendedKey = decryptExtendedKey
+
+// TstEligible exposes the private votingpool method eligible for
+// testing.
+func (vp *VotingPool) TstEligible(c txstore.Credit, minConf int, currentBlockHeight int32, dustThreshold btcutil.Amount) bool {
+	return vp.eligible(c, minConf, currentBlockHeight, dustThreshold)
+}
+
+// TstGetEligibleInputs exposes the private votingpool method
+// getEligibleInputs for testing.
+func (vp *VotingPool) TstGetEligibleInputs(store *txstore.Store,
+	start, stop VotingPoolAddress,
+	dustThreshold btcutil.Amount, chainHeight int32,
+	minConf int) (Credits, error) {
+	return vp.getEligibleInputs(store, start, stop, dustThreshold, chainHeight, minConf)
+}

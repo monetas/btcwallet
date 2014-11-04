@@ -169,7 +169,7 @@ func TestInputSelectionTwoSeries(t *testing.T) {
 	}
 
 	// Call InputSelection on that range.
-	eligibles, err := pool.InputSelection(
+	eligibles, err := pool.TstGetEligibleInputs(
 		store, start, stop, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
@@ -205,7 +205,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	c := createInputs(t, pkScript, []int64{int64(dustThreshold)})[0]
 	c.BlockHeight = int32(100)
 
-	if !votingpool.Eligible(c, minConf, chainHeight, dustThreshold) {
+	if !pool.TstEligible(c, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is not eligible and it should be.")
 	}
 }
@@ -224,7 +224,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 
 	c1 := createInputs(t, pkScript, []int64{int64(dustThreshold - 1)})[0]
 	c1.BlockHeight = int32(100)
-	if votingpool.Eligible(c1, minConf, currentBlockHeight, dustThreshold) {
+	if pool.TstEligible(c1, minConf, currentBlockHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
@@ -234,7 +234,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	// reason why I need to put 902 as *that* makes 1000 - 902 +1 = 99 >=
 	// 100 false
 	c2.BlockHeight = int32(902)
-	if votingpool.Eligible(c2, minConf, currentBlockHeight, dustThreshold) {
+	if pool.TstEligible(c2, minConf, currentBlockHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
