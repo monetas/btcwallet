@@ -38,27 +38,67 @@ func init() {
 	log, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
 }
 
-type VotingPoolAddress struct {
-	pool     *VotingPool
+func (vp *VotingPool) DepositAddress(branch, index uint32) (*DepositAddress, error) {
+	seriesID := uint32(0) // TODO: Look up the active series
+	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
+	if err != nil {
+		return nil, err
+	}
+	vpAddr := &votingPoolAddress{seriesID: seriesID, branch: branch, index: index, addr: addr}
+	return &DepositAddress{votingPoolAddress: vpAddr}, nil
+}
+
+func (vp *VotingPool) ChangeAddress(index uint32) (*ChangeAddress, error) {
+	seriesID := uint32(0) // TODO: Look up the active series
+	// Branch is always 0 for change addresses.
+	addr, err := vp.DepositScriptAddress(seriesID, uint32(0), index)
+	if err != nil {
+		return nil, err
+	}
+	vpAddr := &votingPoolAddress{seriesID: seriesID, index: index, addr: addr}
+	return &ChangeAddress{vp: vp, votingPoolAddress: vpAddr}, nil
+}
+
+func (vp *VotingPool) WithdrawalAddress(branch, index uint32) (*WithdrawalAddress, error) {
+	seriesID := uint32(0) // TODO: Look up the hot series
+	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
+	if err != nil {
+		return nil, err
+	}
+	vpAddr := &votingPoolAddress{seriesID: seriesID, branch: branch, index: index, addr: addr}
+	return &WithdrawalAddress{votingPoolAddress: vpAddr}, nil
+}
+
+type votingPoolAddress struct {
+	addr     btcutil.Address
 	seriesID uint32
 	branch   uint32
 	index    uint32
 }
 
-// XXX: Should this be a method on VotingPool?
-func NewVotingPoolAddress(
-	pool *VotingPool, seriesID uint32, branch uint32, index uint32) *VotingPoolAddress {
-	return &VotingPoolAddress{pool: pool, seriesID: seriesID, branch: branch, index: index}
+func (a *votingPoolAddress) Addr() btcutil.Address {
+	return a.addr
 }
 
-func (a *VotingPoolAddress) Address() (btcutil.Address, error) {
-	// TODO: Cache the result
-	return a.pool.DepositScriptAddress(a.seriesID, a.branch, a.index)
+type DepositAddress struct {
+	*votingPoolAddress
 }
 
-func (a *VotingPoolAddress) Next() *VotingPoolAddress {
-	// TODO:
-	return a
+func (a *DepositAddress) Addr() btcutil.Address {
+	return a.addr
+}
+
+type ChangeAddress struct {
+	*votingPoolAddress
+	vp *VotingPool
+}
+
+func (a *ChangeAddress) Next() (*ChangeAddress, error) {
+	return a.vp.ChangeAddress(a.index + 1)
+}
+
+type WithdrawalAddress struct {
+	*votingPoolAddress
 }
 
 // OutBailment represents an outbailment request received from a notary server.
@@ -73,8 +113,8 @@ func NewOutBailment(poolID []byte, server string, transaction uint32) *OutBailme
 }
 
 type WithdrawalStatus struct {
-	nextInputStart  VotingPoolAddress
-	nextChangeStart VotingPoolAddress
+	nextInputStart  WithdrawalAddress
+	nextChangeStart ChangeAddress
 	fees            btcutil.Amount
 	outputs         map[*OutBailment]*WithdrawalOutput
 }
@@ -150,7 +190,7 @@ type withdrawal struct {
 	currentInputs []txstore.Credit
 	status        *WithdrawalStatus
 	sigs          map[string]TxInSignatures
-	changeStart   *VotingPoolAddress
+	changeStart   *ChangeAddress
 	currentTx     *btcwire.MsgTx
 	net           *btcnet.Params
 	// Totals for the current transaction
@@ -164,7 +204,7 @@ func (vp *VotingPool) Withdrawal(
 	roundID uint32,
 	outputs []*WithdrawalOutput,
 	inputs []txstore.Credit,
-	changeStart *VotingPoolAddress,
+	changeStart *ChangeAddress,
 	txStore *txstore.Store,
 ) (*WithdrawalStatus, map[string]TxInSignatures, error) {
 	w := &withdrawal{
@@ -292,17 +332,17 @@ func (w *withdrawal) finalizeCurrentTx() {
 	fee := calculateFee(w.currentTx)
 	change := w.inputTotal - w.outputTotal - fee
 	if change > 0 {
-		addr, err := w.changeStart.Address()
-		if err != nil {
-			panic(err) // XXX: Really no idea what to do if we get an error here...
-		}
+		addr := w.changeStart.addr
 		pkScript, err := btcscript.PayToAddrScript(addr)
 		if err != nil {
 			panic(err) // XXX: Really no idea what to do if we get an error here...
 		}
 		w.currentTx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
 		log.Infof("Added change output with amount %v", change)
-		w.changeStart = w.changeStart.Next()
+		w.changeStart, err = w.changeStart.Next()
+		if err != nil {
+			panic(err) // XXX: Really no idea what to do if we get an error here...
+		}
 	}
 
 	w.usedInputs[Ntxid(w.currentTx)] = w.currentInputs
@@ -480,7 +520,6 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScrip
 		panic(err) // XXX: Again, no idea what's the correct thing to do here.
 	}
 	if class != btcscript.MultiSigTy {
-		// XXX: Is it ok to assume class is always a multi-sig here?
 		return errors.New(fmt.Sprintf("Unexpected redeemScript class: %v", class))
 	}
 	if len(sigs) < nRequired {
@@ -500,6 +539,7 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScrip
 	return nil
 }
 
+// XXX: This should be private.
 // ValidateSigScripts executes the signature script of every input in the given transaction
 // and returns an error if any of them fail.
 func ValidateSigScripts(msgtx *btcwire.MsgTx, store *txstore.Store) error {

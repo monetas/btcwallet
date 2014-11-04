@@ -30,12 +30,12 @@ import (
 var bsHeight int32 = 11112
 var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
 
-func TestFulfilOutputs(t *testing.T) {
+func TestWithdrawal(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 
 	credits, store := createCredits(t, mgr, pool, []int64{5e6, 4e6})
-	getEligibleInputs = func(inputStart, inputStop *votingpool.VotingPoolAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
+	getEligibleInputs = func(inputStart, inputStop *votingpool.WithdrawalAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
 		return credits
 	}
 	outBailment := votingpool.NewOutBailment(pool.ID, "foo", 1)
@@ -46,9 +46,12 @@ func TestFulfilOutputs(t *testing.T) {
 		votingpool.NewWithdrawalOutput(outBailment2, address, btcutil.Amount(1e6)),
 	}
 
-	changeStart := votingpool.NewVotingPoolAddress(pool, 0, 1, 0)
+	changeStart, err := pool.ChangeAddress(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	dustThreshold := uint32(1)
-	eligible := getEligibleInputs(&votingpool.VotingPoolAddress{}, &votingpool.VotingPoolAddress{}, dustThreshold, bsHeight)
+	eligible := getEligibleInputs(&votingpool.WithdrawalAddress{}, &votingpool.WithdrawalAddress{}, dustThreshold, bsHeight)
 
 	status, sigs, err := pool.Withdrawal(0, outputs, eligible, changeStart, store)
 
@@ -129,7 +132,7 @@ func checkWithdrawalOutput(t *testing.T, withdrawalOutput *votingpool.Withdrawal
 	}
 }
 
-func getEligibleInputsDefault(inputStart, inputStop *votingpool.VotingPoolAddress, dustThreshold uint32,
+func getEligibleInputsDefault(inputStart, inputStop *votingpool.WithdrawalAddress, dustThreshold uint32,
 	bsHeight int32) []txstore.Credit {
 	// TODO:
 	return make([]txstore.Credit, 0)
