@@ -17,15 +17,15 @@ import (
 func (a VotingPoolAddress) Distance(b VotingPoolAddress) (uint64, error) {
 	if a.SeriesID > b.SeriesID {
 		// TODO: define a proper error message
-		return 0, errors.New("Distance not defined when a.SeriesID > b.SeriesID")
+		return 0, errors.New("distance not defined when a.SeriesID > b.SeriesID")
 	}
 	if a.Branch > b.Branch {
 		// TODO: define a proper error message
-		return 0, errors.New("Distance not defined when a.Branch > b.Branch")
+		return 0, errors.New("distance not defined when a.Branch > b.Branch")
 	}
 	if a.Index > b.Index {
 		// TODO: define a proper error message
-		return 0, errors.New("Distance not defined when a.Index > b.Index")
+		return 0, errors.New("distance not defined when a.Index > b.Index")
 	}
 
 	return uint64((b.SeriesID - a.SeriesID + 1)) *
@@ -146,13 +146,14 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 	unspents, err := store.UnspentOutputs()
 	if err != nil {
 		// TODO: consider if we need to create a new error.
+		compositeError("input selection failed:", err)
 		return nil, err
 	}
 
 	addrMap, err := AddrToUtxosMap(unspents, vp.manager.Net())
 	if err != nil {
 		// TODO: consider if we need to create a new error.
-		return nil, err
+		return nil, compositeError("input selection failed:", err)
 	}
 	var inputs Credits
 	for series := start.SeriesID; series <= stop.SeriesID; series++ {
@@ -160,9 +161,9 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 			for branch := start.Branch; branch <= stop.Branch; branch++ {
 				addr, err := vp.DepositScriptAddress(series, branch, index)
 				if err != nil {
-					// TODO: should we just try and skip this input?
-					// Also consider if we need to create a new error.
-					return nil, err
+					// TODO: consider if we need to create a new error.
+					return nil, compositeError("input selection failed:", err)
+
 				}
 				encAddr := addr.EncodeAddress()
 
@@ -183,6 +184,10 @@ func (vp *VotingPool) InputSelection(store *txstore.Store,
 	}
 
 	return inputs, nil
+}
+
+func compositeError(errString string, err error) error {
+	return errors.New(errString + ": " + err.Error())
 }
 
 // AddrToUtxosMap converts a slice of credits to a map from the string
