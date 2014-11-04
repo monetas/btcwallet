@@ -120,7 +120,7 @@ func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	}
 }
 
-func TestInputSelectionOneSeriesOnly(t *testing.T) {
+func TestInputSelectionTwoSeries(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
@@ -130,18 +130,21 @@ func TestInputSelectionOneSeriesOnly(t *testing.T) {
 		Index:    0,
 	}
 	stop := votingpool.VotingPoolAddress{
-		SeriesID: 0,
+		SeriesID: 1,
 		Branch:   2,
 		Index:    4,
 	}
-	var reqSigs uint32 = 2
 	blockHeight := 11112
 	currentBlockHeight := blockHeight + minConf + 10
-	pubKeys := []string{pubKey1, pubKey2, pubKey3}
 	store := txstore.New("/tmp/tx.bin")
 	eligibleAmounts := []int64{int64(dustThreshold + 1), int64(dustThreshold + 1)}
 
-	createSeries(t, pool, []seriesDef{{reqSigs, pubKeys, start.SeriesID}})
+	// define two series.
+	series := []seriesDef{
+		{2, []string{pubKey1, pubKey2, pubKey3}, 0},
+		{2, []string{pubKey4, pubKey5, pubKey6}, 1},
+	}
+	createSeries(t, pool, series)
 
 	// create expNoAddrs number of scripts.
 	expNoAddrs, err := start.Distance(stop)
