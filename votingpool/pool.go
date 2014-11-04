@@ -31,6 +31,12 @@ const (
 	MinSeriesPubKeys = 3
 )
 
+// Branch is the type used to represent a branch number in a series.
+type Branch uint32
+
+// Index is the type used to represent an index number in a series.
+type Index uint32
+
 // seriesData represents a Series for a given Pool.
 type seriesData struct {
 	version uint32
@@ -101,7 +107,7 @@ func newPool(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) *
 
 // LoadAndGetDepositScript generates and returns a deposit script for the given seriesID,
 // branch and index of the Pool identified by poolID.
-func LoadAndGetDepositScript(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
+func LoadAndGetDepositScript(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID string, seriesID uint32, branch Branch, index Index) ([]byte, error) {
 	pid := []byte(poolID)
 	vp, err := Load(namespace, m, pid)
 	if err != nil {
@@ -435,14 +441,14 @@ func (vp *Pool) existsSeries(seriesID uint32) bool {
 // - branch 1: ABC (first key priority)
 // - branch 2: BAC (second key priority)
 // - branch 3: CAB (third key priority)
-func branchOrder(pks []*hdkeychain.ExtendedKey, branch uint32) ([]*hdkeychain.ExtendedKey, error) {
+func branchOrder(pks []*hdkeychain.ExtendedKey, branch Branch) ([]*hdkeychain.ExtendedKey, error) {
 	if pks == nil {
 		// This really shouldn't happen, but we want to be good citizens, so we
 		// return an error instead of crashing.
 		return nil, managerError(waddrmgr.ErrInvalidValue, "pks cannot be nil", nil)
 	}
 
-	if branch > uint32(len(pks)) {
+	if branch > Branch(len(pks)) {
 		return nil, managerError(waddrmgr.ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
 	}
 
@@ -471,7 +477,7 @@ func branchOrder(pks []*hdkeychain.ExtendedKey, branch uint32) ([]*hdkeychain.Ex
 
 // DepositScriptAddress constructs a multi-signature redemption script using DepositScript
 // and returns the pay-to-script-hash-address for that script.
-func (vp *Pool) DepositScriptAddress(seriesID, branch, index uint32) (btcutil.Address, error) {
+func (vp *Pool) DepositScriptAddress(seriesID uint32, branch Branch, index Index) (btcutil.Address, error) {
 	script, err := vp.DepositScript(seriesID, branch, index)
 	if err != nil {
 		return nil, err
@@ -484,7 +490,7 @@ func (vp *Pool) DepositScriptAddress(seriesID, branch, index uint32) (btcutil.Ad
 // DepositScript constructs and returns a multi-signature redemption script where
 // a certain number (Series.reqSigs) of the public keys belonging to the series
 // with the given ID are required to sign the transaction for it to be successful.
-func (vp *Pool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
+func (vp *Pool) DepositScript(seriesID uint32, branch Branch, index Index) ([]byte, error) {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist", seriesID)
@@ -498,7 +504,7 @@ func (vp *Pool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
 
 	pks := make([]*btcutil.AddressPubKey, len(pubKeys))
 	for i, key := range pubKeys {
-		child, err := key.Child(index)
+		child, err := key.Child(uint32(index))
 		// TODO: implement getting the next index until we find a valid one,
 		// in case there is a hdkeychain.ErrInvalidChild.
 		if err != nil {

@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -990,6 +991,17 @@ func (s *Store) UnminedDebitTxs() []*btcutil.Tx {
 	return unmined
 }
 
+// UnminedTx returns the wallet transaction with the given hash that
+// is not known to have been mined in a block.
+func (s *Store) UnminedTx(sha *btcwire.ShaHash) *btcutil.Tx {
+	for _, t := range s.UnminedDebitTxs() {
+		if *sha == *t.Sha() {
+			return t
+		}
+	}
+	return nil
+}
+
 // removeDoubleSpends checks for any unconfirmed transactions which would
 // introduce a double spend if tx was added to the store (either as a confirmed
 // or unconfirmed transaction).  If one is found, it and all transactions which
@@ -1082,6 +1094,22 @@ func (s *Store) UnspentOutputs() ([]Credit, error) {
 	defer s.mtx.RUnlock()
 
 	return s.unspentOutputs()
+}
+
+// XXX: Maybe return the PkScript directly as that's the only thing we need from the returned TxOut
+// UnconfirmedSpent returns the output with the given outpoint, spent by an unconfirmed
+// transaction.
+func (s *Store) UnconfirmedSpent(outpoint btcwire.OutPoint) (*btcwire.TxOut, error) {
+	for op, key := range s.unconfirmed.spentBlockOutPointKeys {
+		if reflect.DeepEqual(outpoint, op) {
+			r, err := s.lookupBlockTx(key.BlockTxKey)
+			if err != nil {
+				return nil, fmt.Errorf("BlockOutputKey not found: %v", err)
+			}
+			return r.Tx().MsgTx().TxOut[outpoint.Index], nil
+		}
+	}
+	return nil, errors.New(fmt.Sprintf("Outpoint not found: %v", outpoint))
 }
 
 func (s *Store) unspentOutputs() ([]Credit, error) {
