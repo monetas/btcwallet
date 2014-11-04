@@ -120,7 +120,7 @@ func (c VotingPoolCredits) Swap(i, j int) {
 
 var _ sort.Interface = (*VotingPoolCredits)(nil)
 
-func InputSelection(store *txstore.Store, vp *VotingPool,
+func (vp *VotingPool) InputSelection(store *txstore.Store,
 	start, stop VotingPoolAddress,
 	dustThreshold btcutil.Amount, chainHeight int32,
 	minConf int) (VotingPoolCredits, error) {

@@ -166,7 +166,7 @@ func TestInputSelectionOneSeriesOnly(t *testing.T) {
 	}
 
 	// Call InputSelection on that range.
-	eligibles, err := votingpool.InputSelection(
+	eligibles, err := pool.InputSelection(
 		store, pool, start, stop, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
