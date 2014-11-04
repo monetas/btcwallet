@@ -45,6 +45,7 @@ type VotingPoolAddress struct {
 	index    uint32
 }
 
+// XXX: Should this be a method on VotingPool?
 func NewVotingPoolAddress(
 	pool *VotingPool, seriesID uint32, branch uint32, index uint32) *VotingPoolAddress {
 	return &VotingPoolAddress{pool: pool, seriesID: seriesID, branch: branch, index: index}
@@ -157,12 +158,13 @@ type withdrawal struct {
 	outputTotal btcutil.Amount
 }
 
-func Withdrawal(
+// XXX: This should actually get the input start/stop addresses and pass them on to
+// getEligibleInputs().
+func (vp *VotingPool) Withdrawal(
 	roundID uint32,
 	outputs []*WithdrawalOutput,
 	inputs []txstore.Credit,
 	changeStart *VotingPoolAddress,
-	mgr *waddrmgr.Manager,
 	txStore *txstore.Store,
 ) (*WithdrawalStatus, map[string]TxInSignatures, error) {
 	w := &withdrawal{
@@ -174,12 +176,12 @@ func Withdrawal(
 		eligibleInputs: inputs,
 		status:         &WithdrawalStatus{outputs: make(map[*OutBailment]*WithdrawalOutput)},
 		changeStart:    changeStart,
-		net:            mgr.Net(),
+		net:            vp.manager.Net(),
 	}
 	if err := w.fulfilOutputs(txStore); err != nil {
 		return nil, nil, err
 	}
-	if err := w.sign(mgr); err != nil {
+	if err := w.sign(vp.manager); err != nil {
 		return nil, nil, err
 	}
 

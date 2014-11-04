@@ -50,7 +50,7 @@ func TestFulfilOutputs(t *testing.T) {
 	dustThreshold := uint32(1)
 	eligible := getEligibleInputs(&votingpool.VotingPoolAddress{}, &votingpool.VotingPoolAddress{}, dustThreshold, bsHeight)
 
-	status, sigs, err := votingpool.Withdrawal(0, outputs, eligible, changeStart, mgr, store)
+	status, sigs, err := pool.Withdrawal(0, outputs, eligible, changeStart, store)
 
 	if err != nil {
 		t.Fatal(err)
