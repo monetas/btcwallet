@@ -200,13 +200,17 @@ func AddrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]tx
 		if err != nil {
 			return nil, err
 		}
-		for _, addr := range addrs {
-			encAddr := addr.EncodeAddress()
-			if v, ok := addrMap[encAddr]; ok {
-				addrMap[encAddr] = append(v, o)
-			} else {
-				addrMap[encAddr] = []txstore.Credit{o}
-			}
+		// As our utxos are all scripthashes we should never have more
+		// than one address per output, so let's error out if that
+		// assumption is violated.
+		if len(addrs) != 1 {
+			return nil, errors.New("one address per unspent output assumption violated")
+		}
+		encAddr := addrs[0].EncodeAddress()
+		if v, ok := addrMap[encAddr]; ok {
+			addrMap[encAddr] = append(v, o)
+		} else {
+			addrMap[encAddr] = []txstore.Credit{o}
 		}
 	}
 
