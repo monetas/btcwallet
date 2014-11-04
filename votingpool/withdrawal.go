@@ -101,49 +101,27 @@ type WithdrawalAddress struct {
 	*votingPoolAddress
 }
 
-// OutBailment represents an outbailment request received from a notary server.
-type OutBailment struct {
-	poolID      []byte
-	server      string
-	transaction uint32
-}
-
-func NewOutBailment(poolID []byte, server string, transaction uint32) *OutBailment {
-	return &OutBailment{poolID: poolID, server: server, transaction: transaction}
-}
-
 type WithdrawalStatus struct {
 	nextInputStart  WithdrawalAddress
 	nextChangeStart ChangeAddress
 	fees            btcutil.Amount
-	outputs         map[*OutBailment]*WithdrawalOutput
+	outputs         []*WithdrawalOutput
 }
 
-func (s *WithdrawalStatus) Outputs() map[*OutBailment]*WithdrawalOutput {
+func (s *WithdrawalStatus) Outputs() []*WithdrawalOutput {
 	return s.outputs
 }
 
-// XXX: This data type is used by clients when specifying the requested outbailments,
-// but it's also used in WithdrawalStatus to convey the state of a fulfilled outbailment.
-// That is quite confusing; we should probably use separate types for those two things.
-type WithdrawalOutput struct {
-	outBailment *OutBailment
+type WithdrawalOutputRequest struct {
+	// The notary server that received the outbailment request.
+	server string
+	// The server-specific transaction number for the outbailment request.
+	transaction uint32
 	address     string
 	amount      btcutil.Amount
-	status      string
-	outpoints   []OutBailmentOutpoint
 }
 
-func NewWithdrawalOutput(
-	outBailment *OutBailment, address string, amount btcutil.Amount) *WithdrawalOutput {
-	return &WithdrawalOutput{outBailment: outBailment, address: address, amount: amount}
-}
-
-func (o *WithdrawalOutput) addOutpoint(outpoint OutBailmentOutpoint) {
-	o.outpoints = append(o.outpoints, outpoint)
-}
-
-func (o *WithdrawalOutput) pkScript(net *btcnet.Params) ([]byte, error) {
+func (o *WithdrawalOutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
 	address, err := btcutil.DecodeAddress(o.address, net)
 	if err != nil {
 		return nil, err
@@ -151,18 +129,40 @@ func (o *WithdrawalOutput) pkScript(net *btcnet.Params) ([]byte, error) {
 	return btcscript.PayToAddrScript(address)
 }
 
+func NewWithdrawalOutputRequest(
+	server string, transaction uint32, address string, amount btcutil.Amount,
+) *WithdrawalOutputRequest {
+	return &WithdrawalOutputRequest{
+		server: server, transaction: transaction, address: address, amount: amount}
+}
+
+type WithdrawalOutput struct {
+	request   *WithdrawalOutputRequest
+	status    string
+	outpoints []OutBailmentOutpoint
+}
+
+func (o *WithdrawalOutput) addOutpoint(outpoint OutBailmentOutpoint) {
+	o.outpoints = append(o.outpoints, outpoint)
+}
+
 func (o *WithdrawalOutput) Status() string {
 	return o.status
 }
 
+func (o *WithdrawalOutput) Amount() btcutil.Amount {
+	return o.request.amount
+}
+
 func (o *WithdrawalOutput) Address() string {
-	return o.address
+	return o.request.address
 }
 
 func (o *WithdrawalOutput) Outpoints() []OutBailmentOutpoint {
 	return o.outpoints
 }
 
+// XXX: This is a horrible name, really.
 type OutBailmentOutpoint struct {
 	ntxid  string
 	index  uint32
@@ -180,7 +180,7 @@ type RawSig []byte
 type withdrawal struct {
 	roundID        uint32
 	transactions   []*btcwire.MsgTx
-	pendingOutputs []*WithdrawalOutput
+	pendingOutputs []*WithdrawalOutputRequest
 	currentOutputs []*WithdrawalOutput
 	eligibleInputs []txstore.Credit
 	// A map of ntxids to lists of txstore.Credit
@@ -202,7 +202,7 @@ type withdrawal struct {
 // getEligibleInputs().
 func (vp *VotingPool) Withdrawal(
 	roundID uint32,
-	outputs []*WithdrawalOutput,
+	outputs []*WithdrawalOutputRequest,
 	inputs []txstore.Credit,
 	changeStart *ChangeAddress,
 	txStore *txstore.Store,
@@ -214,7 +214,7 @@ func (vp *VotingPool) Withdrawal(
 		usedInputs:     make(map[string][]txstore.Credit),
 		sigs:           make(map[string]TxInSignatures),
 		eligibleInputs: inputs,
-		status:         &WithdrawalStatus{outputs: make(map[*OutBailment]*WithdrawalOutput)},
+		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
 		net:            vp.manager.Net(),
 	}
@@ -254,9 +254,9 @@ func (vp *VotingPool) Withdrawal(
 }
 
 // Add the given output to the current Tx.
-func (w *withdrawal) addOutput(output *WithdrawalOutput, pkScript []byte) uint32 {
-	w.currentTx.AddTxOut(btcwire.NewTxOut(int64(output.amount), pkScript))
-	w.outputTotal += output.amount
+func (w *withdrawal) addTxOutput(output *WithdrawalOutput, pkScript []byte) uint32 {
+	w.currentTx.AddTxOut(btcwire.NewTxOut(int64(output.Amount()), pkScript))
+	w.outputTotal += output.Amount()
 	w.currentOutputs = append(w.currentOutputs, output)
 	return uint32(len(w.currentTx.TxOut) - 1)
 }
@@ -275,17 +275,20 @@ func (w *withdrawal) currentTxTooBig() bool {
 // output plus the required fees. It also means the tx won't reach the size limit even
 // after we add a change output and sign all inputs.
 func (w *withdrawal) fulfilNextOutput() error {
-	output := w.pendingOutputs[0]
+	request := w.pendingOutputs[0]
 	w.pendingOutputs = w.pendingOutputs[1:]
 
-	w.status.outputs[output.outBailment] = output
-	pkScript, err := output.pkScript(w.net)
+	output := &WithdrawalOutput{request: request}
+	// Add output to w.status in case we exit early due to on an invalid request.
+	w.status.outputs = append(w.status.outputs, output)
+
+	pkScript, err := request.pkScript(w.net)
 	if err != nil {
 		output.status = "invalid"
 		return nil
 	}
-	outputIndex := w.addOutput(output, pkScript)
-	log.Infof("Added output sending %s to %s", output.amount, output.address)
+	outputIndex := w.addTxOutput(output, pkScript)
+	log.Infof("Added output sending %s to %s", output.Amount(), output.Address())
 
 	if w.currentTxTooBig() {
 		// TODO: Roll back last added output, finalize w.currentTx and assign a new
@@ -319,7 +322,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		}
 	}
 
-	outpoint := OutBailmentOutpoint{index: outputIndex, amount: output.amount}
+	outpoint := OutBailmentOutpoint{index: outputIndex, amount: output.Amount()}
 	output.addOutpoint(outpoint)
 	output.status = "success"
 	return nil

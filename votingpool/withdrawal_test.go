@@ -38,12 +38,10 @@ func TestWithdrawal(t *testing.T) {
 	getEligibleInputs = func(inputStart, inputStop *votingpool.WithdrawalAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
 		return credits
 	}
-	outBailment := votingpool.NewOutBailment(pool.ID, "foo", 1)
-	outBailment2 := votingpool.NewOutBailment(pool.ID, "foo", 2)
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
-	outputs := []*votingpool.WithdrawalOutput{
-		votingpool.NewWithdrawalOutput(outBailment, address, btcutil.Amount(4e6)),
-		votingpool.NewWithdrawalOutput(outBailment2, address, btcutil.Amount(1e6)),
+	outputs := []*votingpool.WithdrawalOutputRequest{
+		votingpool.NewWithdrawalOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
+		votingpool.NewWithdrawalOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
 	}
 
 	changeStart, err := pool.ChangeAddress(0)
@@ -65,11 +63,7 @@ func TestWithdrawal(t *testing.T) {
 			len(fulfiled), 2)
 	}
 
-	for _, outb := range []*votingpool.OutBailment{outBailment, outBailment2} {
-		withdrawalOutput, found := fulfiled[outb]
-		if !found {
-			t.Fatalf("No output found for OutBailment %v", outb)
-		}
+	for _, withdrawalOutput := range fulfiled {
 		checkWithdrawalOutput(t, withdrawalOutput, address, "success", 1)
 	}
 
