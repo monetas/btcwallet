@@ -257,7 +257,7 @@ func TestDepositScriptAddress(t *testing.T) {
 			t.Fatalf("Cannot creates series %v", test.series)
 		}
 		for branch, expectedAddress := range test.addresses {
-			addr, err := pool.DepositScriptAddress(test.series, branch, 0)
+			addr, err := pool.DepositScriptAddress(test.series, votingpool.Branch(branch), votingpool.Index(0))
 			if err != nil {
 				t.Fatalf("Failed to get DepositScriptAddress #%d: %v", i, err)
 			}
@@ -293,7 +293,7 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 
 	// Ask for a DepositScriptAddress using an index for a hardened child, which should
 	// fail as we use the extended public keys to derive childs.
-	_, err := pool.DepositScriptAddress(0, 0, uint32(hdkeychain.HardenedKeyStart+1))
+	_, err := pool.DepositScriptAddress(0, 0, votingpool.Index(hdkeychain.HardenedKeyStart+1))
 
 	if err == nil {
 		t.Fatalf("Expected an error, got none")
@@ -1028,7 +1028,7 @@ func TestBranchOrderNonZero(t *testing.T) {
 
 			inKeys := append(append(first, pivot...), last...)
 			wantKeys := append(append(pivot, first...), last...)
-			resKeys, err := votingpool.TstBranchOrder(inKeys, uint32(branch))
+			resKeys, err := votingpool.TstBranchOrder(inKeys, votingpool.Branch(branch))
 			if err != nil {
 				t.Fatalf("Error ordering keys: %v", err)
 			}

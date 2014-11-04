@@ -94,8 +94,8 @@ func Example_basic() {
 	}
 
 	// Create a deposit address.
-	branch := uint32(0) // The change branch
-	index := uint32(1)
+	branch := votingpool.Branch(0) // The change branch
+	index := votingpool.Index(1)
 	addr, err := pool.DepositScriptAddress(seriesID, branch, index)
 	if err != nil {
 		fmt.Printf("DepositScriptAddress failed for series: %d, branch: %d, index: %d\n",
