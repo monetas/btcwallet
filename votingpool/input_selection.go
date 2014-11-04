@@ -33,35 +33,45 @@ func (a VotingPoolAddress) Distance(b VotingPoolAddress) (uint64, error) {
 		uint64((b.Index - a.Index + 1)), nil
 }
 
+// VotingPoolAddress reprents the unique data needed to generate a
+// voting pool address.
 type VotingPoolAddress struct {
 	SeriesID uint32
 	Index    uint32
 	Branch   uint32
 }
 
+// CreditInterface is an abstraction over credits used in a voting
+// pool.
 type CreditInterface interface {
 	TxID() *btcwire.ShaHash
 	OutputIndex() uint32
 	Address() VotingPoolAddress
 }
 
+// Credit implements the CreditInterface.
 type Credit struct {
 	Addr   VotingPoolAddress
 	Credit txstore.Credit
 }
 
+// TxID returns the sha hash of the underlying transaction.
 func (c Credit) TxID() *btcwire.ShaHash {
 	return c.Credit.TxRecord.Tx().Sha()
 }
 
+// OutputIndex returns the outputindex of the ouput in the underlying
+// transaction.
 func (c Credit) OutputIndex() uint32 {
 	return c.Credit.OutputIndex
 }
 
+// Address returns the voting pool address.
 func (c Credit) Address() VotingPoolAddress {
 	return c.Addr
 }
 
+// newCredit initialises a new Credit.
 func newCredit(credit txstore.Credit, seriesID, branch, index uint32) Credit {
 	return Credit{
 		Credit: credit,
@@ -73,12 +83,17 @@ func newCredit(credit txstore.Credit, seriesID, branch, index uint32) Credit {
 	}
 }
 
+// Credits is a type defined as a slice of CreditInterface
+// implementing the sort.Interface.
 type Credits []CreditInterface
 
+// Len returns the length of the underlying slice.
 func (c Credits) Len() int {
 	return len(c)
 }
 
+// Less returns true if the element at positions i is smaller than the
+// element at position j.
 func (c Credits) Less(i, j int) bool {
 	if c[i].Address().SeriesID < c[j].Address().SeriesID {
 		return true
@@ -114,12 +129,16 @@ func (c Credits) Less(i, j int) bool {
 	return false
 }
 
+// Swap swaps the elements at position i and j.
 func (c Credits) Swap(i, j int) {
 	c[i], c[j] = c[j], c[i]
 }
 
+// Check at compile time that Credits implements sort.Interface.
 var _ sort.Interface = (*Credits)(nil)
 
+// InputSelection returns a slice of eligible inputs in the address
+// ranged specified by the start and stop parameters.
 func (vp *VotingPool) InputSelection(store *txstore.Store,
 	start, stop VotingPoolAddress,
 	dustThreshold btcutil.Amount, chainHeight int32,
