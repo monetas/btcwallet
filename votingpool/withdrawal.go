@@ -176,25 +176,52 @@ type TxInSignatures [][]RawSig
 
 type RawSig []byte
 
+// withdrawal holds all the state needed for VotingPool.Withdrawal() to do its job.
 type withdrawal struct {
 	roundID        uint32
+	status         *WithdrawalStatus
+	net            *btcnet.Params
+	changeStart    *ChangeAddress
 	transactions   []*btcwire.MsgTx
 	pendingOutputs []*OutputRequest
-	currentOutputs []*WithdrawalOutput
 	eligibleInputs []txstore.Credit
-	// A map of ntxids to lists of txstore.Credit
+	current        *currentTx
+	// A map of ntxids to lists of txstore.Credit, needed to sign the tx inputs.
 	usedInputs map[string][]txstore.Credit
-	// A list containing the Credits added as inputs to currentTx; needed so that we
-	// can sign them later on.
-	currentInputs []txstore.Credit
-	status        *WithdrawalStatus
-	sigs          map[string]TxInSignatures
-	changeStart   *ChangeAddress
-	currentTx     *btcwire.MsgTx
-	net           *btcnet.Params
-	// Totals for the current transaction
+}
+
+// The not-yet-finalized transaction to which new inputs/outputs are being added, and
+// some supporting data structures that apply only to it.
+type currentTx struct {
+	tx          *btcwire.MsgTx
+	inputs      []txstore.Credit
+	outputs     []*WithdrawalOutput
 	inputTotal  btcutil.Amount
 	outputTotal btcutil.Amount
+}
+
+func (c *currentTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32 {
+	c.tx.AddTxOut(btcwire.NewTxOut(int64(output.Amount()), pkScript))
+	c.outputTotal += output.Amount()
+	c.outputs = append(c.outputs, output)
+	return uint32(len(c.tx.TxOut) - 1)
+}
+
+func (c *currentTx) addTxIn(input txstore.Credit) {
+	c.tx.AddTxIn(btcwire.NewTxIn(input.OutPoint(), nil))
+	log.Infof("Added input with amount %v", input.Amount())
+	c.inputs = append(c.inputs, input)
+	c.inputTotal += input.Amount()
+}
+
+func (c *currentTx) rollBackLastOutput() {
+	// TODO: Remove output from tx.TxOut
+	// TODO: Subtract its amount from outputTotal
+}
+
+func (c *currentTx) tooBig() bool {
+	// TODO: Implement me!
+	return estimateSize(c.tx) > 1000
 }
 
 // XXX: This should actually get the input start/stop addresses and pass them on to
@@ -208,10 +235,9 @@ func (vp *VotingPool) Withdrawal(
 ) (*WithdrawalStatus, map[string]TxInSignatures, error) {
 	w := &withdrawal{
 		roundID:        roundID,
-		currentTx:      btcwire.NewMsgTx(),
+		current:        &currentTx{tx: btcwire.NewMsgTx()},
 		pendingOutputs: outputs,
 		usedInputs:     make(map[string][]txstore.Credit),
-		sigs:           make(map[string]TxInSignatures),
 		eligibleInputs: inputs,
 		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
@@ -220,7 +246,8 @@ func (vp *VotingPool) Withdrawal(
 	if err := w.fulfilOutputs(txStore); err != nil {
 		return nil, nil, err
 	}
-	if err := w.sign(vp.manager); err != nil {
+	sigs, err := w.sign(vp.manager)
+	if err != nil {
 		return nil, nil, err
 	}
 
@@ -249,25 +276,7 @@ func (vp *VotingPool) Withdrawal(
 	// What happens if we store the transactions and fail to store the signatures? We
 	// could store the siglists first and roll them back (which should be easy) if we fail
 	// to store the txs.
-	return w.status, w.sigs, nil
-}
-
-// Add the given output to the current Tx.
-func (w *withdrawal) addTxOutput(output *WithdrawalOutput, pkScript []byte) uint32 {
-	w.currentTx.AddTxOut(btcwire.NewTxOut(int64(output.Amount()), pkScript))
-	w.outputTotal += output.Amount()
-	w.currentOutputs = append(w.currentOutputs, output)
-	return uint32(len(w.currentTx.TxOut) - 1)
-}
-
-func (w *withdrawal) rollBackLastOutput() {
-	// TODO: Remove output from w.currentTx.TxOut
-	// TODO: Subtract its amount from w.outputTotal
-}
-
-func (w *withdrawal) currentTxTooBig() bool {
-	// TODO: Implement me!
-	return estimateSize(w.currentTx) > 1000
+	return w.status, sigs, nil
 }
 
 // If this returns it means we have added an output and the necessary inputs to fulfil that
@@ -286,35 +295,32 @@ func (w *withdrawal) fulfilNextOutput() error {
 		output.status = "invalid"
 		return nil
 	}
-	outputIndex := w.addTxOutput(output, pkScript)
+	outputIndex := w.current.addTxOut(output, pkScript)
 	log.Infof("Added output sending %s to %s", output.Amount(), output.Address())
 
-	if w.currentTxTooBig() {
+	if w.current.tooBig() {
 		// TODO: Roll back last added output, finalize w.currentTx and assign a new
 		// tx to currentTx.
 		panic("Oversize TX not yet implemented")
 	}
 
-	fee := calculateFee(w.currentTx)
-	for w.inputTotal < w.outputTotal+fee {
+	fee := calculateFee(w.current.tx)
+	for w.current.inputTotal < w.current.outputTotal+fee {
 		if len(w.eligibleInputs) == 0 {
 			// TODO: Implement Split Output procedure
 			panic("Split Output not yet implemented")
 		}
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
-		w.currentTx.AddTxIn(btcwire.NewTxIn(input.OutPoint(), nil))
-		log.Infof("Added input with amount %v", input.Amount())
-		w.currentInputs = append(w.currentInputs, input)
-		w.inputTotal += input.Amount()
-		fee = calculateFee(w.currentTx)
+		w.current.addTxIn(input)
+		fee = calculateFee(w.current.tx)
 
-		if w.currentTxTooBig() {
+		if w.current.tooBig() {
 			// TODO: Roll back last added output plus all inputs added to support it.
-			if len(w.currentTx.TxOut) > 1 {
+			if len(w.current.tx.TxOut) > 1 {
 				w.finalizeCurrentTx()
 				// TODO: Finalize w.currentTx and assign a new tx to currentTx.
-			} else if len(w.currentTx.TxOut) == 1 {
+			} else if len(w.current.tx.TxOut) == 1 {
 				// TODO: Split last output in two, and continue the loop.
 			}
 			panic("Oversize TX not yet implemented")
@@ -328,18 +334,18 @@ func (w *withdrawal) fulfilNextOutput() error {
 }
 
 func (w *withdrawal) finalizeCurrentTx() {
-	if len(w.currentTx.TxOut) == 0 {
+	if len(w.current.tx.TxOut) == 0 {
 		return
 	}
-	fee := calculateFee(w.currentTx)
-	change := w.inputTotal - w.outputTotal - fee
+	fee := calculateFee(w.current.tx)
+	change := w.current.inputTotal - w.current.outputTotal - fee
 	if change > 0 {
 		addr := w.changeStart.addr
 		pkScript, err := btcscript.PayToAddrScript(addr)
 		if err != nil {
 			panic(err) // XXX: Really no idea what to do if we get an error here...
 		}
-		w.currentTx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
+		w.current.tx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
 		log.Infof("Added change output with amount %v", change)
 		w.changeStart, err = w.changeStart.Next()
 		if err != nil {
@@ -347,17 +353,13 @@ func (w *withdrawal) finalizeCurrentTx() {
 		}
 	}
 
-	w.usedInputs[Ntxid(w.currentTx)] = w.currentInputs
-	w.transactions = append(w.transactions, w.currentTx)
+	w.usedInputs[Ntxid(w.current.tx)] = w.current.inputs
+	w.transactions = append(w.transactions, w.current.tx)
 	w.status.fees += fee
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
-	w.currentTx = btcwire.NewMsgTx()
-	w.currentOutputs = make([]*WithdrawalOutput, 0)
-	w.currentInputs = make([]txstore.Credit, 0)
-	w.inputTotal = btcutil.Amount(0)
-	w.outputTotal = btcutil.Amount(0)
+	w.current = &currentTx{tx: btcwire.NewMsgTx()}
 }
 
 func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
@@ -449,7 +451,8 @@ func Ntxid(tx *btcwire.MsgTx) string {
 // lists.
 // TODO: Add a test that uses a fixed transaction and compares the well known signatures
 // (including their order) against the list returned here.
-func (w *withdrawal) sign(mgr *waddrmgr.Manager) error {
+func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, error) {
+	sigs := make(map[string]TxInSignatures)
 	for _, tx := range w.transactions {
 		txSigs := make(TxInSignatures, len(tx.TxIn))
 		ntxid := Ntxid(tx)
@@ -461,11 +464,11 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) error {
 			}
 			if class != btcscript.ScriptHashTy {
 				// Assume pkScript is a P2SH because all voting pool addresses are P2SH.
-				return errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
+				return nil, errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
 			}
 			redeemScript, err := getRedeemScript(mgr, addresses[0].(*btcutil.AddressScriptHash))
 			if err != nil {
-				return err // XXX: Again, no idea what's the correct thing to do here.
+				return nil, err // XXX: Again, no idea what's the correct thing to do here.
 			}
 			// The order of the signatures in txInSigs must match the order of the corresponding
 			// pubkeys in the redeem script, but ExtractPkScriptAddrs() returns the pubkeys in
@@ -493,9 +496,9 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) error {
 			}
 			txSigs[idx] = txInSigs
 		}
-		w.sigs[ntxid] = txSigs
+		sigs[ntxid] = txSigs
 	}
-	return nil
+	return sigs, nil
 }
 
 // SignMultiSigUTXO signs the P2SH UTXO with the given index by constructing a
