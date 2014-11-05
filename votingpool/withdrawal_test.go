@@ -30,44 +30,49 @@ import (
 var bsHeight int32 = 11112
 var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
 
+// XXX: This test could benefit from being split into smaller ones, but that won't be a
+// trivial endeavour.
 func TestWithdrawal(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 
+	// Create eligible inputs and the list of outputs we need to fulfil.
 	eligible, store := createCredits(t, mgr, pool, []int64{5e6, 4e6})
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
 	outputs := []*votingpool.OutputRequest{
 		votingpool.NewOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
 		votingpool.NewOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
 	}
-
 	changeStart, err := pool.ChangeAddress(0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Withdrawal() should fulfil the desired outputs spending from the given inputs.
 	status, sigs, err := pool.Withdrawal(0, outputs, eligible, changeStart, store)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Check that all outputs were successfully fulfiled.
 	fulfiled := status.Outputs()
 	if len(fulfiled) != 2 {
 		t.Fatalf("Unexpected number of outputs in WithdrawalStatus; got %d, want %d",
 			len(fulfiled), 2)
 	}
-
 	for _, withdrawalOutput := range fulfiled {
 		checkWithdrawalOutput(t, withdrawalOutput, address, "success", 1)
 	}
 
+	// Now check that the raw signatures are what we expect.
 	if len(sigs) != 1 {
 		t.Fatalf("Unexpected number of tx signature lists; got %d, want 1", len(sigs))
 	}
-
+	// XXX: The ntxid is deterministic so we hardcode it here, but if the test is changed
+	// in a way that causes the generated transactions to change (e.g. different
+	// inputs/outputs), the ntxid will change too.
 	ntxid := "c47af4b04a82caa5c34bded7cf3869fbb690fd572c2b87f70c915892fa828235"
 	txSigs := sigs[ntxid]
-
 	// We should have 2 TxInSignatures entries as the transaction created by
 	// votingpool.Withdrawal() should have two inputs.
 	if len(txSigs) != 2 {
@@ -80,22 +85,19 @@ func TestWithdrawal(t *testing.T) {
 		t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
 	}
 
-	// XXX: There should be a separate test to check that signing of tx inputs works.
+	// Finally we use SignMultiSigUTXO() to construct the SignatureScripts (using the raw
+	// signatures), and check that they are valid.
 	sha, _ := btcwire.NewShaHashFromStr(ntxid)
 	tx := store.UnminedTx(sha).MsgTx()
-	txOut, err := store.UnconfirmedSpent(tx.TxIn[0].PreviousOutPoint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = votingpool.SignMultiSigUTXO(mgr, tx, 0, txOut.PkScript, txInSigs, mgr.Net()); err != nil {
-		t.Fatal(err)
-	}
-	txOut, err = store.UnconfirmedSpent(tx.TxIn[1].PreviousOutPoint)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = votingpool.SignMultiSigUTXO(mgr, tx, 1, txOut.PkScript, txSigs[1], mgr.Net()); err != nil {
-		t.Fatal(err)
+	for i, txIn := range tx.TxIn {
+		txOut, err := store.UnconfirmedSpent(txIn.PreviousOutPoint)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = votingpool.SignMultiSigUTXO(mgr, tx, i, txOut.PkScript, txSigs[i], mgr.Net())
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	if err = votingpool.ValidateSigScripts(tx, store); err != nil {
@@ -103,7 +105,9 @@ func TestWithdrawal(t *testing.T) {
 	}
 }
 
-func checkWithdrawalOutput(t *testing.T, withdrawalOutput *votingpool.WithdrawalOutput, address, status string, nOutpoints int) {
+func checkWithdrawalOutput(
+	t *testing.T, withdrawalOutput *votingpool.WithdrawalOutput, address, status string,
+	nOutpoints int) {
 	if withdrawalOutput.Address() != address {
 		t.Fatalf("Unexpected address; got %s, want %s", withdrawalOutput.Address(), address)
 	}
@@ -118,7 +122,9 @@ func checkWithdrawalOutput(t *testing.T, withdrawalOutput *votingpool.Withdrawal
 	}
 }
 
-func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64) ([]txstore.Credit, *txstore.Store) {
+func createCredits(
+	t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64,
+) ([]txstore.Credit, *txstore.Store) {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
 	master1, _ := hdkeychain.NewMaster(seed)
 	master2, _ := hdkeychain.NewMaster(append(seed, byte(0x01)))

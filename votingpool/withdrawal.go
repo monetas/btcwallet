@@ -383,24 +383,6 @@ func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 
 	for _, tx := range w.transactions {
 		w.updateStatusFor(tx)
-
-		// XXX: It'd make more sense to do this only after we have the raw signatures
-		// and everything else we need to fulfil the startwithdrawal request.
-		txr, err := store.InsertTx(btcutil.NewTx(tx), nil)
-		if err != nil {
-			return err
-		}
-		if _, err = txr.AddDebits(); err != nil {
-			return err
-		}
-		// XXX: Must only do this if the transaction has a change output.
-		if _, err = txr.AddCredit(uint32(len(tx.TxOut)-1), true); err != nil {
-			return err
-		}
-	}
-	store.MarkDirty()
-	if err := store.WriteIfDirty(); err != nil {
-		return err
 	}
 	return nil
 }
