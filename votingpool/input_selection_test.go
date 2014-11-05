@@ -235,3 +235,72 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	}
 
 }
+
+func TestSeriesRange(t *testing.T) {
+	one := votingpool.SeriesRange{
+		SeriesID:    0,
+		StartBranch: 0,
+		StopBranch:  0,
+		StartIndex:  0,
+		StopIndex:   0,
+	}
+	two := votingpool.SeriesRange{
+		SeriesID:    0,
+		StartBranch: 0,
+		StopBranch:  0,
+		StartIndex:  0,
+		StopIndex:   1,
+	}
+	four := votingpool.SeriesRange{
+		SeriesID:    0,
+		StartBranch: 0,
+		StopBranch:  1,
+		StartIndex:  0,
+		StopIndex:   1,
+	}
+
+	invalidBranch := votingpool.SeriesRange{
+		StartBranch: 1,
+		StopBranch:  0,
+	}
+
+	invalidIndex := votingpool.SeriesRange{
+		StartIndex: 1,
+		StopIndex:  0,
+	}
+
+	got, err := one.NumAddresses()
+	if err != nil {
+		t.Fatalf("NumAddresses failed: %v", err)
+	}
+	exp := uint64(1)
+	if got != exp {
+		t.Fatalf("Wrong range. Got %d, want: %d", got, exp)
+	}
+	got, err = two.NumAddresses()
+	if err != nil {
+		t.Fatalf("NumAddresses failed: %v", err)
+	}
+	exp = 2
+	if got != exp {
+		t.Fatalf("Wrong range. Got %d, want: %d", got, exp)
+	}
+	got, err = four.NumAddresses()
+	if err != nil {
+		t.Fatalf("NumAddresses failed: %v", err)
+	}
+	exp = 4
+	if got != exp {
+		t.Fatalf("Wrong range. Got %d, want: %d", got, exp)
+	}
+
+	// Finally test invalid ranges
+	got, err = invalidIndex.NumAddresses()
+	if err == nil {
+		t.Fatalf("Expected failure, but got nil")
+	}
+	got, err = invalidBranch.NumAddresses()
+	if err == nil {
+		t.Fatalf("Expected failure, but got nil")
+	}
+}
