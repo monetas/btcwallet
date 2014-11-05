@@ -112,7 +112,7 @@ func (s *WithdrawalStatus) Outputs() []*WithdrawalOutput {
 	return s.outputs
 }
 
-type WithdrawalOutputRequest struct {
+type OutputRequest struct {
 	// The notary server that received the outbailment request.
 	server string
 	// The server-specific transaction number for the outbailment request.
@@ -121,7 +121,7 @@ type WithdrawalOutputRequest struct {
 	amount      btcutil.Amount
 }
 
-func (o *WithdrawalOutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
+func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
 	address, err := btcutil.DecodeAddress(o.address, net)
 	if err != nil {
 		return nil, err
@@ -129,15 +129,14 @@ func (o *WithdrawalOutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
 	return btcscript.PayToAddrScript(address)
 }
 
-func NewWithdrawalOutputRequest(
-	server string, transaction uint32, address string, amount btcutil.Amount,
-) *WithdrawalOutputRequest {
-	return &WithdrawalOutputRequest{
+func NewOutputRequest(
+	server string, transaction uint32, address string, amount btcutil.Amount) *OutputRequest {
+	return &OutputRequest{
 		server: server, transaction: transaction, address: address, amount: amount}
 }
 
 type WithdrawalOutput struct {
-	request   *WithdrawalOutputRequest
+	request   *OutputRequest
 	status    string
 	outpoints []OutBailmentOutpoint
 }
@@ -180,7 +179,7 @@ type RawSig []byte
 type withdrawal struct {
 	roundID        uint32
 	transactions   []*btcwire.MsgTx
-	pendingOutputs []*WithdrawalOutputRequest
+	pendingOutputs []*OutputRequest
 	currentOutputs []*WithdrawalOutput
 	eligibleInputs []txstore.Credit
 	// A map of ntxids to lists of txstore.Credit
@@ -202,7 +201,7 @@ type withdrawal struct {
 // getEligibleInputs().
 func (vp *VotingPool) Withdrawal(
 	roundID uint32,
-	outputs []*WithdrawalOutputRequest,
+	outputs []*OutputRequest,
 	inputs []txstore.Credit,
 	changeStart *ChangeAddress,
 	txStore *txstore.Store,

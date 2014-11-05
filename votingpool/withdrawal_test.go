@@ -36,9 +36,9 @@ func TestWithdrawal(t *testing.T) {
 
 	eligible, store := createCredits(t, mgr, pool, []int64{5e6, 4e6})
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
-	outputs := []*votingpool.WithdrawalOutputRequest{
-		votingpool.NewWithdrawalOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
-		votingpool.NewWithdrawalOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
+	outputs := []*votingpool.OutputRequest{
+		votingpool.NewOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
+		votingpool.NewOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
 	}
 
 	changeStart, err := pool.ChangeAddress(0)
