@@ -120,19 +120,16 @@ func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	}
 }
 
-func TestInputSelectionTwoSeries(t *testing.T) {
+func TestInputSelection(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
-	start := votingpool.VotingPoolAddress{
-		SeriesID: 0,
-		Branch:   0,
-		Index:    0,
-	}
-	stop := votingpool.VotingPoolAddress{
-		SeriesID: 1,
-		Branch:   2,
-		Index:    4,
+	sRange := votingpool.SeriesRange{
+		SeriesID:    0,
+		StartBranch: 0,
+		StartIndex:  0,
+		StopBranch:  2,
+		StopIndex:   3,
 	}
 	blockHeight := 11112
 	currentBlockHeight := blockHeight + minConf + 10
@@ -141,17 +138,16 @@ func TestInputSelectionTwoSeries(t *testing.T) {
 
 	// define two series.
 	series := []seriesDef{
-		{2, []string{pubKey1, pubKey2, pubKey3}, 0},
-		{2, []string{pubKey4, pubKey5, pubKey6}, 1},
+		{2, []string{pubKey1, pubKey2, pubKey3}, sRange.SeriesID},
 	}
 	createSeries(t, pool, series)
 
 	// create expNoAddrs number of scripts.
-	expNoAddrs, err := start.Distance(stop)
+	expNoAddrs, err := sRange.NumAddresses()
 	if err != nil {
 		t.Fatal("Calculating the distance failed")
 	}
-	scripts := createPkScripts(t, mgr, pool, start, stop)
+	scripts := createPkScripts(t, mgr, pool, sRange)
 	if uint64(len(scripts)) != expNoAddrs {
 		t.Fatalf("Wrong number of scripts generated. Got: %d, want: %d",
 			len(scripts), expNoAddrs)
@@ -168,9 +164,9 @@ func TestInputSelectionTwoSeries(t *testing.T) {
 		inputs = append(inputs, created...)
 	}
 
-	// Call InputSelection on that range.
+	// Call InputSelection on the range.
 	eligibles, err := pool.TstGetEligibleInputs(
-		store, start, stop, dustThreshold, int32(currentBlockHeight), minConf)
+		store, sRange, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}
@@ -196,7 +192,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	var reqSigs uint32 = 3
 	pubKeys := []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}
 	if err := pool.CreateSeries(version, series, reqSigs, pubKeys); err != nil {
-		t.Fatalf("Cannot creates series %v", series)
+		t.Fatalf("Cannot create series %v", series)
 	}
 
 	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)

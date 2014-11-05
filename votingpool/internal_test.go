@@ -74,8 +74,8 @@ func (vp *VotingPool) TstEligible(c txstore.Credit, minConf int, currentBlockHei
 // TstGetEligibleInputs exposes the private votingpool method
 // getEligibleInputs for testing.
 func (vp *VotingPool) TstGetEligibleInputs(store *txstore.Store,
-	start, stop VotingPoolAddress,
+	sRange SeriesRange,
 	dustThreshold btcutil.Amount, chainHeight int32,
 	minConf int) (Credits, error) {
-	return vp.getEligibleInputs(store, start, stop, dustThreshold, chainHeight, minConf)
+	return vp.getEligibleInputs(store, sRange, dustThreshold, chainHeight, minConf)
 }

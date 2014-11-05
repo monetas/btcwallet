@@ -152,17 +152,14 @@ func createSeries(t *testing.T, pool *votingpool.VotingPool,
 }
 
 func createPkScripts(t *testing.T, mgr *waddrmgr.Manager,
-	pool *votingpool.VotingPool,
-	start, stop votingpool.VotingPoolAddress) [][]byte {
+	pool *votingpool.VotingPool, sRange votingpool.SeriesRange) [][]byte {
 
 	var pkScripts [][]byte
-	for index := start.Index; index <= stop.Index; index++ {
-		for series := start.SeriesID; series <= stop.SeriesID; series++ {
-			for branch := start.Branch; branch <= stop.Branch; branch++ {
+	for index := sRange.StartIndex; index <= sRange.StopIndex; index++ {
+		for branch := sRange.StartBranch; branch <= sRange.StopBranch; branch++ {
 
-				pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
-				pkScripts = append(pkScripts, pkScript)
-			}
+			pkScript := createVotingPoolPkScript(t, mgr, pool, sRange.SeriesID, branch, index)
+			pkScripts = append(pkScripts, pkScript)
 		}
 	}
 	return pkScripts

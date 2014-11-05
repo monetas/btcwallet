@@ -137,10 +137,31 @@ func (c Credits) Swap(i, j int) {
 // Check at compile time that Credits implements sort.Interface.
 var _ sort.Interface = (*Credits)(nil)
 
-// getEligibleInputs returns a slice of eligible inputs in the address
-// ranged specified by the start and stop parameters.
+// SeriesRange defines a range in the address space of the series.
+type SeriesRange struct {
+	SeriesID                uint32
+	StartBranch, StopBranch uint32
+	StartIndex, StopIndex   uint32
+}
+
+// NumAddresses returns the number of addresses this range represents.
+func (r SeriesRange) NumAddresses() (uint64, error) {
+	if r.StartBranch > r.StopBranch {
+		// TODO: define a proper error message
+		return 0, errors.New("range not defined when StartBranch > StopBranch")
+	}
+	if r.StartIndex > r.StopIndex {
+		// TODO: define a proper error message
+		return 0, errors.New("range not defined when StartIndex > StopIndex")
+	}
+
+	return uint64((r.StopBranch - r.StartBranch + 1)) *
+		uint64((r.StopIndex - r.StartIndex + 1)), nil
+}
+
+// getEligibleInputs returns a slice of eligible inputs for a series.
 func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
-	start, stop VotingPoolAddress,
+	sRange SeriesRange,
 	dustThreshold btcutil.Amount, chainHeight int32,
 	minConf int) (Credits, error) {
 	unspents, err := store.UnspentOutputs()
@@ -156,29 +177,27 @@ func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
 		return nil, compositeError("input selection failed:", err)
 	}
 	var inputs Credits
-	for series := start.SeriesID; series <= stop.SeriesID; series++ {
-		for index := start.Index; index <= stop.Index; index++ {
-			for branch := start.Branch; branch <= stop.Branch; branch++ {
-				addr, err := vp.DepositScriptAddress(series, branch, index)
-				if err != nil {
-					// TODO: consider if we need to create a new error.
-					return nil, compositeError("input selection failed:", err)
+	for index := sRange.StartIndex; index <= sRange.StopIndex; index++ {
+		for branch := sRange.StartBranch; branch <= sRange.StopBranch; branch++ {
+			addr, err := vp.DepositScriptAddress(sRange.SeriesID, branch, index)
+			if err != nil {
+				// TODO: consider if we need to create a new error.
+				return nil, compositeError("input selection failed:", err)
 
-				}
-				encAddr := addr.EncodeAddress()
+			}
+			encAddr := addr.EncodeAddress()
 
-				if candidates, ok := addrMap[encAddr]; ok {
-					var eligibles Credits
-					for _, c := range candidates {
-						if vp.eligible(c, minConf, chainHeight, dustThreshold) {
-							vpc := newCredit(c, series, branch, index)
-							eligibles = append(eligibles, vpc)
-						}
+			if candidates, ok := addrMap[encAddr]; ok {
+				var eligibles Credits
+				for _, c := range candidates {
+					if vp.eligible(c, minConf, chainHeight, dustThreshold) {
+						vpc := newCredit(c, sRange.SeriesID, branch, index)
+						eligibles = append(eligibles, vpc)
 					}
-					// Make sure the eligibles are correctly sorted.
-					sort.Sort(eligibles)
-					inputs = append(inputs, eligibles...)
 				}
+				// Make sure the eligibles are correctly sorted.
+				sort.Sort(eligibles)
+				inputs = append(inputs, eligibles...)
 			}
 		}
 	}
