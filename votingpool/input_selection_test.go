@@ -124,7 +124,7 @@ func TestInputSelection(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
-	sRange := votingpool.SeriesRange{
+	sRange := votingpool.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StartIndex:  0,
@@ -236,22 +236,22 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 
 }
 
-func TestSeriesRange(t *testing.T) {
-	one := votingpool.SeriesRange{
+func TestAddressRange(t *testing.T) {
+	one := votingpool.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  0,
 		StartIndex:  0,
 		StopIndex:   0,
 	}
-	two := votingpool.SeriesRange{
+	two := votingpool.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  0,
 		StartIndex:  0,
 		StopIndex:   1,
 	}
-	four := votingpool.SeriesRange{
+	four := votingpool.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  1,
@@ -259,12 +259,12 @@ func TestSeriesRange(t *testing.T) {
 		StopIndex:   1,
 	}
 
-	invalidBranch := votingpool.SeriesRange{
+	invalidBranch := votingpool.AddressRange{
 		StartBranch: 1,
 		StopBranch:  0,
 	}
 
-	invalidIndex := votingpool.SeriesRange{
+	invalidIndex := votingpool.AddressRange{
 		StartIndex: 1,
 		StopIndex:  0,
 	}

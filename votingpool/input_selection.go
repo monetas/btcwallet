@@ -115,15 +115,15 @@ func (c Credits) Swap(i, j int) {
 // Check at compile time that Credits implements sort.Interface.
 var _ sort.Interface = (*Credits)(nil)
 
-// SeriesRange defines a range in the address space of the series.
-type SeriesRange struct {
+// AddressRange defines a range in the address space of the series.
+type AddressRange struct {
 	SeriesID                uint32
 	StartBranch, StopBranch uint32
 	StartIndex, StopIndex   uint32
 }
 
 // NumAddresses returns the number of addresses this range represents.
-func (r SeriesRange) NumAddresses() (uint64, error) {
+func (r AddressRange) NumAddresses() (uint64, error) {
 	if r.StartBranch > r.StopBranch {
 		// TODO: define a proper error message
 		return 0, errors.New("range not defined when StartBranch > StopBranch")
@@ -139,7 +139,7 @@ func (r SeriesRange) NumAddresses() (uint64, error) {
 
 // getEligibleInputs returns a slice of eligible inputs for a series.
 func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
-	sRange SeriesRange,
+	aRange AddressRange,
 	dustThreshold btcutil.Amount, chainHeight int32,
 	minConf int) (Credits, error) {
 	unspents, err := store.UnspentOutputs()
@@ -155,9 +155,9 @@ func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
 		return nil, compositeError("input selection failed:", err)
 	}
 	var inputs Credits
-	for index := sRange.StartIndex; index <= sRange.StopIndex; index++ {
-		for branch := sRange.StartBranch; branch <= sRange.StopBranch; branch++ {
-			addr, err := vp.DepositScriptAddress(sRange.SeriesID, branch, index)
+	for index := aRange.StartIndex; index <= aRange.StopIndex; index++ {
+		for branch := aRange.StartBranch; branch <= aRange.StopBranch; branch++ {
+			addr, err := vp.DepositScriptAddress(aRange.SeriesID, branch, index)
 			if err != nil {
 				// TODO: consider if we need to create a new error.
 				return nil, compositeError("input selection failed:", err)
@@ -169,7 +169,7 @@ func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
 				var eligibles Credits
 				for _, c := range candidates {
 					if vp.eligible(c, minConf, chainHeight, dustThreshold) {
-						vpc := newCredit(c, sRange.SeriesID, branch, index)
+						vpc := newCredit(c, aRange.SeriesID, branch, index)
 						eligibles = append(eligibles, vpc)
 					}
 				}
