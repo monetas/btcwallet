@@ -34,10 +34,7 @@ func TestWithdrawal(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 
-	credits, store := createCredits(t, mgr, pool, []int64{5e6, 4e6})
-	getEligibleInputs = func(inputStart, inputStop *votingpool.WithdrawalAddress, dustThreshold uint32, bsHeight int32) []txstore.Credit {
-		return credits
-	}
+	eligible, store := createCredits(t, mgr, pool, []int64{5e6, 4e6})
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
 	outputs := []*votingpool.WithdrawalOutputRequest{
 		votingpool.NewWithdrawalOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
@@ -48,11 +45,8 @@ func TestWithdrawal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dustThreshold := uint32(1)
-	eligible := getEligibleInputs(&votingpool.WithdrawalAddress{}, &votingpool.WithdrawalAddress{}, dustThreshold, bsHeight)
 
 	status, sigs, err := pool.Withdrawal(0, outputs, eligible, changeStart, store)
-
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,21 +65,19 @@ func TestWithdrawal(t *testing.T) {
 		t.Fatalf("Unexpected number of tx signature lists; got %d, want 1", len(sigs))
 	}
 
-	var ntxid string
-	var txSigs votingpool.TxInSignatures
-	var txInSigs []votingpool.RawSig
-	for ntxid, txSigs = range sigs {
-		// We should have 2 TxInSignatures entries as the transaction created by
-		// votingpool.Withdrawal() should have two inputs.
-		if len(txSigs) != 2 {
-			t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
-		}
-		// And we should have 3 raw signatures as we have all 3 private keys for this
-		// voting pool series loaded in the address manager.
-		txInSigs = txSigs[0]
-		if len(txInSigs) != 3 {
-			t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
-		}
+	ntxid := "c47af4b04a82caa5c34bded7cf3869fbb690fd572c2b87f70c915892fa828235"
+	txSigs := sigs[ntxid]
+
+	// We should have 2 TxInSignatures entries as the transaction created by
+	// votingpool.Withdrawal() should have two inputs.
+	if len(txSigs) != 2 {
+		t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
+	}
+	// And we should have 3 raw signatures as we have all 3 private keys for this
+	// voting pool series loaded in the address manager.
+	txInSigs := txSigs[0]
+	if len(txInSigs) != 3 {
+		t.Fatalf("Unexpected number of raw signatures; got %d, want %d", len(txInSigs), 3)
 	}
 
 	// XXX: There should be a separate test to check that signing of tx inputs works.
@@ -125,14 +117,6 @@ func checkWithdrawalOutput(t *testing.T, withdrawalOutput *votingpool.Withdrawal
 			len(withdrawalOutput.Outpoints()), nOutpoints)
 	}
 }
-
-func getEligibleInputsDefault(inputStart, inputStop *votingpool.WithdrawalAddress, dustThreshold uint32,
-	bsHeight int32) []txstore.Credit {
-	// TODO:
-	return make([]txstore.Credit, 0)
-}
-
-var getEligibleInputs = getEligibleInputsDefault
 
 func createCredits(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64) ([]txstore.Credit, *txstore.Store) {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
