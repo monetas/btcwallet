@@ -145,7 +145,7 @@ func TestInputSelection(t *testing.T) {
 	// create expNoAddrs number of scripts.
 	expNoAddrs, err := sRange.NumAddresses()
 	if err != nil {
-		t.Fatal("Calculating the distance failed")
+		t.Fatal("Calculating the range failed")
 	}
 	scripts := createPkScripts(t, mgr, pool, sRange)
 	if uint64(len(scripts)) != expNoAddrs {
@@ -234,70 +234,4 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
-}
-
-func TestDistance(t *testing.T) {
-	zero := votingpool.VotingPoolAddress{
-		SeriesID: 0,
-		Branch:   0,
-		Index:    0,
-	}
-
-	two := votingpool.VotingPoolAddress{
-		SeriesID: 0,
-		Branch:   0,
-		Index:    1,
-	}
-
-	four := votingpool.VotingPoolAddress{
-		SeriesID: 0,
-		Branch:   1,
-		Index:    1,
-	}
-
-	eight := votingpool.VotingPoolAddress{
-		SeriesID: 1,
-		Branch:   1,
-		Index:    1,
-	}
-
-	got, err := zero.Distance(zero)
-	if err != nil {
-		t.Fatalf("Distance failed: %v", err)
-	}
-	exp := uint64(1)
-	if got != exp {
-		t.Fatalf("Wrong distance. Got %d, want: %d", got, exp)
-	}
-	got, err = zero.Distance(two)
-	if err != nil {
-		t.Fatalf("Distance failed: %v", err)
-	}
-	exp = 2
-	if got != exp {
-		t.Fatalf("Wrong distance. Got %d, want: %d", got, exp)
-	}
-	got, err = zero.Distance(four)
-	if err != nil {
-		t.Fatalf("Distance failed: %v", err)
-	}
-	exp = 4
-	if got != exp {
-		t.Fatalf("Wrong distance. Got %d, want: %d", got, exp)
-	}
-	got, err = zero.Distance(eight)
-	if err != nil {
-		t.Fatalf("Distance failed: %v", err)
-	}
-	exp = 8
-	if got != exp {
-		t.Fatalf("Wrong distance. Got %d, want: %d", got, exp)
-	}
-
-	// Finally test that we get an error if arguments a,b are passed
-	// where "a > b"
-	got, err = four.Distance(zero)
-	if err == nil {
-		t.Fatalf("Distance should have failed, but did not")
-	}
 }

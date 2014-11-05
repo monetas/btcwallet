@@ -11,28 +11,6 @@ import (
 	"github.com/conformal/btcwire"
 )
 
-// Distance calculates the number of addresses between a and b. If not
-// each field on a is less than or equal the fiels on b an error is
-// returned.
-func (a VotingPoolAddress) Distance(b VotingPoolAddress) (uint64, error) {
-	if a.SeriesID > b.SeriesID {
-		// TODO: define a proper error message
-		return 0, errors.New("distance not defined when a.SeriesID > b.SeriesID")
-	}
-	if a.Branch > b.Branch {
-		// TODO: define a proper error message
-		return 0, errors.New("distance not defined when a.Branch > b.Branch")
-	}
-	if a.Index > b.Index {
-		// TODO: define a proper error message
-		return 0, errors.New("distance not defined when a.Index > b.Index")
-	}
-
-	return uint64((b.SeriesID - a.SeriesID + 1)) *
-		uint64((b.Branch - a.Branch + 1)) *
-		uint64((b.Index - a.Index + 1)), nil
-}
-
 // VotingPoolAddress reprents the unique data needed to generate a
 // voting pool address.
 type VotingPoolAddress struct {
