@@ -9,7 +9,9 @@ import (
 // use the functions in helpers_test to create eligible inputs.
 func TestCreateEligibles(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
+	store, storeTearDown := createTxStore(t)
 	defer teardown()
+	defer storeTearDown()
 
 	var version uint32 = 1
 	var series, branch, index uint32 = 0, 0, 0
@@ -22,7 +24,7 @@ func TestCreateEligibles(t *testing.T) {
 
 	var bsHeight int32 = 11112
 	pkScript := createVotingPoolPkScript(t, mgr, pool, bsHeight, series, branch, index)
-	eligible, _ := createInputs(t, pkScript, []int64{5e6, 6e7})
+	eligible := createInputs(t, pkScript, []int64{5e6, 6e7}, store)
 	for _, e := range eligible {
 		fmt.Println("e.Amount(): ", e.Amount())
 	}

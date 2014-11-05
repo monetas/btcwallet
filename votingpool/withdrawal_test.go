@@ -34,10 +34,12 @@ var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
 // trivial endeavour.
 func TestWithdrawal(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
+	store, storeTearDown := createTxStore(t)
 	defer teardown()
+	defer storeTearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
-	eligible, store := createCredits(t, mgr, pool, []int64{5e6, 4e6})
+	eligible := createCredits(t, mgr, pool, []int64{5e6, 4e6}, store)
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
 	outputs := []*votingpool.OutputRequest{
 		votingpool.NewOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
@@ -124,7 +126,7 @@ func checkWithdrawalOutput(
 
 func createCredits(
 	t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, amounts []int64,
-) ([]txstore.Credit, *txstore.Store) {
+	store *txstore.Store) []txstore.Credit {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
 	master1, _ := hdkeychain.NewMaster(seed)
 	master2, _ := hdkeychain.NewMaster(append(seed, byte(0x01)))
@@ -159,5 +161,5 @@ func createCredits(
 	// address with branch==0, index==0.
 	branch := uint32(0)
 	pkScript := createVotingPoolPkScript(t, mgr, pool, bsHeight, seriesID, branch, idx)
-	return createInputs(t, pkScript, amounts)
+	return createInputs(t, pkScript, amounts, store)
 }

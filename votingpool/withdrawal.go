@@ -270,7 +270,9 @@ func (vp *VotingPool) Withdrawal(
 		return nil, nil, err
 	}
 
-	// TODO: Store the raw signatures in the DB.
+	// TODO: Store the raw signatures in the DB. We'll probably need to store the whole
+	// WithdrawalStatus in the DB as well, in case we're called multiple times with the
+	// same roundID.
 
 	// XXX: Using separate DBs for the transactions and the signatures may be problematic.
 	// What happens if we store the transactions and fail to store the signatures? We

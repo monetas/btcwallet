@@ -2,6 +2,7 @@ package votingpool_test
 
 import (
 	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/conformal/btcnet"
@@ -15,36 +16,26 @@ import (
 
 var activeNet = &btcnet.TestNet3Params
 
-func createInputs(t *testing.T, pkScript []byte, amounts []int64) ([]txstore.Credit, *txstore.Store) {
+func createInputs(t *testing.T, pkScript []byte, amounts []int64, store *txstore.Store) []txstore.Credit {
 	msgTx := createMsgTx(pkScript, amounts)
-
-	// XXX: Change this to take a store as argument, or else we need to provide a tearDown method
-	// that removes the temp file.
-	dir, err := ioutil.TempDir("", "tx.bin")
-	if err != nil {
-		t.Fatalf("Failed to create db file: %v", err)
-	}
-	s := txstore.New(dir)
-
-	// XXX: This duplicates the stuff lars did in one of his branches
 	block := &txstore.Block{Height: int32(10)} // XXX: Hard-coded value warning
 	tx := btcutil.NewTx(msgTx)
 	tx.SetIndex(1) // XXX: Hard-coded value warning
 
-	r, err := s.InsertTx(tx, block)
+	r, err := store.InsertTx(tx, block)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	eligible := make([]txstore.Credit, len(msgTx.TxOut))
+	credits := make([]txstore.Credit, len(msgTx.TxOut))
 	for i := range msgTx.TxOut {
 		credit, err := r.AddCredit(uint32(i), false)
 		if err != nil {
 			t.Fatal(err)
 		}
-		eligible[i] = credit
+		credits[i] = credit
 	}
-	return eligible, s
+	return credits
 }
 
 func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
@@ -107,4 +98,13 @@ func importPrivateKeys(t *testing.T, mgr *waddrmgr.Manager, privKeys []string, b
 			t.Fatal(err)
 		}
 	}
+}
+
+func createTxStore(t *testing.T) (store *txstore.Store, tearDown func()) {
+	dir, err := ioutil.TempDir("", "tx.bin")
+	if err != nil {
+		t.Fatalf("Failed to create db file: %v", err)
+	}
+	s := txstore.New(dir)
+	return s, func() { os.RemoveAll(dir) }
 }
