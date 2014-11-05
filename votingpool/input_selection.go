@@ -137,8 +137,27 @@ func (r AddressRange) NumAddresses() (uint64, error) {
 		uint64((r.StopIndex - r.StartIndex + 1)), nil
 }
 
-// getEligibleInputs returns a slice of eligible inputs for a series.
+// getEligibleInputs returns all the eligible inputs from the
+// specified ranges.
 func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
+	ranges []AddressRange,
+	dustThreshold btcutil.Amount, chainHeight int32,
+	minConf int) (Credits, error) {
+
+	var inputs Credits
+	for _, r := range ranges {
+		credits, err := vp.getEligibleInputsFromSeries(store, r, dustThreshold, chainHeight, minConf)
+		if err != nil {
+			return nil, err
+		}
+
+		inputs = append(inputs, credits...)
+	}
+	return inputs, nil
+}
+
+// getEligibleInputsFromSeries returns a slice of eligible inputs for a series.
+func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 	aRange AddressRange,
 	dustThreshold btcutil.Amount, chainHeight int32,
 	minConf int) (Credits, error) {

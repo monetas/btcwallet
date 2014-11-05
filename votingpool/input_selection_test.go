@@ -8,6 +8,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/txstore"
 	"github.com/conformal/btcwallet/votingpool"
+	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
 
@@ -120,16 +121,102 @@ func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	}
 }
 
-func TestInputSelection(t *testing.T) {
+func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, ranges []votingpool.AddressRange) [][]byte {
+	var scripts [][]byte
+	for _, r := range ranges {
+		// create expNoAddrs number of scripts.
+		expNoAddrs, err := r.NumAddresses()
+		if err != nil {
+			t.Fatal("Calculating the range failed")
+		}
+		newScripts := createPkScripts(t, mgr, pool, r)
+		if uint64(len(newScripts)) != expNoAddrs {
+			t.Fatalf("Wrong number of scripts generated. Got: %d, want: %d",
+				len(scripts), expNoAddrs)
+		}
+		scripts = append(scripts, newScripts...)
+	}
+	return scripts
+}
+
+func TestGetEligibleInputs(t *testing.T) {
+	teardown, mgr, pool := setUp(t)
+	defer teardown()
+	// create some eligible inputs in a specified range.
+	sRanges := []votingpool.AddressRange{
+		{
+			SeriesID:    0,
+			StartBranch: 0,
+			StopBranch:  3,
+			StartIndex:  0,
+			StopIndex:   4,
+		},
+		{
+			SeriesID:    1,
+			StartBranch: 0,
+			StopBranch:  3,
+			StartIndex:  0,
+			StopIndex:   6,
+		},
+	}
+	// define two series.
+	series := []seriesDef{
+		{2, []string{pubKey1, pubKey2, pubKey3}, sRanges[0].SeriesID},
+		{2, []string{pubKey3, pubKey4, pubKey5}, sRanges[1].SeriesID},
+	}
+	blockHeight := 11112
+	currentBlockHeight := blockHeight + minConf + 10
+	store := txstore.New("/tmp/tx.bin")
+
+	// create the series.
+	createSeries(t, pool, series)
+
+	// create all the scripts.
+	scripts := createScripts(t, mgr, pool, sRanges)
+
+	// let's make two eligible inputs pr. script/address.
+	expNoEligibleInputs := 2 * len(scripts)
+	eligibleAmounts := []int64{int64(dustThreshold + 1), int64(dustThreshold + 1)}
+	var inputs []txstore.Credit
+	for i := 0; i < len(scripts); i++ {
+		blockIndex := int(i) + 1
+		created := createInputsStore(t, store, blockIndex, blockHeight,
+			scripts[i], eligibleAmounts)
+		inputs = append(inputs, created...)
+	}
+
+	// Call InputSelection on the range.
+	eligibles, err := pool.TstGetEligibleInputs(
+		store, sRanges, dustThreshold, int32(currentBlockHeight), minConf)
+	if err != nil {
+		t.Fatal("InputSelection failed:", err)
+	}
+
+	// Check we got the expected number of eligible inputs.
+	if len(eligibles) != expNoEligibleInputs {
+		t.Fatalf("Wrong number of eligible inputs returned. Got: %d, want: %d.",
+			len(eligibles), expNoEligibleInputs)
+	}
+
+	// Check that the returned eligibles have the proper sort order.
+	if !sort.IsSorted(eligibles) {
+		t.Fatal("Eligible inputs are not sorted.")
+	}
+
+	// Check that all credits are unique
+	checkUniqueness(t, eligibles)
+}
+
+func TestGetEligibleInputsFromSeries(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
 	sRange := votingpool.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
-		StartIndex:  0,
 		StopBranch:  2,
-		StopIndex:   3,
+		StartIndex:  0,
+		StopIndex:   4,
 	}
 	blockHeight := 11112
 	currentBlockHeight := blockHeight + minConf + 10
@@ -142,22 +229,14 @@ func TestInputSelection(t *testing.T) {
 	}
 	createSeries(t, pool, series)
 
-	// create expNoAddrs number of scripts.
-	expNoAddrs, err := sRange.NumAddresses()
-	if err != nil {
-		t.Fatal("Calculating the range failed")
-	}
-	scripts := createPkScripts(t, mgr, pool, sRange)
-	if uint64(len(scripts)) != expNoAddrs {
-		t.Fatalf("Wrong number of scripts generated. Got: %d, want: %d",
-			len(scripts), expNoAddrs)
-	}
+	// create all the scripts.
+	scripts := createScripts(t, mgr, pool, []votingpool.AddressRange{sRange})
 
 	// Now we have expNoAddrs number of scripts, let's make two
 	// eligible inputs pr. script/address.
-	expNoEligibleInputs := 2 * expNoAddrs
+	expNoEligibleInputs := 2 * len(scripts)
 	var inputs []txstore.Credit
-	for i := uint64(0); i < expNoAddrs; i++ {
+	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
 		created := createInputsStore(t, store, blockIndex, blockHeight,
 			scripts[i], eligibleAmounts)
@@ -165,13 +244,14 @@ func TestInputSelection(t *testing.T) {
 	}
 
 	// Call InputSelection on the range.
-	eligibles, err := pool.TstGetEligibleInputs(
+	eligibles, err := pool.TstGetEligibleInputsFromSeries(
 		store, sRange, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}
 
-	if uint64(len(eligibles)) != expNoEligibleInputs {
+	// Check we got the expected number of eligible inputs.
+	if len(eligibles) != expNoEligibleInputs {
 		t.Fatalf("Wrong number of eligible inputs returned. Got: %d, want: %d.",
 			len(eligibles), expNoEligibleInputs)
 	}
