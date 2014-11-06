@@ -169,7 +169,7 @@ func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 		return nil, compositeError("input selection failed:", err)
 	}
 
-	addrMap, err := addrToUtxosMap(unspents, vp.manager.Net())
+	addrMap, err := groupCreditsByAddr(unspents, vp.manager.Net())
 	if err != nil {
 		// TODO: consider if we need to create a new error.
 		return nil, compositeError("input selection failed:", err)
@@ -207,10 +207,10 @@ func compositeError(errString string, err error) error {
 	return errors.New(errString + ": " + err.Error())
 }
 
-// addrToUtxosMap converts a slice of credits to a map from the string
-// representation of an encoded address to the unspent outputs
+// groupCreditsByAddr converts a slice of credits to a map from the
+// string representation of an encoded address to the unspent outputs
 // associated with that address.
-func addrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]txstore.Credit, error) {
+func groupCreditsByAddr(utxos []txstore.Credit, net *btcnet.Params) (map[string][]txstore.Credit, error) {
 	addrMap := make(map[string][]txstore.Credit)
 	for _, o := range utxos {
 		_, addrs, _, err := o.Addresses(net)
