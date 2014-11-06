@@ -271,15 +271,15 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	store, storeTearDown := createTxStore(t)
 	defer teardown()
 	defer storeTearDown()
+	var seriesID, branch, index uint32 = 0, 0, 0
 
-	var series, branch, index uint32 = 0, 0, 0
-	var reqSigs uint32 = 3
-	pubKeys := []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}
-	if err := pool.CreateSeries(version, series, reqSigs, pubKeys); err != nil {
-		t.Fatalf("Cannot create series %v", series)
+	// create the series
+	series := []seriesDef{
+		{3, []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}, seriesID},
 	}
+	createSeries(t, pool, series)
 
-	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
+	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, index)
 
 	var chainHeight int32 = 1000
 	c := createInputs(t, store, pkScript, []int64{int64(dustThreshold)})[0]
