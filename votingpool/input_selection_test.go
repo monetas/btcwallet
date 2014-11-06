@@ -279,10 +279,12 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	}
 	createSeries(t, pool, series)
 
+	// Create the input.
 	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, index)
-
 	var chainHeight int32 = 1000
 	c := createInputs(t, store, pkScript, []int64{int64(dustThreshold)})[0]
+
+	// Make sure credits is old enough to pass the minConf check.
 	c.BlockHeight = int32(100)
 
 	if !pool.TstEligible(c, minConf, chainHeight, dustThreshold) {
