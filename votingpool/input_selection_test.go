@@ -225,7 +225,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 	store := txstore.New("/tmp/tx.bin")
 	eligibleAmounts := []int64{int64(dustThreshold + 1), int64(dustThreshold + 1)}
 
-	// define two series.
+	// define a series.
 	series := []seriesDef{
 		{2, []string{pubKey1, pubKey2, pubKey3}, aRange.SeriesID},
 	}
