@@ -20,9 +20,9 @@ var activeNet = &btcnet.TestNet3Params
 // by the pkScript.  See createInputsStore for a more flexible
 // version.
 func createInputs(t *testing.T, store *txstore.Store, pkScript []byte, amounts []int64) []txstore.Credit {
-	blockTxIndex := 1
-	blockHeight := 10
-	return createInputsStore(t, store, blockTxIndex, blockHeight, pkScript, amounts)
+	blockTxIndex := 1 // XXX: hardcoded value.
+	blockHeight := 10 // XXX: hardcoded value.
+	return createInputsOnBlock(t, store, blockTxIndex, blockHeight, pkScript, amounts)
 }
 
 // createInputStore creates a number of inputs by creating a
