@@ -180,7 +180,7 @@ func TestGetEligibleInputs(t *testing.T) {
 	var inputs []txstore.Credit
 	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
-		created := createInputsStore(t, store, blockIndex, blockHeight,
+		created := createInputsOnBlock(t, store, blockIndex, blockHeight,
 			scripts[i], eligibleAmounts)
 		inputs = append(inputs, created...)
 	}
@@ -238,7 +238,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 	var inputs []txstore.Credit
 	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
-		created := createInputsStore(t, store, blockIndex, blockHeight,
+		created := createInputsOnBlock(t, store, blockIndex, blockHeight,
 			scripts[i], eligibleAmounts)
 		inputs = append(inputs, created...)
 	}

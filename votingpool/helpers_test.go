@@ -16,22 +16,21 @@ import (
 
 var activeNet = &btcnet.TestNet3Params
 
-// createInputs will create a bunch of inputs for the address defined
-// by the pkScript.  See createInputsStore for a more flexible
-// version.
+// createInputs is a convenience function.  See createInputsOnBlock
+// for a more flexible version.
 func createInputs(t *testing.T, store *txstore.Store, pkScript []byte, amounts []int64) []txstore.Credit {
 	blockTxIndex := 1 // XXX: hardcoded value.
 	blockHeight := 10 // XXX: hardcoded value.
 	return createInputsOnBlock(t, store, blockTxIndex, blockHeight, pkScript, amounts)
 }
 
-// createInputStore creates a number of inputs by creating a
+// createInputOnBlock creates a number of inputs by creating a
 // transaction with a number of outputs corresponding to the elements
 // of the amounts slice.
 //
 // The transaction is added to a block and the index and and
 // blockheight must be specified.
-func createInputsStore(t *testing.T, s *txstore.Store,
+func createInputsOnBlock(t *testing.T, s *txstore.Store,
 	blockTxIndex, blockHeight int,
 	pkScript []byte, amounts []int64) []txstore.Credit {
 	msgTx := createMsgTx(pkScript, amounts)
