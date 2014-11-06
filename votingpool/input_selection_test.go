@@ -234,9 +234,8 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 	// create all the scripts.
 	scripts := createScripts(t, mgr, pool, []votingpool.AddressRange{aRange})
 
-	// Now we have expNoAddrs number of scripts, let's make two
-	// eligible inputs pr. script/address.
-	expNoEligibleInputs := 2 * len(scripts)
+	// Let's create two eligible inputs for each of the scripts.
+	expNumberOfEligibleInputs := 2 * len(scripts)
 	var inputs []txstore.Credit
 	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
@@ -253,9 +252,9 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 	}
 
 	// Check we got the expected number of eligible inputs.
-	if len(eligibles) != expNoEligibleInputs {
+	if len(eligibles) != expNumberOfEligibleInputs {
 		t.Fatalf("Wrong number of eligible inputs returned. Got: %d, want: %d.",
-			len(eligibles), expNoEligibleInputs)
+			len(eligibles), expNumberOfEligibleInputs)
 	}
 
 	// Check that the returned eligibles have the proper sort order.
