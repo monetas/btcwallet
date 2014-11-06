@@ -166,8 +166,7 @@ func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 	unspents, err := store.UnspentOutputs()
 	if err != nil {
 		// TODO: consider if we need to create a new error.
-		compositeError("input selection failed:", err)
-		return nil, err
+		return nil, compositeError("input selection failed:", err)
 	}
 
 	addrMap, err := addrToUtxosMap(unspents, vp.manager.Net())
