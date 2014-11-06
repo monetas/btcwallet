@@ -38,29 +38,20 @@ func init() {
 	log, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
 }
 
-func (vp *VotingPool) DepositAddress(branch, index uint32) (*DepositAddress, error) {
-	seriesID := uint32(0) // TODO: Look up the active series
+func (vp *VotingPool) ChangeAddress(seriesID, index uint32) (*ChangeAddress, error) {
+	// TODO: Ensure the given series is active.
+	// Branch is always 0 for change addresses.
+	branch := uint32(0)
 	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
 	if err != nil {
 		return nil, err
 	}
 	vpAddr := &votingPoolAddress{seriesID: seriesID, branch: branch, index: index, addr: addr}
-	return &DepositAddress{votingPoolAddress: vpAddr}, nil
-}
-
-func (vp *VotingPool) ChangeAddress(index uint32) (*ChangeAddress, error) {
-	seriesID := uint32(0) // TODO: Look up the active series
-	// Branch is always 0 for change addresses.
-	addr, err := vp.DepositScriptAddress(seriesID, uint32(0), index)
-	if err != nil {
-		return nil, err
-	}
-	vpAddr := &votingPoolAddress{seriesID: seriesID, index: index, addr: addr}
 	return &ChangeAddress{vp: vp, votingPoolAddress: vpAddr}, nil
 }
 
-func (vp *VotingPool) WithdrawalAddress(branch, index uint32) (*WithdrawalAddress, error) {
-	seriesID := uint32(0) // TODO: Look up the hot series
+func (vp *VotingPool) WithdrawalAddress(seriesID, branch, index uint32) (*WithdrawalAddress, error) {
+	// TODO: Ensure the given series is hot.
 	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
 	if err != nil {
 		return nil, err
@@ -80,21 +71,13 @@ func (a *votingPoolAddress) Addr() btcutil.Address {
 	return a.addr
 }
 
-type DepositAddress struct {
-	*votingPoolAddress
-}
-
-func (a *DepositAddress) Addr() btcutil.Address {
-	return a.addr
-}
-
 type ChangeAddress struct {
 	*votingPoolAddress
 	vp *VotingPool
 }
 
 func (a *ChangeAddress) Next() (*ChangeAddress, error) {
-	return a.vp.ChangeAddress(a.index + 1)
+	return a.vp.ChangeAddress(a.seriesID, a.index+1)
 }
 
 type WithdrawalAddress struct {

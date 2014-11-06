@@ -45,7 +45,7 @@ func TestWithdrawal(t *testing.T) {
 		votingpool.NewOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
 		votingpool.NewOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
 	}
-	changeStart, err := pool.ChangeAddress(0)
+	changeStart, err := pool.ChangeAddress(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
