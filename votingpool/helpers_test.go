@@ -5,7 +5,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/txstore"
@@ -13,8 +12,6 @@ import (
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
-
-var activeNet = &btcnet.TestNet3Params
 
 // createInputs is a convenience function.  See createInputsOnBlock
 // for a more flexible version.
