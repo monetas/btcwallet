@@ -167,8 +167,8 @@ func TestGetEligibleInputs(t *testing.T) {
 		{2, []string{pubKey1, pubKey2, pubKey3}, aRanges[0].SeriesID},
 		{2, []string{pubKey3, pubKey4, pubKey5}, aRanges[1].SeriesID},
 	}
-	blockHeight := 11112
-	currentBlockHeight := blockHeight + minConf + 10
+	oldChainHeight := 11112
+	chainHeight := oldChainHeight + minConf + 10
 
 	// create the series.
 	createSeries(t, pool, series)
@@ -182,14 +182,14 @@ func TestGetEligibleInputs(t *testing.T) {
 	var inputs []txstore.Credit
 	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
-		created := createInputsOnBlock(t, store, blockIndex, blockHeight,
+		created := createInputsOnBlock(t, store, blockIndex, oldChainHeight,
 			scripts[i], eligibleAmounts)
 		inputs = append(inputs, created...)
 	}
 
 	// Call InputSelection on the range.
 	eligibles, err := pool.TstGetEligibleInputs(
-		store, aRanges, dustThreshold, int32(currentBlockHeight), minConf)
+		store, aRanges, dustThreshold, int32(chainHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}
@@ -221,7 +221,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 		StopIndex:   4,
 	}
 	blockHeight := 11112
-	currentBlockHeight := blockHeight + minConf + 10
+	currentChainHeight := blockHeight + minConf + 10
 	store := txstore.New("/tmp/tx.bin")
 	eligibleAmounts := []int64{int64(dustThreshold + 1), int64(dustThreshold + 1)}
 
@@ -246,7 +246,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 
 	// Call InputSelection on the range.
 	eligibles, err := pool.TstGetEligibleInputsFromSeries(
-		store, aRange, dustThreshold, int32(currentBlockHeight), minConf)
+		store, aRange, dustThreshold, int32(currentChainHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}
@@ -308,12 +308,12 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	createSeries(t, pool, series)
 
 	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, index)
-	var currentBlockHeight int32 = 1000
+	var chainHeight int32 = 1000
 
 	// Check that credit below dustThreshold is rejected.
 	c1 := createInputs(t, store1, pkScript, []int64{int64(dustThreshold - 1)})[0]
 	c1.BlockHeight = int32(100) // make sure it has enough confirmations.
-	if pool.TstEligible(c1, minConf, currentBlockHeight, dustThreshold) {
+	if pool.TstEligible(c1, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
@@ -324,7 +324,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	// reason why I need to put 902 as *that* makes 1000 - 902 +1 = 99 >=
 	// 100 false
 	c2.BlockHeight = int32(902)
-	if pool.TstEligible(c2, minConf, currentBlockHeight, dustThreshold) {
+	if pool.TstEligible(c2, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 

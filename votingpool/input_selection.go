@@ -237,11 +237,11 @@ func addrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]tx
 // eligible tests a given credit for eligibilty with respect to number
 // of confirmations, the dust threshold and that it is not the charter
 // output.
-func (vp *VotingPool) eligible(c txstore.Credit, minConf int, currentBlockHeight int32, dustThreshold btcutil.Amount) bool {
+func (vp *VotingPool) eligible(c txstore.Credit, minConf int, chainHeight int32, dustThreshold btcutil.Amount) bool {
 	if c.Amount() < dustThreshold {
 		return false
 	}
-	if !c.Confirmed(minConf, currentBlockHeight) {
+	if !c.Confirmed(minConf, chainHeight) {
 		return false
 	}
 	if vp.isCharterOutput(c) {

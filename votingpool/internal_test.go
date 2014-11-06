@@ -67,8 +67,8 @@ var TstDecryptExtendedKey = decryptExtendedKey
 
 // TstEligible exposes the private votingpool method eligible for
 // testing.
-func (vp *VotingPool) TstEligible(c txstore.Credit, minConf int, currentBlockHeight int32, dustThreshold btcutil.Amount) bool {
-	return vp.eligible(c, minConf, currentBlockHeight, dustThreshold)
+func (vp *VotingPool) TstEligible(c txstore.Credit, minConf int, chainHeight int32, dustThreshold btcutil.Amount) bool {
+	return vp.eligible(c, minConf, chainHeight, dustThreshold)
 }
 
 // TstGetEligibleInputsFromSeries exposes the private votingpool
