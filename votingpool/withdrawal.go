@@ -95,13 +95,15 @@ func (s *WithdrawalStatus) Outputs() []*WithdrawalOutput {
 	return s.outputs
 }
 
+// OutputRequest represents one of the outputs (address/amount) requested by a
+// withdrawal, and includes information about the user's outbailment request.
 type OutputRequest struct {
+	address string
+	amount  btcutil.Amount
 	// The notary server that received the outbailment request.
 	server string
 	// The server-specific transaction number for the outbailment request.
 	transaction uint32
-	address     string
-	amount      btcutil.Amount
 }
 
 func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
@@ -118,9 +120,12 @@ func NewOutputRequest(
 		server: server, transaction: transaction, address: address, amount: amount}
 }
 
+// WithdrawalOutput represents a possibly fulfilled OutputRequest.
 type WithdrawalOutput struct {
-	request   *OutputRequest
-	status    string
+	request *OutputRequest
+	status  string
+	// The outpoints that fulfil the OutputRequest. There will be more than one in case we
+	// need to split the request across multiple transactions.
 	outpoints []OutBailmentOutpoint
 }
 
@@ -145,6 +150,7 @@ func (o *WithdrawalOutput) Outpoints() []OutBailmentOutpoint {
 }
 
 // XXX: This is a horrible name, really.
+// OutBailmentOutpoint represents one of the outpoints created to fulfil an OutputRequest.
 type OutBailmentOutpoint struct {
 	ntxid  string
 	index  uint32
