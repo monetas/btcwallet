@@ -188,7 +188,7 @@ func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 			if candidates, ok := addrMap[encAddr]; ok {
 				var eligibles Credits
 				for _, c := range candidates {
-					if vp.eligible(c, minConf, chainHeight, dustThreshold) {
+					if vp.isCreditEligible(c, minConf, chainHeight, dustThreshold) {
 						vpc := newCredit(c, aRange.SeriesID, branch, index)
 						eligibles = append(eligibles, vpc)
 					}
@@ -234,10 +234,10 @@ func addrToUtxosMap(utxos []txstore.Credit, net *btcnet.Params) (map[string][]tx
 	return addrMap, nil
 }
 
-// eligible tests a given credit for eligibilty with respect to number
-// of confirmations, the dust threshold and that it is not the charter
-// output.
-func (vp *VotingPool) eligible(c txstore.Credit, minConf int, chainHeight int32, dustThreshold btcutil.Amount) bool {
+// isCreditEligible tests a given credit for eligibilty with respect
+// to number of confirmations, the dust threshold and that it is not
+// the charter output.
+func (vp *VotingPool) isCreditEligible(c txstore.Credit, minConf int, chainHeight int32, dustThreshold btcutil.Amount) bool {
 	if c.Amount() < dustThreshold {
 		return false
 	}

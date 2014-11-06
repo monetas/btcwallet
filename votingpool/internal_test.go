@@ -65,10 +65,10 @@ func TstRunWithReplacedCryptoKeyScript(p *VotingPool,
 // testing.
 var TstDecryptExtendedKey = decryptExtendedKey
 
-// TstEligible exposes the private votingpool method eligible for
+// TstIsCreditEligible exposes the private votingpool method eligible for
 // testing.
-func (vp *VotingPool) TstEligible(c txstore.Credit, minConf int, chainHeight int32, dustThreshold btcutil.Amount) bool {
-	return vp.eligible(c, minConf, chainHeight, dustThreshold)
+func (vp *VotingPool) TstIsCreditEligible(c txstore.Credit, minConf int, chainHeight int32, dustThreshold btcutil.Amount) bool {
+	return vp.isCreditEligible(c, minConf, chainHeight, dustThreshold)
 }
 
 // TstGetEligibleInputsFromSeries exposes the private votingpool

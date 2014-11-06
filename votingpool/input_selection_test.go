@@ -287,7 +287,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	// Make sure credits is old enough to pass the minConf check.
 	c.BlockHeight = int32(100)
 
-	if !pool.TstEligible(c, minConf, chainHeight, dustThreshold) {
+	if !pool.TstIsCreditEligible(c, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is not eligible and it should be.")
 	}
 }
@@ -313,7 +313,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	// Check that credit below dustThreshold is rejected.
 	c1 := createInputs(t, store1, pkScript, []int64{int64(dustThreshold - 1)})[0]
 	c1.BlockHeight = int32(100) // make sure it has enough confirmations.
-	if pool.TstEligible(c1, minConf, chainHeight, dustThreshold) {
+	if pool.TstIsCreditEligible(c1, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
@@ -324,7 +324,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	// reason why I need to put 902 as *that* makes 1000 - 902 +1 = 99 >=
 	// 100 false
 	c2.BlockHeight = int32(902)
-	if pool.TstEligible(c2, minConf, chainHeight, dustThreshold) {
+	if pool.TstIsCreditEligible(c2, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
