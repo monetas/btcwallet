@@ -21,16 +21,16 @@ var (
 )
 
 // A test version of credit implementing the CreditInterface.
-type FakeTxIDCredit struct {
+type FakeTxShaCredit struct {
 	addr        votingpool.VotingPoolAddress
 	txid        *btcwire.ShaHash
 	outputIndex uint32
 }
 
-func newFakeTxIDCredit(series, index, branch int, txid []byte, outputIdx int) FakeTxIDCredit {
+func newFakeTxShaCredit(series, index, branch int, txid []byte, outputIdx int) FakeTxShaCredit {
 	var hash btcwire.ShaHash
 	copy(hash[:], txid)
-	return FakeTxIDCredit{
+	return FakeTxShaCredit{
 		addr: votingpool.VotingPoolAddress{
 			SeriesID: uint32(series),
 			Index:    uint32(index),
@@ -41,33 +41,33 @@ func newFakeTxIDCredit(series, index, branch int, txid []byte, outputIdx int) Fa
 	}
 }
 
-func (c FakeTxIDCredit) TxID() *btcwire.ShaHash {
+func (c FakeTxShaCredit) TxSha() *btcwire.ShaHash {
 	return c.txid
 }
 
-func (c FakeTxIDCredit) OutputIndex() uint32 {
+func (c FakeTxShaCredit) OutputIndex() uint32 {
 	return c.outputIndex
 }
 
-func (c FakeTxIDCredit) Address() votingpool.VotingPoolAddress {
+func (c FakeTxShaCredit) Address() votingpool.VotingPoolAddress {
 	return c.addr
 }
 
-// Compile time check that FakeTxIDCredit implements the
+// Compile time check that FakeTxShaCredit implements the
 // CreditInterface.
-var _ votingpool.CreditInterface = (*FakeTxIDCredit)(nil)
+var _ votingpool.CreditInterface = (*FakeTxShaCredit)(nil)
 
 // TestCreditInterfaceSort checks that the sorting algorithm correctly
 // sorts lexicographically by series, index, branch, txid,
 // outputindex.
 func TestCreditInterfaceSort(t *testing.T) {
-	c0 := newFakeTxIDCredit(0, 0, 0, []byte{0x00, 0x00}, 0)
-	c1 := newFakeTxIDCredit(0, 0, 0, []byte{0x00, 0x00}, 1)
-	c2 := newFakeTxIDCredit(0, 0, 0, []byte{0x00, 0x01}, 0)
-	c3 := newFakeTxIDCredit(0, 0, 0, []byte{0x01, 0x00}, 0)
-	c4 := newFakeTxIDCredit(0, 0, 1, []byte{0x00, 0x00}, 0)
-	c5 := newFakeTxIDCredit(0, 1, 0, []byte{0x00, 0x00}, 0)
-	c6 := newFakeTxIDCredit(1, 0, 0, []byte{0x00, 0x00}, 0)
+	c0 := newFakeTxShaCredit(0, 0, 0, []byte{0x00, 0x00}, 0)
+	c1 := newFakeTxShaCredit(0, 0, 0, []byte{0x00, 0x00}, 1)
+	c2 := newFakeTxShaCredit(0, 0, 0, []byte{0x00, 0x01}, 0)
+	c3 := newFakeTxShaCredit(0, 0, 0, []byte{0x01, 0x00}, 0)
+	c4 := newFakeTxShaCredit(0, 0, 1, []byte{0x00, 0x00}, 0)
+	c5 := newFakeTxShaCredit(0, 1, 0, []byte{0x00, 0x00}, 0)
+	c6 := newFakeTxShaCredit(1, 0, 0, []byte{0x00, 0x00}, 0)
 
 	randomCredits := []votingpool.Credits{
 		votingpool.Credits{c6, c5, c4, c3, c2, c1, c0},
@@ -110,7 +110,7 @@ func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 			series:      c.Address().SeriesID,
 			branch:      c.Address().Branch,
 			index:       c.Address().Index,
-			hash:        *c.TxID(),
+			hash:        *c.TxSha(),
 			outputIndex: c.OutputIndex(),
 		}
 		if _, exists := uniqMap[u]; exists {

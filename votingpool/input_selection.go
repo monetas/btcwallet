@@ -25,7 +25,7 @@ type VotingPoolAddress struct {
 // CreditInterface is an abstraction over credits used in a voting
 // pool.
 type CreditInterface interface {
-	TxID() *btcwire.ShaHash
+	TxSha() *btcwire.ShaHash
 	OutputIndex() uint32
 	Address() VotingPoolAddress
 }
@@ -37,7 +37,7 @@ type Credit struct {
 }
 
 // TxID returns the sha hash of the underlying transaction.
-func (c Credit) TxID() *btcwire.ShaHash {
+func (c Credit) TxSha() *btcwire.ShaHash {
 	return c.Credit.TxRecord.Tx().Sha()
 }
 
@@ -93,7 +93,7 @@ func (c Credits) Less(i, j int) bool {
 		return true
 	}
 
-	txidComparison := bytes.Compare(c[i].TxID().Bytes(), c[j].TxID().Bytes())
+	txidComparison := bytes.Compare(c[i].TxSha().Bytes(), c[j].TxSha().Bytes())
 
 	if c[i].Address().SeriesID == c[j].Address().SeriesID &&
 		c[i].Address().Index == c[j].Address().Index &&
