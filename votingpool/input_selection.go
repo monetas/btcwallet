@@ -13,6 +13,9 @@ import (
 
 // VotingPoolAddress reprents the unique data needed to generate a
 // voting pool address.
+//
+// XXX(lars): This is obsolete and usage for input-selection should be
+// replaced with the WithdrawalAddress type instead instead.
 type VotingPoolAddress struct {
 	SeriesID uint32
 	Index    uint32
@@ -141,6 +144,9 @@ func (r AddressRange) NumAddresses() (uint64, error) {
 
 // getEligibleInputs returns all the eligible inputs from the
 // specified ranges.
+//
+// XXX(lars): We might want to return []txstore.Credit instead of
+// Credits. The caller has no use of getting the sortable type.
 func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
 	ranges []AddressRange,
 	dustThreshold btcutil.Amount, chainHeight int32,
@@ -159,6 +165,9 @@ func (vp *VotingPool) getEligibleInputs(store *txstore.Store,
 }
 
 // getEligibleInputsFromSeries returns a slice of eligible inputs for a series.
+//
+// XXX(lars): We might want to return []txstore.Credit instead of
+// Credits. The caller has no use of getting the sortable type.
 func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 	aRange AddressRange,
 	dustThreshold btcutil.Amount, chainHeight int32,
