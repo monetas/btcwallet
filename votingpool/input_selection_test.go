@@ -141,7 +141,10 @@ func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingP
 
 func TestGetEligibleInputs(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
+	store, storeTearDown := createTxStore(t)
 	defer teardown()
+	defer storeTearDown()
+
 	// create some eligible inputs in a specified range.
 	sRanges := []votingpool.AddressRange{
 		{
@@ -166,7 +169,6 @@ func TestGetEligibleInputs(t *testing.T) {
 	}
 	blockHeight := 11112
 	currentBlockHeight := blockHeight + minConf + 10
-	store := txstore.New("/tmp/tx.bin")
 
 	// create the series.
 	createSeries(t, pool, series)
