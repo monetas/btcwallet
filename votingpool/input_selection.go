@@ -71,7 +71,9 @@ func (c Credits) Len() int {
 }
 
 // Less returns true if the element at positions i is smaller than the
-// element at position j.
+// element at position j. The 'smaller-than' relation is defined to be
+// the lexicographic ordering defined on the tuple (SeriesID, Index,
+// Branch, TxID, OutputIndex).
 func (c Credits) Less(i, j int) bool {
 	if c[i].Address().SeriesID < c[j].Address().SeriesID {
 		return true
