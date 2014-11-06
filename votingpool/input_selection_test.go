@@ -267,7 +267,10 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 
 func TestEligibleInputsAreEligible(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
+	store, storeTearDown := createTxStore(t)
 	defer teardown()
+	defer storeTearDown()
+
 	var series, branch, index uint32 = 0, 0, 0
 	var reqSigs uint32 = 3
 	pubKeys := []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}
@@ -278,7 +281,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
 
 	var chainHeight int32 = 1000
-	c := createInputs(t, pkScript, []int64{int64(dustThreshold)})[0]
+	c := createInputs(t, store, pkScript, []int64{int64(dustThreshold)})[0]
 	c.BlockHeight = int32(100)
 
 	if !pool.TstEligible(c, minConf, chainHeight, dustThreshold) {
@@ -288,7 +291,12 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 
 func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
+	store1, storeTearDown1 := createTxStore(t)
+	store2, storeTearDown2 := createTxStore(t)
 	defer teardown()
+	defer storeTearDown1()
+	defer storeTearDown2()
+
 	var series, branch, index uint32 = 0, 0, 0
 	var reqSigs uint32 = 3
 	pubKeys := []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}
@@ -298,13 +306,13 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
 	var currentBlockHeight int32 = 1000
 
-	c1 := createInputs(t, pkScript, []int64{int64(dustThreshold - 1)})[0]
+	c1 := createInputs(t, store1, pkScript, []int64{int64(dustThreshold - 1)})[0]
 	c1.BlockHeight = int32(100)
 	if pool.TstEligible(c1, minConf, currentBlockHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
-	c2 := createInputs(t, pkScript, []int64{int64(dustThreshold)})[0]
+	c2 := createInputs(t, store2, pkScript, []int64{int64(dustThreshold)})[0]
 	// the calculation of if it has been confirmed does this:
 	// chainheigt - bh + 1 >= target, which is quite weird, but the
 	// reason why I need to put 902 as *that* makes 1000 - 902 +1 = 99 >=

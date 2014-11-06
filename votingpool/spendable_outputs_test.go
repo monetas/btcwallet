@@ -23,7 +23,7 @@ func TestCreateEligibles(t *testing.T) {
 	}
 
 	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
-	eligible := createInputs(t, pkScript, []int64{5e6, 6e7})
+	eligible := createInputs(t, store, pkScript, []int64{5e6, 6e7})
 	for _, e := range eligible {
 		fmt.Println("e.Amount(): ", e.Amount())
 	}

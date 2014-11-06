@@ -19,8 +19,7 @@ var activeNet = &btcnet.TestNet3Params
 // createInputs will create inputs a bunch if inputs to the address
 // defined by the pkScript.  See createInputsStore for a more flexible
 // version.
-func createInputs(t *testing.T, pkScript []byte, amounts []int64) []txstore.Credit {
-	store := txstore.New("/tmp/tx.bin")
+func createInputs(t *testing.T, store *txstore.Store, pkScript []byte, amounts []int64) []txstore.Credit {
 	blockTxIndex := 1
 	blockHeight := 10
 	return createInputsStore(t, store, blockTxIndex, blockHeight, pkScript, amounts)
