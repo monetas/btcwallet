@@ -146,7 +146,7 @@ func TestGetEligibleInputs(t *testing.T) {
 	defer storeTearDown()
 
 	// create some eligible inputs in a specified range.
-	sRanges := []votingpool.AddressRange{
+	aRanges := []votingpool.AddressRange{
 		{
 			SeriesID:    0,
 			StartBranch: 0,
@@ -164,8 +164,8 @@ func TestGetEligibleInputs(t *testing.T) {
 	}
 	// define two series.
 	series := []seriesDef{
-		{2, []string{pubKey1, pubKey2, pubKey3}, sRanges[0].SeriesID},
-		{2, []string{pubKey3, pubKey4, pubKey5}, sRanges[1].SeriesID},
+		{2, []string{pubKey1, pubKey2, pubKey3}, aRanges[0].SeriesID},
+		{2, []string{pubKey3, pubKey4, pubKey5}, aRanges[1].SeriesID},
 	}
 	blockHeight := 11112
 	currentBlockHeight := blockHeight + minConf + 10
@@ -174,7 +174,7 @@ func TestGetEligibleInputs(t *testing.T) {
 	createSeries(t, pool, series)
 
 	// create all the scripts.
-	scripts := createScripts(t, mgr, pool, sRanges)
+	scripts := createScripts(t, mgr, pool, aRanges)
 
 	// let's make two eligible inputs pr. script/address.
 	expNoEligibleInputs := 2 * len(scripts)
@@ -189,7 +189,7 @@ func TestGetEligibleInputs(t *testing.T) {
 
 	// Call InputSelection on the range.
 	eligibles, err := pool.TstGetEligibleInputs(
-		store, sRanges, dustThreshold, int32(currentBlockHeight), minConf)
+		store, aRanges, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}
@@ -213,7 +213,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 	teardown, mgr, pool := setUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
-	sRange := votingpool.AddressRange{
+	aRange := votingpool.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  2,
@@ -227,12 +227,12 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 
 	// define two series.
 	series := []seriesDef{
-		{2, []string{pubKey1, pubKey2, pubKey3}, sRange.SeriesID},
+		{2, []string{pubKey1, pubKey2, pubKey3}, aRange.SeriesID},
 	}
 	createSeries(t, pool, series)
 
 	// create all the scripts.
-	scripts := createScripts(t, mgr, pool, []votingpool.AddressRange{sRange})
+	scripts := createScripts(t, mgr, pool, []votingpool.AddressRange{aRange})
 
 	// Now we have expNoAddrs number of scripts, let's make two
 	// eligible inputs pr. script/address.
@@ -247,7 +247,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 
 	// Call InputSelection on the range.
 	eligibles, err := pool.TstGetEligibleInputsFromSeries(
-		store, sRange, dustThreshold, int32(currentBlockHeight), minConf)
+		store, aRange, dustThreshold, int32(currentBlockHeight), minConf)
 	if err != nil {
 		t.Fatal("InputSelection failed:", err)
 	}
