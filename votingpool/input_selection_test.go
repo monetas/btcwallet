@@ -299,22 +299,25 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	defer teardown()
 	defer storeTearDown1()
 	defer storeTearDown2()
+	var seriesID, branch, index uint32 = 0, 0, 0
 
-	var series, branch, index uint32 = 0, 0, 0
-	var reqSigs uint32 = 3
-	pubKeys := []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}
-	if err := pool.CreateSeries(version, series, reqSigs, pubKeys); err != nil {
-		t.Fatalf("Cannot creates series %v", series)
+	// create the series
+	series := []seriesDef{
+		{3, []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}, seriesID},
 	}
-	pkScript := createVotingPoolPkScript(t, mgr, pool, series, branch, index)
+	createSeries(t, pool, series)
+
+	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, index)
 	var currentBlockHeight int32 = 1000
 
+	// Check that credit below dustThreshold is rejected.
 	c1 := createInputs(t, store1, pkScript, []int64{int64(dustThreshold - 1)})[0]
-	c1.BlockHeight = int32(100)
+	c1.BlockHeight = int32(100) // make sure it has enough confirmations.
 	if pool.TstEligible(c1, minConf, currentBlockHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
+	// Check that a credit with not enough confirmations is rejected.
 	c2 := createInputs(t, store2, pkScript, []int64{int64(dustThreshold)})[0]
 	// the calculation of if it has been confirmed does this:
 	// chainheigt - bh + 1 >= target, which is quite weird, but the
