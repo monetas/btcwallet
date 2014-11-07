@@ -31,6 +31,32 @@ import (
 	"github.com/conformal/btcwire"
 )
 
+/*  ==== What needs to be stored in the DB, and other notes ====
+(This is just a collection of notes about things we still need to do here)
+
+== To be stored in the DB ==
+
+Signature lists
+
+All parameters of a startwithdrawal, to be able to return an error if we get two of them
+with the same roundID but anything else different.
+
+The whole WithdrawalStatus so that we can deal with multiple identical startwithdrawal
+requests. We need to do that because the transactions created as part of a startwithdrawal
+will mark outputs as spent and if we get a second identical startwithdrawal request we
+won't be able construct the same transactions as we did in the first request.
+
+== Other notes ==
+
+Using separate DB Buckets for the transactions and the withdrawal registry (siglists, etc)
+may be problematic.  We'll need to make sure both the transactions and the withdrawal
+details are persisted atomically.
+
+Since we're marking outputs as spent when we use them in transactions constructed in
+startwithdrawal, we'll need a janitor process that eventually releases those if the
+transactions are never confirmed.
+
+*/
 var log btclog.Logger
 
 func init() {
@@ -259,14 +285,6 @@ func (vp *VotingPool) Withdrawal(
 		return nil, nil, err
 	}
 
-	// TODO: Store the raw signatures in the DB. We'll probably need to store the whole
-	// WithdrawalStatus in the DB as well, in case we're called multiple times with the
-	// same roundID.
-
-	// XXX: Using separate DBs for the transactions and the signatures may be problematic.
-	// What happens if we store the transactions and fail to store the signatures? We
-	// could store the siglists first and roll them back (which should be easy) if we fail
-	// to store the txs.
 	return w.status, sigs, nil
 }
 
