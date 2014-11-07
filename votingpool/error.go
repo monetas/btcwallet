@@ -49,23 +49,23 @@ func (e ErrorCode) String() string {
 	return fmt.Sprintf("Unknown ErrorCode (%d)", int(e))
 }
 
-// VotingPoolError is a typed error for all errors arising during the
+// Error is a typed error for all errors arising during the
 // operation of the voting pool.
-type VotingPoolError struct {
+type Error struct {
 	ErrorCode   ErrorCode // Describes the kind of error
 	Description string    // Human readable description of the issue
 	Err         error     // Underlying error
 }
 
 // Error satisfies the error interface and prints human-readable errors.
-func (e VotingPoolError) Error() string {
+func (e Error) Error() string {
 	if e.Err != nil {
 		return e.Description + ": " + e.Err.Error()
 	}
 	return e.Description
 }
 
-// newError creates a new VotingPoolError.
-func newError(c ErrorCode, desc string, err error) VotingPoolError {
-	return VotingPoolError{ErrorCode: c, Description: desc, Err: err}
+// newError creates a new Error.
+func newError(c ErrorCode, desc string, err error) Error {
+	return Error{ErrorCode: c, Description: desc, Err: err}
 }
