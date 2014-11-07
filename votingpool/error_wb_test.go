@@ -30,6 +30,7 @@ func TestErrorCodeStringer(t *testing.T) {
 	}{
 		{ErrInputSelection, "ErrInputSelection"},
 		{ErrInvalidAddressRange, "ErrInvalidAddressRange"},
+		{ErrWithdrawalProcessing, "ErrWithdrawalProcessing"},
 	}
 
 	if int(lastErr) != len(tests) {
