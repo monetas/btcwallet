@@ -25,6 +25,11 @@ const (
 	// ErrInputSelection indicates an error in the input selection
 	// algorithm.
 	ErrInputSelection ErrorCode = iota
+
+	// lastErr is used for testing, making it possible to iterate over
+	// the error codes in order to check that they all have proper
+	// translations in errorCodeStrings.
+	lastErr
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.
