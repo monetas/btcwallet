@@ -234,7 +234,7 @@ func (c *currentTx) rollBackLastOutput() {
 	// TODO: Subtract its amount from outputTotal
 }
 
-func (c *currentTx) tooBig() bool {
+func (c *currentTx) isTooBig() bool {
 	// TODO: Implement me!
 	return estimateSize(c.tx) > 1000
 }
@@ -307,7 +307,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 	outputIndex := w.current.addTxOut(output, pkScript)
 	log.Infof("Added output sending %s to %s", output.Amount(), output.Address())
 
-	if w.current.tooBig() {
+	if w.current.isTooBig() {
 		// TODO: Roll back last added output, finalize w.currentTx and assign a new
 		// tx to currentTx.
 		panic("Oversize TX not yet implemented")
@@ -324,7 +324,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		w.current.addTxIn(input)
 		fee = calculateFee(w.current.tx)
 
-		if w.current.tooBig() {
+		if w.current.isTooBig() {
 			// TODO: Roll back last added output plus all inputs added to support it.
 			if len(w.current.tx.TxOut) > 1 {
 				w.finalizeCurrentTx()
@@ -342,9 +342,9 @@ func (w *withdrawal) fulfilNextOutput() error {
 	return nil
 }
 
-func (w *withdrawal) finalizeCurrentTx() {
+func (w *withdrawal) finalizeCurrentTx() error {
 	if len(w.current.tx.TxOut) == 0 {
-		return
+		return nil
 	}
 	fee := calculateFee(w.current.tx)
 	change := w.current.inputTotal - w.current.outputTotal - fee
@@ -352,13 +352,15 @@ func (w *withdrawal) finalizeCurrentTx() {
 		addr := w.changeStart.addr
 		pkScript, err := btcscript.PayToAddrScript(addr)
 		if err != nil {
-			panic(err) // XXX: Really no idea what to do if we get an error here...
+			return newError(
+				ErrWithdrawalProcessing, "Failed to generate pkScript for change address", err)
 		}
 		w.current.tx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
 		log.Infof("Added change output with amount %v", change)
 		w.changeStart, err = w.changeStart.Next()
 		if err != nil {
-			panic(err) // XXX: Really no idea what to do if we get an error here...
+			return newError(
+				ErrWithdrawalProcessing, "Failed to get next change address", err)
 		}
 	}
 
@@ -369,6 +371,7 @@ func (w *withdrawal) finalizeCurrentTx() {
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
 	w.current = &currentTx{tx: btcwire.NewMsgTx()}
+	return nil
 }
 
 func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
@@ -381,14 +384,14 @@ func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 	// TODO: Sort outputs by outBailmentID (hash(server ID, tx #))
 
 	for len(w.pendingOutputs) > 0 {
-		// XXX: fulfilNextOutput() should probably never return an error because
-		// it can just set the status of a given output to failed.
 		if err := w.fulfilNextOutput(); err != nil {
 			return err
 		}
 	}
 
-	w.finalizeCurrentTx()
+	if err := w.finalizeCurrentTx(); err != nil {
+		return err
+	}
 
 	for _, tx := range w.transactions {
 		w.updateStatusFor(tx)
@@ -413,17 +416,29 @@ func getRedeemScript(mgr *waddrmgr.Manager, addr *btcutil.AddressScriptHash) ([]
 	return sa.Script()
 }
 
+// getPrivKey fetches the private key for the given pubkey address from the address
+// manager. If the private key is not available, we return nil, but we may also return an
+// error if something else prevents us from getting the private key (e.g. the manager
+// being locked).
 func getPrivKey(mgr *waddrmgr.Manager, addr *btcutil.AddressPubKey) (*btcec.PrivateKey, error) {
 	address, err := mgr.Address(addr.AddressPubKeyHash())
 	if err != nil {
 		return nil, err
 	}
 
-	pka, ok := address.(waddrmgr.ManagedPubKeyAddress)
-	if !ok {
-		return nil, errors.New("address is not a pubkey address")
+	// We're passed an AddressPubKey, so this cast should never fail.
+	pka := address.(waddrmgr.ManagedPubKeyAddress)
+	privKey, err := pka.PrivKey()
+	if err != nil && err.(waddrmgr.ManagerError).ErrorCode == waddrmgr.ErrCrypto {
+		// XXX: ErrCrypto is what's returned by PrivKey() when the private key is not
+		// available, but there might be other cases in which that error is returned.
+		// Ideally there should be a specific error for privkey-not-available.
+		return nil, nil
+	} else if err != nil {
+		return nil, newError(
+			ErrWithdrawalProcessing, "Failed to load private key", err)
 	}
-	return pka.PrivKey()
+	return privKey, nil
 }
 
 // Ntxid returns a unique ID for the given transaction.
@@ -451,15 +466,17 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 			pkScript := w.usedInputs[ntxid][idx].TxOut().PkScript
 			class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, w.net)
 			if err != nil {
-				panic(err) // XXX: Again, no idea what's the correct thing to do here.
+				return nil, newError(
+					ErrWithdrawalProcessing, "Failed to extract addresses from pkScript", err)
 			}
 			if class != btcscript.ScriptHashTy {
 				// Assume pkScript is a P2SH because all voting pool addresses are P2SH.
-				return nil, errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
+				str := fmt.Sprintf("Unexpected pkScript class: %v", class)
+				return nil, newError(ErrWithdrawalProcessing, str, nil)
 			}
 			redeemScript, err := getRedeemScript(mgr, addresses[0].(*btcutil.AddressScriptHash))
 			if err != nil {
-				return nil, err // XXX: Again, no idea what's the correct thing to do here.
+				return nil, err
 			}
 			// The order of the signatures in txInSigs must match the order of the corresponding
 			// pubkeys in the redeem script, but ExtractPkScriptAddrs() returns the pubkeys in
@@ -469,18 +486,22 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 			for addrIdx, addr := range addresses {
 				var sig RawSig
 				privKey, err := getPrivKey(mgr, addr.(*btcutil.AddressPubKey))
-				if err == nil {
+				if err != nil {
+					return nil, err
+				}
+				if privKey != nil {
 					log.Infof("Signing input %d of tx %s with privkey of %s",
 						idx, ntxid, addr)
 					sig, err = btcscript.RawTxInSignature(
 						tx, idx, redeemScript, btcscript.SigHashAll, privKey)
 					if err != nil {
-						panic(err) // XXX: Again, no idea what's the correct thing to do here.
+						return nil, newError(
+							ErrWithdrawalProcessing, "Failed to generate raw signature", err)
 					}
 				} else {
 					log.Infof(
-						"Not signing input %d of %s because private key for %s was "+
-							"not found: %v", idx, ntxid, addr, err)
+						"Not signing input %d of %s because private key for %s is "+
+							"not available: %v", idx, ntxid, addr, err)
 					sig = []byte{}
 				}
 				txInSigs[addrIdx] = sig

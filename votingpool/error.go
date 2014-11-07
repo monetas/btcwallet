@@ -29,6 +29,10 @@ const (
 	// ErrInvalidAddressRange indicates an invalid address range.
 	ErrInvalidAddressRange
 
+	// ErrWithdrawalProcessing indicates an internal error when processing a withdrawal
+	// request.
+	ErrWithdrawalProcessing
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
