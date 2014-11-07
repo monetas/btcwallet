@@ -524,7 +524,10 @@ func deserializeAccountRow(accountID []byte, serializedAccount []byte) (*dbAccou
 
 // serializeAccountRow returns the serialization of the passed account row.
 func serializeAccountRow(row *dbAccountRow) []byte {
-	// See the deserializeAccountRow method for a description of the format.
+	// The serialized account format is:
+	//   <acctType><rdlen><rawdata>
+	//
+	// 1 byte acctType + 4 bytes raw data length + raw data
 	rdlen := len(row.rawData)
 	buf := make([]byte, 5+rdlen)
 	buf[0] = byte(row.acctType)
@@ -581,7 +584,13 @@ func deserializeBIP0044AccountRow(accountID []byte, row *dbAccountRow) (*dbBIP00
 func serializeBIP0044AccountRow(encryptedPubKey,
 	encryptedPrivKey []byte, nextExternalIndex, nextInternalIndex uint32,
 	name string) []byte {
-	// See the deserializeBIP0044AccountRow method for a description of the format.
+	// The serialized BIP0044 account raw data format is:
+	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey><nextextidx>
+	//   <nextintidx><namelen><name>
+	//
+	// 4 bytes encrypted pubkey len + encrypted pubkey + 4 bytes encrypted
+	// privkey len + encrypted privkey + 4 bytes next external index +
+	// 4 bytes next internal index + 4 bytes name len + name
 	pubLen := uint32(len(encryptedPubKey))
 	privLen := uint32(len(encryptedPrivKey))
 	nameLen := uint32(len(name))
@@ -796,7 +805,12 @@ func deserializeAddressRow(addressID, serializedAddress []byte) (*dbAddressRow, 
 
 // serializeAddressRow returns the serialization of the passed address row.
 func serializeAddressRow(row *dbAddressRow) []byte {
-	// See the deserializeAddressRow method for a description of the format.
+	// The serialized address format is:
+	//   <addrType><account><addedTime><syncStatus><commentlen><comment>
+	//   <rawdata>
+	//
+	// 1 byte addrType + 4 bytes account + 8 bytes addTime + 1 byte
+	// syncStatus + 4 bytes raw data length + raw data
 	rdlen := len(row.rawData)
 	buf := make([]byte, 18+rdlen)
 	buf[0] = byte(row.addrType)
@@ -834,7 +848,10 @@ func deserializeChainedAddress(addressID []byte, row *dbAddressRow) (*dbChainAdd
 // serializeChainedAddress returns the serialization of the raw data field for
 // a chained address.
 func serializeChainedAddress(branch, index uint32) []byte {
-	// See the deserializeChainedAddress method for a description of the format.
+	// The serialized chain address raw data format is:
+	//   <branch><index>
+	//
+	// 4 bytes branch + 4 bytes address index
 	rawData := make([]byte, 8)
 	binary.LittleEndian.PutUint32(rawData[0:4], branch)
 	binary.LittleEndian.PutUint32(rawData[4:8], index)
@@ -877,7 +894,11 @@ func deserializeImportedAddress(addressID []byte, row *dbAddressRow) (*dbImporte
 // serializeImportedAddress returns the serialization of the raw data field for
 // an imported address.
 func serializeImportedAddress(encryptedPubKey, encryptedPrivKey []byte) []byte {
-	// See the deserializeImportedAddress method for a description of the format.
+	// The serialized imported address raw data format is:
+	//   <encpubkeylen><encpubkey><encprivkeylen><encprivkey>
+	//
+	// 4 bytes encrypted pubkey len + encrypted pubkey + 4 bytes encrypted
+	// privkey len + encrypted privkey
 	pubLen := uint32(len(encryptedPubKey))
 	privLen := uint32(len(encryptedPrivKey))
 	rawData := make([]byte, 8+pubLen+privLen)
@@ -926,7 +947,12 @@ func deserializeScriptAddress(addressID []byte, row *dbAddressRow) (*dbScriptAdd
 // serializeScriptAddress returns the serialization of the raw data field for
 // a script address.
 func serializeScriptAddress(encryptedHash, encryptedScript []byte) []byte {
-	// See the deserializeScriptAddress method for a description of the format.
+	// The serialized script address raw data format is:
+	//   <encscripthashlen><encscripthash><encscriptlen><encscript>
+	//
+	// 4 bytes encrypted script hash len + encrypted script hash + 4 bytes
+	// encrypted script len + encrypted script
+
 	hashLen := uint32(len(encryptedHash))
 	scriptLen := uint32(len(encryptedScript))
 	rawData := make([]byte, 8+hashLen+scriptLen)

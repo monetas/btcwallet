@@ -47,14 +47,4 @@ func (vp *VotingPool) TstEmptySeriesLookup() {
 
 var TstValidateAndDecryptKeys = validateAndDecryptKeys
 
-// Replace Manager.cryptoKeyScript with the given one and calls the given function,
-// resetting Manager.cryptoKeyScript to its original value after that.
-func TstRunWithReplacedCryptoKeyScript(p *VotingPool,
-	encryptScript func([]byte) ([]byte, error), callback func()) {
-	orig := p.encryptScript
-	defer func() { p.encryptScript = orig }()
-	p.encryptScript = encryptScript
-	callback()
-}
-
 var TstDecryptExtendedKey = decryptExtendedKey

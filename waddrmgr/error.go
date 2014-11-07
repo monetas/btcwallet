@@ -17,14 +17,11 @@
 package waddrmgr
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/conformal/btcutil/hdkeychain"
 )
-
-var ErrNotImplemented = errors.New("not implemented")
 
 var (
 	// errAlreadyExists is the common error description used for the

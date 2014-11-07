@@ -1385,7 +1385,6 @@ var rpcHandlers = map[string]requestHandler{
 	// well, but with a different API (no account parameter).  It's listed
 	// here because it hasn't been update to use the reference
 	// implemenation's API.
-
 	"getunconfirmedbalance":   GetUnconfirmedBalance,
 	"listaddresstransactions": ListAddressTransactions,
 	"listalltransactions":     ListAllTransactions,
