@@ -26,6 +26,9 @@ const (
 	// algorithm.
 	ErrInputSelection ErrorCode = iota
 
+	// ErrInvalidAddressRange indicates an invalid address range.
+	ErrInvalidAddressRange
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -34,7 +37,8 @@ const (
 
 // Map of ErrorCode values back to their constant names for pretty printing.
 var errorCodeStrings = map[ErrorCode]string{
-	ErrInputSelection: "ErrInputSelection",
+	ErrInputSelection:      "ErrInputSelection",
+	ErrInvalidAddressRange: "ErrInvalidAddressRange",
 }
 
 // String returns the ErrorCode as a human-readable name.

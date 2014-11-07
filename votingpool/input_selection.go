@@ -129,13 +129,16 @@ type AddressRange struct {
 
 // NumAddresses returns the number of addresses this range represents.
 func (r AddressRange) NumAddresses() (uint64, error) {
+	// XXX(lars): the range validity checking should be moved to a
+	// NewAddressRange constructor function instead and then the
+	// AddressRange should be made private.
 	if r.StartBranch > r.StopBranch {
-		// TODO: define a proper error message
-		return 0, errors.New("range not defined when StartBranch > StopBranch")
+		str := "range not defined when StartBranch > StopBranch"
+		return 0, newError(ErrInvalidAddressRange, str, nil)
 	}
 	if r.StartIndex > r.StopIndex {
-		// TODO: define a proper error message
-		return 0, errors.New("range not defined when StartIndex > StopIndex")
+		str := "range not defined when StartIndex > StopIndex"
+		return 0, newError(ErrInvalidAddressRange, str, nil)
 	}
 
 	return uint64((r.StopBranch - r.StartBranch + 1)) *

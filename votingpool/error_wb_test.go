@@ -29,6 +29,7 @@ func TestErrorCodeStringer(t *testing.T) {
 		want string
 	}{
 		{ErrInputSelection, "ErrInputSelection"},
+		{ErrInvalidAddressRange, "ErrInvalidAddressRange"},
 	}
 
 	if int(lastErr) != len(tests) {
