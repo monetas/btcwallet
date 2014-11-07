@@ -174,23 +174,19 @@ func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 	minConf int) (Credits, error) {
 	unspents, err := store.UnspentOutputs()
 	if err != nil {
-		// TODO: consider if we need to create a new error.
-		return nil, compositeError("input selection failed:", err)
+		return nil, newError(ErrInputSelection, "failed to get unspent outputs", err)
 	}
 
 	addrMap, err := groupCreditsByAddr(unspents, vp.manager.Net())
 	if err != nil {
-		// TODO: consider if we need to create a new error.
-		return nil, compositeError("input selection failed:", err)
+		return nil, newError(ErrInputSelection, "grouping credits by address failed", err)
 	}
 	var inputs Credits
 	for index := aRange.StartIndex; index <= aRange.StopIndex; index++ {
 		for branch := aRange.StartBranch; branch <= aRange.StopBranch; branch++ {
 			addr, err := vp.DepositScriptAddress(aRange.SeriesID, branch, index)
 			if err != nil {
-				// TODO: consider if we need to create a new error.
-				return nil, compositeError("input selection failed:", err)
-
+				return nil, newError(ErrInputSelection, "failed to create deposit address", err)
 			}
 			encAddr := addr.EncodeAddress()
 
@@ -212,10 +208,6 @@ func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 	return inputs, nil
 }
 
-func compositeError(errString string, err error) error {
-	return errors.New(errString + ": " + err.Error())
-}
-
 // groupCreditsByAddr converts a slice of credits to a map from the
 // string representation of an encoded address to the unspent outputs
 // associated with that address.
@@ -230,6 +222,10 @@ func groupCreditsByAddr(utxos []txstore.Credit, net *btcnet.Params) (map[string]
 		// than one address per output, so let's error out if that
 		// assumption is violated.
 		if len(addrs) != 1 {
+			// TODO: This should probably be a VotingPoolError, but
+			// this function only exists because we don't have a good
+			// way to lookup credits by addr on the store, and this
+			// will most likely change, so leaving it for now.
 			return nil, errors.New("one address per unspent output assumption violated")
 		}
 		encAddr := addrs[0].EncodeAddress()
