@@ -22,20 +22,20 @@ var (
 
 // A test version of credit implementing the CreditInterface.
 type FakeTxShaCredit struct {
-	addr        votingpool.VotingPoolAddress
+	addr        votingpool.WithdrawalAddress
 	txid        *btcwire.ShaHash
 	outputIndex uint32
 }
 
-func newFakeTxShaCredit(series, index, branch int, txid []byte, outputIdx int) FakeTxShaCredit {
+func newFakeTxShaCredit(t *testing.T, vp *votingpool.VotingPool, series, index, branch int, txid []byte, outputIdx int) FakeTxShaCredit {
 	var hash btcwire.ShaHash
 	copy(hash[:], txid)
+	addr, err := vp.WithdrawalAddress(uint32(series), uint32(branch), uint32(index))
+	if err != nil {
+		t.Fatalf("WithdrawalAddress failed: %v", err)
+	}
 	return FakeTxShaCredit{
-		addr: votingpool.VotingPoolAddress{
-			SeriesID: uint32(series),
-			Index:    uint32(index),
-			Branch:   uint32(branch),
-		},
+		addr:        *addr,
 		txid:        &hash,
 		outputIndex: uint32(outputIdx),
 	}
@@ -49,7 +49,7 @@ func (c FakeTxShaCredit) OutputIndex() uint32 {
 	return c.outputIndex
 }
 
-func (c FakeTxShaCredit) Address() votingpool.VotingPoolAddress {
+func (c FakeTxShaCredit) Address() votingpool.WithdrawalAddress {
 	return c.addr
 }
 
@@ -61,13 +61,24 @@ var _ votingpool.CreditInterface = (*FakeTxShaCredit)(nil)
 // sorts lexicographically by series, index, branch, txid,
 // outputindex.
 func TestCreditInterfaceSort(t *testing.T) {
-	c0 := newFakeTxShaCredit(0, 0, 0, []byte{0x00, 0x00}, 0)
-	c1 := newFakeTxShaCredit(0, 0, 0, []byte{0x00, 0x00}, 1)
-	c2 := newFakeTxShaCredit(0, 0, 0, []byte{0x00, 0x01}, 0)
-	c3 := newFakeTxShaCredit(0, 0, 0, []byte{0x01, 0x00}, 0)
-	c4 := newFakeTxShaCredit(0, 0, 1, []byte{0x00, 0x00}, 0)
-	c5 := newFakeTxShaCredit(0, 1, 0, []byte{0x00, 0x00}, 0)
-	c6 := newFakeTxShaCredit(1, 0, 0, []byte{0x00, 0x00}, 0)
+	teardown, _, vp := setUp(t)
+	defer teardown()
+
+	// Create the series 0 and 1 as they are needed for creaing the
+	// fake credits.
+	series := []seriesDef{
+		{2, []string{pubKey1, pubKey2, pubKey3}, 0},
+		{2, []string{pubKey3, pubKey4, pubKey5}, 1},
+	}
+	createSeries(t, vp, series)
+
+	c0 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x00, 0x00}, 0)
+	c1 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x00, 0x00}, 1)
+	c2 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x00, 0x01}, 0)
+	c3 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x01, 0x00}, 0)
+	c4 := newFakeTxShaCredit(t, vp, 0, 0, 1, []byte{0x00, 0x00}, 0)
+	c5 := newFakeTxShaCredit(t, vp, 0, 1, 0, []byte{0x00, 0x00}, 0)
+	c6 := newFakeTxShaCredit(t, vp, 1, 0, 0, []byte{0x00, 0x00}, 0)
 
 	randomCredits := []votingpool.Credits{
 		votingpool.Credits{c6, c5, c4, c3, c2, c1, c0},
@@ -107,9 +118,9 @@ func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	uniqMap := make(map[uniq]bool)
 	for _, c := range credits {
 		u := uniq{
-			series:      c.Address().SeriesID,
-			branch:      c.Address().Branch,
-			index:       c.Address().Index,
+			series:      c.Address().SeriesID(),
+			branch:      c.Address().Branch(),
+			index:       c.Address().Index(),
 			hash:        *c.TxSha(),
 			outputIndex: c.OutputIndex(),
 		}

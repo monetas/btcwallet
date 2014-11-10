@@ -97,6 +97,18 @@ func (a *votingPoolAddress) Addr() btcutil.Address {
 	return a.addr
 }
 
+func (a votingPoolAddress) SeriesID() uint32 {
+	return a.seriesID
+}
+
+func (a votingPoolAddress) Branch() uint32 {
+	return a.branch
+}
+
+func (a votingPoolAddress) Index() uint32 {
+	return a.index
+}
+
 type ChangeAddress struct {
 	*votingPoolAddress
 	vp *VotingPool

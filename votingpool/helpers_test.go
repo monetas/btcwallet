@@ -141,7 +141,7 @@ func createSeries(t *testing.T, pool *votingpool.VotingPool,
 
 	for _, def := range definitions {
 		if err := pool.CreateSeries(version, def.seriesID, def.reqSigs, def.pubKeys); err != nil {
-			t.Fatalf("Cannot creates series %v", def.seriesID)
+			t.Fatalf("Cannot creates series %d: %v", def.seriesID, err)
 		}
 	}
 }

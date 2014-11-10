@@ -11,28 +11,17 @@ import (
 	"github.com/conformal/btcwire"
 )
 
-// VotingPoolAddress reprents the unique data needed to generate a
-// voting pool address.
-//
-// XXX(lars): This is obsolete and usage for input-selection should be
-// replaced with the WithdrawalAddress type instead instead.
-type VotingPoolAddress struct {
-	SeriesID uint32
-	Index    uint32
-	Branch   uint32
-}
-
 // CreditInterface is an abstraction over credits used in a voting
 // pool.
 type CreditInterface interface {
 	TxSha() *btcwire.ShaHash
 	OutputIndex() uint32
-	Address() VotingPoolAddress
+	Address() WithdrawalAddress
 }
 
 // Credit implements the CreditInterface.
 type Credit struct {
-	Addr   VotingPoolAddress
+	Addr   WithdrawalAddress
 	Credit txstore.Credit
 }
 
@@ -48,19 +37,15 @@ func (c Credit) OutputIndex() uint32 {
 }
 
 // Address returns the voting pool address.
-func (c Credit) Address() VotingPoolAddress {
+func (c Credit) Address() WithdrawalAddress {
 	return c.Addr
 }
 
 // newCredit initialises a new Credit.
-func newCredit(credit txstore.Credit, seriesID, branch, index uint32) Credit {
+func newCredit(credit txstore.Credit, addr WithdrawalAddress) Credit {
 	return Credit{
 		Credit: credit,
-		Addr: VotingPoolAddress{
-			SeriesID: seriesID,
-			Branch:   branch,
-			Index:    index,
-		},
+		Addr:   addr,
 	}
 }
 
@@ -78,33 +63,33 @@ func (c Credits) Len() int {
 // the lexicographic ordering defined on the tuple (SeriesID, Index,
 // Branch, TxID, OutputIndex).
 func (c Credits) Less(i, j int) bool {
-	if c[i].Address().SeriesID < c[j].Address().SeriesID {
+	if c[i].Address().seriesID < c[j].Address().seriesID {
 		return true
 	}
 
-	if c[i].Address().SeriesID == c[j].Address().SeriesID &&
-		c[i].Address().Index < c[j].Address().Index {
+	if c[i].Address().seriesID == c[j].Address().seriesID &&
+		c[i].Address().index < c[j].Address().index {
 		return true
 	}
 
-	if c[i].Address().SeriesID == c[j].Address().SeriesID &&
-		c[i].Address().Index == c[j].Address().Index &&
-		c[i].Address().Branch < c[j].Address().Branch {
+	if c[i].Address().seriesID == c[j].Address().seriesID &&
+		c[i].Address().index == c[j].Address().index &&
+		c[i].Address().branch < c[j].Address().branch {
 		return true
 	}
 
 	txidComparison := bytes.Compare(c[i].TxSha().Bytes(), c[j].TxSha().Bytes())
 
-	if c[i].Address().SeriesID == c[j].Address().SeriesID &&
-		c[i].Address().Index == c[j].Address().Index &&
-		c[i].Address().Branch == c[j].Address().Branch &&
+	if c[i].Address().seriesID == c[j].Address().seriesID &&
+		c[i].Address().index == c[j].Address().index &&
+		c[i].Address().branch == c[j].Address().branch &&
 		txidComparison < 0 {
 		return true
 	}
 
-	if c[i].Address().SeriesID == c[j].Address().SeriesID &&
-		c[i].Address().Index == c[j].Address().Index &&
-		c[i].Address().Branch == c[j].Address().Branch &&
+	if c[i].Address().seriesID == c[j].Address().seriesID &&
+		c[i].Address().index == c[j].Address().index &&
+		c[i].Address().branch == c[j].Address().branch &&
 		txidComparison == 0 &&
 		c[i].OutputIndex() < c[j].OutputIndex() {
 		return true
@@ -187,17 +172,17 @@ func (vp *VotingPool) getEligibleInputsFromSeries(store *txstore.Store,
 	var inputs Credits
 	for index := aRange.StartIndex; index <= aRange.StopIndex; index++ {
 		for branch := aRange.StartBranch; branch <= aRange.StopBranch; branch++ {
-			addr, err := vp.DepositScriptAddress(aRange.SeriesID, branch, index)
+			addr, err := vp.WithdrawalAddress(aRange.SeriesID, branch, index)
 			if err != nil {
 				return nil, newError(ErrInputSelection, "failed to create deposit address", err)
 			}
-			encAddr := addr.EncodeAddress()
+			encAddr := addr.Addr().EncodeAddress()
 
 			if candidates, ok := addrMap[encAddr]; ok {
 				var eligibles Credits
 				for _, c := range candidates {
 					if vp.isCreditEligible(c, minConf, chainHeight, dustThreshold) {
-						vpc := newCredit(c, aRange.SeriesID, branch, index)
+						vpc := newCredit(c, *addr)
 						eligibles = append(eligibles, vpc)
 					}
 				}
