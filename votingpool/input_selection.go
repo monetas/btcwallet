@@ -21,31 +21,31 @@ type CreditInterface interface {
 
 // Credit implements the CreditInterface.
 type Credit struct {
-	Addr   WithdrawalAddress
-	Credit txstore.Credit
+	addr   WithdrawalAddress
+	credit txstore.Credit
 }
 
 // TxID returns the sha hash of the underlying transaction.
 func (c Credit) TxSha() *btcwire.ShaHash {
-	return c.Credit.TxRecord.Tx().Sha()
+	return c.credit.TxRecord.Tx().Sha()
 }
 
 // OutputIndex returns the outputindex of the ouput in the underlying
 // transaction.
 func (c Credit) OutputIndex() uint32 {
-	return c.Credit.OutputIndex
+	return c.credit.OutputIndex
 }
 
 // Address returns the voting pool address.
 func (c Credit) Address() WithdrawalAddress {
-	return c.Addr
+	return c.addr
 }
 
 // newCredit initialises a new Credit.
 func newCredit(credit txstore.Credit, addr WithdrawalAddress) Credit {
 	return Credit{
-		Credit: credit,
-		Addr:   addr,
+		credit: credit,
+		addr:   addr,
 	}
 }
 
