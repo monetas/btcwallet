@@ -159,7 +159,7 @@ func createCredits(
 
 	// Finally create the Credit instances, locked to the voting pool's deposit
 	// address with branch==0, index==0.
-	branch := uint32(0)
-	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, idx)
+	branch := votingpool.Branch(0)
+	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, votingpool.Index(idx))
 	return createInputs(t, store, pkScript, amounts)
 }

@@ -30,6 +30,12 @@ const (
 	MinSeriesPubKeys = 3
 )
 
+// Branch is the type used to represent a branch number in a series.
+type Branch uint32
+
+// Index is the type used to represent an index number in a series.
+type Index uint32
+
 // seriesData represents a Series for a given VotingPool.
 type seriesData struct {
 	version uint32
@@ -133,7 +139,7 @@ func genDecryptFunc(m *waddrmgr.Manager,
 // LoadVotingPoolAndDepositScript generates and returns a deposit script
 // for the given seriesID, branch and index of the VotingPool identified
 // by poolID.
-func LoadVotingPoolAndDepositScript(m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
+func LoadVotingPoolAndDepositScript(m *waddrmgr.Manager, poolID string, seriesID uint32, branch Branch, index Index) ([]byte, error) {
 	pid := []byte(poolID)
 	vp, err := LoadVotingPool(m, pid)
 	if err != nil {
@@ -284,7 +290,7 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 // pool's seriesLookup map. It also ensures inRawPubKeys has at least
 // MinSeriesPubKeys items and reqSigs is not greater than the number of items in
 // inRawPubKeys.
-func (vp *VotingPool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
+func (vp *VotingPool) putSeries(version uint32, seriesID, reqSigs uint32, inRawPubKeys []string) error {
 	if len(inRawPubKeys) < MinSeriesPubKeys {
 		str := fmt.Sprintf("need at least %d public keys to create a series", MinSeriesPubKeys)
 		return managerError(waddrmgr.ErrTooFewPublicKeys, str, nil)
@@ -323,7 +329,7 @@ func (vp *VotingPool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys 
 //
 // - rawPubKeys has to contain three or more public keys;
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
-func (vp *VotingPool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
+func (vp *VotingPool) CreateSeries(version uint32, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	if series := vp.GetSeries(seriesID); series != nil {
 		str := fmt.Sprintf("series #%d already exists", seriesID)
 		return managerError(waddrmgr.ErrSeriesAlreadyExists, str, nil)
@@ -336,7 +342,7 @@ func (vp *VotingPool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys
 //
 // - rawPubKeys has to contain three or more public keys
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
-func (vp *VotingPool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
+func (vp *VotingPool) ReplaceSeries(version uint32, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist, cannot replace it", seriesID)
@@ -446,14 +452,14 @@ func (vp *VotingPool) LoadAllSeries() error {
 // - branch 1: ABC (first key priority)
 // - branch 2: BAC (second key priority)
 // - branch 3: CAB (third key priority)
-func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.AddressPubKey, error) {
+func branchOrder(pks []*btcutil.AddressPubKey, branch Branch) ([]*btcutil.AddressPubKey, error) {
 	if pks == nil {
 		// This really shouldn't happen, but we want to be good citizens, so we
 		// return an error instead of crashing.
 		return nil, managerError(waddrmgr.ErrInvalidValue, "pks cannot be nil", nil)
 	}
 
-	if branch > uint32(len(pks)) {
+	if branch > Branch(len(pks)) {
 		return nil, managerError(waddrmgr.ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
 	}
 
@@ -482,7 +488,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.Addres
 
 // DepositScriptAddress constructs a multi-signature redemption script using DepositScript
 // and returns the pay-to-script-hash-address for that script.
-func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (btcutil.Address, error) {
+func (vp *VotingPool) DepositScriptAddress(seriesID uint32, branch Branch, index Index) (btcutil.Address, error) {
 	script, err := vp.DepositScript(seriesID, branch, index)
 	if err != nil {
 		return nil, err
@@ -495,7 +501,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (btcu
 // DepositScript constructs and returns a multi-signature redemption script where
 // a certain number (Series.reqSigs) of the public keys belonging to the series
 // with the given ID are required to sign the transaction for it to be successful.
-func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
+func (vp *VotingPool) DepositScript(seriesID uint32, branch Branch, index Index) ([]byte, error) {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist", seriesID)
@@ -505,7 +511,7 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 	pks := make([]*btcutil.AddressPubKey, len(series.publicKeys))
 
 	for i, key := range series.publicKeys {
-		child, err := key.Child(index)
+		child, err := key.Child(uint32(index))
 		// TODO: implement getting the next index until we find a valid one,
 		// in case there is a hdkeychain.ErrInvalidChild.
 		if err != nil {

@@ -27,10 +27,10 @@ type FakeTxShaCredit struct {
 	outputIndex uint32
 }
 
-func newFakeTxShaCredit(t *testing.T, vp *votingpool.VotingPool, series, index, branch int, txid []byte, outputIdx int) FakeTxShaCredit {
+func newFakeTxShaCredit(t *testing.T, vp *votingpool.VotingPool, series, index votingpool.Index, branch votingpool.Branch, txid []byte, outputIdx int) FakeTxShaCredit {
 	var hash btcwire.ShaHash
 	copy(hash[:], txid)
-	addr, err := vp.WithdrawalAddress(uint32(series), uint32(branch), uint32(index))
+	addr, err := vp.WithdrawalAddress(uint32(series), branch, index)
 	if err != nil {
 		t.Fatalf("WithdrawalAddress failed: %v", err)
 	}
@@ -109,8 +109,8 @@ func TestCreditInterfaceSort(t *testing.T) {
 func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	type uniq struct {
 		series      uint32
-		branch      uint32
-		index       uint32
+		branch      votingpool.Branch
+		index       votingpool.Index
 		hash        btcwire.ShaHash
 		outputIndex uint32
 	}
@@ -282,7 +282,9 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	store, storeTearDown := createTxStore(t)
 	defer teardown()
 	defer storeTearDown()
-	var seriesID, branch, index uint32 = 0, 0, 0
+	var seriesID uint32 = 0
+	var branch votingpool.Branch = 0
+	var index votingpool.Index = 0
 
 	// create the series
 	series := []seriesDef{
@@ -310,7 +312,9 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	defer teardown()
 	defer storeTearDown1()
 	defer storeTearDown2()
-	var seriesID, branch, index uint32 = 0, 0, 0
+	var seriesID uint32 = 0
+	var branch votingpool.Branch = 0
+	var index votingpool.Index = 0
 
 	// create the series
 	series := []seriesDef{

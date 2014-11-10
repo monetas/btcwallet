@@ -76,7 +76,7 @@ func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
 	return msgtx
 }
 
-func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, series, branch, index uint32) []byte {
+func createVotingPoolPkScript(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.VotingPool, series uint32, branch votingpool.Branch, index votingpool.Index) []byte {
 	script, err := pool.DepositScript(series, branch, index)
 	if err != nil {
 		t.Fatalf("Failed to create depositscript for series %d, branch %d, index %d: %v", series, branch, index, err)

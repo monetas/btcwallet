@@ -108,8 +108,8 @@ var _ sort.Interface = (*Credits)(nil)
 // AddressRange defines a range in the address space of the series.
 type AddressRange struct {
 	SeriesID                uint32
-	StartBranch, StopBranch uint32
-	StartIndex, StopIndex   uint32
+	StartBranch, StopBranch Branch
+	StartIndex, StopIndex   Index
 }
 
 // NumAddresses returns the number of addresses this range represents.

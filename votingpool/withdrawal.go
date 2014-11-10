@@ -64,10 +64,10 @@ func init() {
 	log, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
 }
 
-func (vp *VotingPool) ChangeAddress(seriesID, index uint32) (*ChangeAddress, error) {
+func (vp *VotingPool) ChangeAddress(seriesID uint32, index Index) (*ChangeAddress, error) {
 	// TODO: Ensure the given series is active.
 	// Branch is always 0 for change addresses.
-	branch := uint32(0)
+	branch := Branch(0)
 	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (vp *VotingPool) ChangeAddress(seriesID, index uint32) (*ChangeAddress, err
 	return &ChangeAddress{vp: vp, votingPoolAddress: vpAddr}, nil
 }
 
-func (vp *VotingPool) WithdrawalAddress(seriesID, branch, index uint32) (*WithdrawalAddress, error) {
+func (vp *VotingPool) WithdrawalAddress(seriesID uint32, branch Branch, index Index) (*WithdrawalAddress, error) {
 	// TODO: Ensure the given series is hot.
 	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
 	if err != nil {
@@ -89,8 +89,8 @@ func (vp *VotingPool) WithdrawalAddress(seriesID, branch, index uint32) (*Withdr
 type votingPoolAddress struct {
 	addr     btcutil.Address
 	seriesID uint32
-	branch   uint32
-	index    uint32
+	branch   Branch
+	index    Index
 }
 
 func (a *votingPoolAddress) Addr() btcutil.Address {
@@ -101,11 +101,11 @@ func (a votingPoolAddress) SeriesID() uint32 {
 	return a.seriesID
 }
 
-func (a votingPoolAddress) Branch() uint32 {
+func (a votingPoolAddress) Branch() Branch {
 	return a.branch
 }
 
-func (a votingPoolAddress) Index() uint32 {
+func (a votingPoolAddress) Index() Index {
 	return a.index
 }
 
