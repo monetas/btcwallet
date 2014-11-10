@@ -426,7 +426,7 @@ func getPrivKey(mgr *waddrmgr.Manager, addr *btcutil.AddressPubKey) (*btcec.Priv
 		return nil, err
 	}
 
-	// We're passed an AddressPubKey, so this cast should never fail.
+	// We're passed an AddressPubKey, so this type assertion should never fail.
 	pka := address.(waddrmgr.ManagedPubKeyAddress)
 	privKey, err := pka.PrivKey()
 	if err != nil && err.(waddrmgr.ManagerError).ErrorCode == waddrmgr.ErrCrypto {
