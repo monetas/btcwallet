@@ -324,6 +324,28 @@ func (d *decoratedTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32
 	return uint32(len(d.msgtx.TxOut) - 1)
 }
 
+// popOutput will pop the last added output and return it as well as
+// update the outputTotal value.  The corresponding output will be
+// removed from the underlying MsgTx
+func (d *decoratedTx) popOutput() *WithdrawalOutput {
+	removed := d.outputs[len(d.outputs)-1]
+	d.outputs = d.outputs[:len(d.outputs)-1]
+	d.outputTotal -= removed.Amount()
+	d.msgtx.TxOut = d.msgtx.TxOut[:len(d.msgtx.TxOut)-1]
+	return removed
+}
+
+// popInput will pop the last added input and return it as well as
+// update the inputTotal value.  The corresponding input will be
+// removed from the underlying MsgTx
+func (d *decoratedTx) popInput() CreditInterface {
+	removed := d.inputs[len(d.inputs)-1]
+	d.inputs = d.inputs[:len(d.inputs)-1]
+	d.inputTotal -= removed.Amount()
+	d.msgtx.TxIn = d.msgtx.TxIn[:len(d.msgtx.TxIn)-1]
+	return removed
+}
+
 func (d *decoratedTx) addTxIn(input CreditInterface) {
 	d.msgtx.AddTxIn(btcwire.NewTxIn(input.OutPoint(), nil))
 	log.Infof("Added input with amount %v", input.Amount())
@@ -348,9 +370,32 @@ func (d *decoratedTx) addChange(pkScript []byte) bool {
 	return d.hasChange
 }
 
-func (d *decoratedTx) rollBackLastOutput() {
-	// TODO: Remove output from tx.TxOut
-	// TODO: Subtract its amount from outputTotal
+// rollBackLastOutput will roll back the last added output and
+// possibly remove inputs that are no longer needed to cover the
+// remaining outputs. The method returns the removed output and the
+// removed inputs, if any.
+func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput, error) {
+	if len(d.outputs) < 1 {
+		// Precondition: At least one withdrawal output is required in
+		// the transaction.
+		return nil, nil, newError(
+			ErrWithdrawalProcessing, "at least one output expected", nil)
+	}
+
+	removedOutput := d.popOutput()
+
+	var removedInputs []CreditInterface
+	// Continue until sum(in) < sum(out) + fee
+	for d.inputTotal >= d.outputTotal+d.calculateFee() {
+		removed := d.popInput()
+		removedInputs = append(removedInputs, removed)
+	}
+
+	// Re-add the last one
+	inputTop := removedInputs[len(removedInputs)-1]
+	removedInputs = removedInputs[:len(removedInputs)-1]
+	d.addTxIn(inputTop)
+	return removedInputs, removedOutput, nil
 }
 
 func (d *decoratedTx) isTooBig() bool {

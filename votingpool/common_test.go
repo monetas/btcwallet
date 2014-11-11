@@ -296,10 +296,15 @@ var (
 
 // TstFakeCredit is a structure implementing the CreditInterface used
 // for testing purposes.
+//
+// XXX(lars): we should maybe change all the value receivers to
+// pointer receivers so we do not mix. That would mean we'd have to
+// change the CreditInterface and implementations as well.
 type TstFakeCredit struct {
 	addr        WithdrawalAddress
 	txid        *btcwire.ShaHash
 	outputIndex uint32
+	amount      btcutil.Amount
 }
 
 func (c TstFakeCredit) TxSha() *btcwire.ShaHash {
@@ -315,7 +320,7 @@ func (c TstFakeCredit) Address() WithdrawalAddress {
 }
 
 func (c TstFakeCredit) Amount() btcutil.Amount {
-	return btcutil.Amount(0)
+	return c.amount
 }
 
 func (c TstFakeCredit) TxOut() *btcwire.TxOut {
@@ -324,6 +329,11 @@ func (c TstFakeCredit) TxOut() *btcwire.TxOut {
 
 func (c TstFakeCredit) OutPoint() *btcwire.OutPoint {
 	return &btcwire.OutPoint{Hash: *c.txid, Index: c.outputIndex}
+}
+
+func (c *TstFakeCredit) SetAmount(amount btcutil.Amount) *TstFakeCredit {
+	c.amount = amount
+	return c
 }
 
 func TstNewFakeCredit(t *testing.T, pool *Pool, series, index Index, branch Branch, txid []byte, outputIdx int) TstFakeCredit {

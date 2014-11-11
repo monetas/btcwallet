@@ -18,6 +18,7 @@ package votingpool
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
 	"testing"
 
@@ -81,11 +82,11 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	ignoreChange := true
 	gotAmount := storedTx.OutputAmount(ignoreChange)
 	if gotAmount != btcutil.Amount(3e6) {
-		t.Fatal("Unexpected output amount; got %v, want %v", gotAmount, btcutil.Amount(3e6))
+		t.Fatalf("Unexpected output amount; got %v, want %v", gotAmount, btcutil.Amount(3e6))
 	}
 	debits, _ := storedTx.Debits()
 	if debits.InputAmount() != btcutil.Amount(4e6) {
-		t.Fatal("Unexpected input amount; got %v, want %v", debits.InputAmount(),
+		t.Fatalf("Unexpected input amount; got %v, want %v", debits.InputAmount(),
 			btcutil.Amount(4e6))
 	}
 
@@ -429,4 +430,268 @@ func lookupStoredTx(store *txstore.Store, sha *btcwire.ShaHash) *txstore.TxRecor
 		}
 	}
 	return nil
+}
+
+func createWithdrawalOutputs(outputs []btcutil.Amount) []*WithdrawalOutput {
+	withdrawalOutputs := make([]*WithdrawalOutput, len(outputs))
+	for i, amount := range outputs {
+		withdrawalOutputs[i] = &WithdrawalOutput{
+			request: &OutputRequest{
+				amount: amount,
+			},
+		}
+	}
+	return withdrawalOutputs
+}
+
+// createFakeCredits creates a credit with the amount specified and a
+// txid that is deterministically derived from the amount.
+func createFakeCredits(inputs []btcutil.Amount) []TstFakeCredit {
+	credits := make([]TstFakeCredit, len(inputs))
+	for i, amount := range inputs {
+		var hash [32]byte
+		hashString := []byte(fmt.Sprintf("%d", amount))
+		copy(hash[:], hashString)
+		shaHash := btcwire.ShaHash(hash)
+		credits[i] = TstFakeCredit{
+			amount: amount,
+			txid:   &shaHash,
+		}
+	}
+	return credits
+}
+
+// createFakeDecoratedTx creates a decorateTx structure, but note that the
+// pkScripts added for the outputs are not valid pkScripts.
+//
+// XXX(lars): The reason this function exists is that the
+// TstCreateCredits functions implicitly creates a series and thus can
+// only be called once within a test (otherwise it will err with a
+// series 0 already exists).
+//
+// I'd certainly be able to work around that by creating another
+// version of TstCreateCredits, but since I have no need for real
+// credits, I didn't think it would be worth it.
+func createFakeDecoratedTx(inputs []TstFakeCredit, outputs []*WithdrawalOutput) *decoratedTx {
+	c := &decoratedTx{
+		msgtx: &btcwire.MsgTx{},
+	}
+	for _, i := range inputs {
+		c.addTxIn(i)
+	}
+	for i, o := range outputs {
+		c.addTxOut(o, []byte{byte(i)})
+	}
+
+	return c
+}
+
+// TestRollbackLastOutput tests the case where we rollback one output
+// and one input, such that sum(in) >= sum(out) + fee.
+func TestRollbackLastOutput(t *testing.T) {
+	initalInputs := createFakeCredits([]btcutil.Amount{3, 3, 2, 1, 3})
+	wOutputs := createWithdrawalOutputs([]btcutil.Amount{3, 3, 2, 2})
+
+	tx := createFakeDecoratedTx(initalInputs, wOutputs)
+	w := withdrawal{current: tx}
+
+	tx.calculateFee = func() btcutil.Amount {
+		return btcutil.Amount(1)
+	}
+	removedInputs, removedOutput, err := tx.rollBackLastOutput()
+	if err != nil {
+		t.Fatal("Unexpected error:", err)
+	}
+
+	// The above rollBackLastOutput() call should have removed the last output
+	// and the last input.
+	lastOutput := wOutputs[len(wOutputs)-1]
+	if removedOutput.Amount() != lastOutput.Amount() {
+		t.Fatalf("Wrong output; got %d want %d",
+			removedOutput.Amount(), lastOutput.Amount())
+	}
+	lastInputSlice := initalInputs[len(initalInputs)-1:]
+	checkAmountsMatch(t, removedInputs, lastInputSlice)
+
+	// Now check that the inputs and outputs left in the tx match what we
+	// expect.
+	checkDecoratedTxInputs(t, w.current, initalInputs[:len(initalInputs)-1])
+	checkDecoratedTxOutputs(t, w.current, wOutputs[:len(wOutputs)-1])
+}
+
+// TestRollbackLastOutputEdgeCase where we only roll back one output
+// but no inputs, such that sum(in) >= sum(out) + fee.
+func TestRollbackLastOutputEdgeCase(t *testing.T) {
+	initalInputs := createFakeCredits([]btcutil.Amount{4})
+	wOutputs := createWithdrawalOutputs([]btcutil.Amount{3})
+
+	tx := createFakeDecoratedTx(initalInputs, wOutputs)
+	w := withdrawal{current: tx}
+
+	tx.calculateFee = func() btcutil.Amount {
+		return btcutil.Amount(1)
+	}
+	removedInputs, removedOutput, err := tx.rollBackLastOutput()
+	if err != nil {
+		t.Fatal("Unexpected error:", err)
+	}
+
+	// The above rollBackLastOutput() call should have removed the
+	// last output but no inputs.
+	lastOutput := wOutputs[len(wOutputs)-1]
+	if removedOutput.Amount() != lastOutput.Amount() {
+		t.Fatalf("Wrong output; got %d want %d",
+			removedOutput.Amount(), lastOutput.Amount())
+	}
+	if len(removedInputs) != 0 {
+		t.Fatalf("Expected no removed inputs, but got %d inputs",
+			len(removedInputs))
+	}
+
+	// Now check that the inputs and outputs left in the tx match what we
+	// expect.
+	checkDecoratedTxInputs(t, w.current, initalInputs[0:1])
+	checkDecoratedTxOutputs(t, w.current, wOutputs[:len(wOutputs)-1])
+}
+
+func TestPopOutput(t *testing.T) {
+	outputs := createWithdrawalOutputs([]btcutil.Amount{1, 2})
+	tx := createFakeDecoratedTx(nil, outputs)
+	// Make sure we have created the transaction with the expected
+	// outputs.
+	checkDecoratedTxOutputs(t, tx, outputs)
+	remainingTxOut := tx.msgtx.TxOut[0]
+	remainingWithdrawalOutput := tx.outputs[0]
+	wantPoppedWithdrawalOutput := tx.outputs[1]
+
+	// Pop!
+	gotPoppedWithdrawalOutput := tx.popOutput()
+
+	// Check the popped output looks correct.
+	if gotPoppedWithdrawalOutput != wantPoppedWithdrawalOutput {
+		t.Fatalf("Popped output wrong; got %v, want %v",
+			gotPoppedWithdrawalOutput, wantPoppedWithdrawalOutput)
+	}
+	// And that the remaining output is correct.
+	checkDecoratedTxOutputs(t, tx, []*WithdrawalOutput{remainingWithdrawalOutput})
+
+	// Make sure that the remaining output is really the right one.
+	if tx.msgtx.TxOut[0] != remainingTxOut {
+		t.Fatalf("Wrong TxOut: got %v, want %v",
+			tx.msgtx.TxOut[0], remainingTxOut)
+	}
+	if tx.outputs[0] != remainingWithdrawalOutput {
+		t.Fatalf("Wrong WithdrawalOutput: got %v, want %v",
+			tx.outputs[0], remainingWithdrawalOutput)
+	}
+}
+
+func TestPopInput(t *testing.T) {
+	inputs := createFakeCredits([]btcutil.Amount{1, 2})
+	tx := createFakeDecoratedTx(inputs, nil)
+	// Make sure we have created the transaction with the expected inputs
+	checkDecoratedTxInputs(t, tx, inputs)
+
+	remainingTxIn := tx.msgtx.TxIn[0]
+	remainingCreditInterface := tx.inputs[0]
+	wantPoppedCreditInterface := tx.inputs[1]
+
+	// Pop!
+	gotPoppedCreditInterface := tx.popInput()
+
+	// Check the popped input looks correct.
+	if gotPoppedCreditInterface != wantPoppedCreditInterface {
+		t.Fatalf("Popped input wrong; got %v, want %v",
+			gotPoppedCreditInterface, wantPoppedCreditInterface)
+	}
+	checkDecoratedTxInputs(t, tx, []TstFakeCredit{inputs[0]})
+
+	// Make sure that the remaining input is really the right one.
+	if tx.msgtx.TxIn[0] != remainingTxIn {
+		t.Fatalf("Wrong TxIn: got %v, want %v",
+			tx.msgtx.TxIn[0], remainingTxIn)
+	}
+	if tx.inputs[0] != remainingCreditInterface {
+		t.Fatalf("Wrong input: got %v, want %v",
+			tx.inputs[0], remainingCreditInterface)
+	}
+}
+
+func TestRollBackLastOutputNoWithdrawalOutputs(t *testing.T) {
+	w := createFakeDecoratedTx(nil, nil)
+	_, _, err := w.rollBackLastOutput()
+	TstCheckError(t, "", err, ErrWithdrawalProcessing)
+}
+
+func checkAmountsMatch(t *testing.T, gotEligibles []CreditInterface, eligibles []TstFakeCredit) {
+	if len(gotEligibles) != len(eligibles) {
+		t.Fatalf("Wrong number of eligible inputs; got %d, want %d",
+			len(gotEligibles), len(eligibles))
+	}
+
+	for i, e := range gotEligibles {
+		if e.Amount() != eligibles[i].Amount() {
+			t.Fatalf("Eligible input has wrong amount; got %d want %d",
+				e.Amount(), eligibles[i].Amount())
+		}
+	}
+}
+
+// checkDecoratedTxInputs tests that the inputs in the decoratedTx
+// match the amounts in the btcutil.Amount slice.
+func checkDecoratedTxInputs(t *testing.T, tx *decoratedTx, inputs []TstFakeCredit) {
+	// Check tx inputs
+	if len(tx.inputs) != len(inputs) {
+		t.Fatalf("Wrong number of inputs in tx; got %d, want %d",
+			len(tx.inputs), len(inputs))
+	}
+	for i, input := range tx.inputs {
+		if input.Amount() != inputs[i].Amount() {
+			t.Fatalf("Input has wrong amount; got %d, want %d",
+				input.Amount(), inputs[i].Amount())
+		}
+	}
+
+	// Check outpoint of tx.msgtx.TxIn matches.
+	if len(tx.msgtx.TxIn) != len(inputs) {
+		t.Fatalf("Wrong number of inputs in tx.msgtx.TxIn; got %d, want %d",
+			len(tx.msgtx.TxIn), len(inputs))
+	}
+	for i, input := range tx.msgtx.TxIn {
+		if input.PreviousOutPoint != *inputs[i].OutPoint() {
+			t.Fatalf("tx.msgtx.TxIn input has wrong outpoint; got %v, want %v",
+				input.PreviousOutPoint, *inputs[i].OutPoint())
+		}
+	}
+}
+
+// checkDecoratedTxOutputs tests that the outputs in the decoratedTx
+// match the amounts in the btcutil.Amount slice.
+//
+// XXX(lars): This and checkTxOutputs() should eventually be
+// refactored as they can probably share some code.
+func checkDecoratedTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput) {
+	// Check tx.outputs
+	if len(tx.outputs) != len(outputs) {
+		t.Fatalf("Wrong number of outputs in tx; got %d, want %d",
+			len(tx.outputs), len(outputs))
+	}
+	for i, output := range tx.outputs {
+		if output.Amount() != outputs[i].Amount() {
+			t.Fatalf("Output has wrong amount; got %d, want %d",
+				output.Amount(), outputs[i])
+		}
+	}
+
+	// Check tx.msgtx.TxOut
+	if len(tx.msgtx.TxOut) != len(outputs) {
+		t.Fatalf("Wrong number of tx.msgtx.TxOuts in tx; got %d, want %d",
+			len(tx.outputs), len(outputs))
+	}
+	for i, txOut := range tx.msgtx.TxOut {
+		if btcutil.Amount(txOut.Value) != outputs[i].Amount() {
+			t.Fatalf("tx.msgtx.TxOut has wrong amount; got %d, want %d",
+				txOut.Value, outputs[i])
+		}
+	}
 }
