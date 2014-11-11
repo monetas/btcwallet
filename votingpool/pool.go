@@ -78,7 +78,7 @@ type Pool struct {
 
 // CreateVotingPool creates a new entry in the database with the given ID
 // and returns the VotingPool representing it.
-func CreateVotingPool(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
+func Create(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 	err := waddrmgr.PutVotingPool(m, poolID)
 	if err != nil {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
@@ -157,7 +157,7 @@ func LoadVotingPoolAndCreateSeries(m *waddrmgr.Manager, version uint32,
 	if err != nil {
 		managerErr := err.(waddrmgr.ManagerError)
 		if managerErr.ErrorCode == waddrmgr.ErrVotingPoolNotExists {
-			vp, err = CreateVotingPool(m, pid)
+			vp, err = Create(m, pid)
 			if err != nil {
 				return err
 			}
