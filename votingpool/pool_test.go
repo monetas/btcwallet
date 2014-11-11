@@ -27,7 +27,6 @@ import (
 	"testing"
 
 	"github.com/conformal/btcnet"
-	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
@@ -989,8 +988,8 @@ func validateLoadAllSeries(t *testing.T, pool *votingpool.VotingPool, testID int
 	}
 }
 
-func reverse(inKeys []*btcutil.AddressPubKey) []*btcutil.AddressPubKey {
-	revKeys := make([]*btcutil.AddressPubKey, len(inKeys))
+func reverse(inKeys []*hdkeychain.ExtendedKey) []*hdkeychain.ExtendedKey {
+	revKeys := make([]*hdkeychain.ExtendedKey, len(inKeys))
 	max := len(inKeys)
 	for i := range inKeys {
 		revKeys[i] = inKeys[max-i-1]
@@ -1071,9 +1070,9 @@ func TestBranchOrderInvalidBranch(t *testing.T) {
 	checkManagerError(t, "", err, waddrmgr.ErrInvalidBranch)
 }
 
-func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) (origOrder, wantOrder, gotOrder []int) {
+func branchErrorFormat(orig, want, got []*hdkeychain.ExtendedKey) (origOrder, wantOrder, gotOrder []int) {
 	origOrder = []int{}
-	origMap := make(map[*btcutil.AddressPubKey]int)
+	origMap := make(map[*hdkeychain.ExtendedKey]int)
 	for i, key := range orig {
 		origMap[key] = i + 1
 		origOrder = append(origOrder, i+1)
@@ -1092,32 +1091,20 @@ func branchErrorFormat(orig, want, got []*btcutil.AddressPubKey) (origOrder, wan
 	return origOrder, wantOrder, gotOrder
 }
 
-func createTestPubKeys(t *testing.T, number, offset int) []*btcutil.AddressPubKey {
-
-	net := &btcnet.TestNet3Params
+func createTestPubKeys(t *testing.T, number, offset int) []*hdkeychain.ExtendedKey {
 	xpubRaw := "xpub661MyMwAqRbcFwdnYF5mvCBY54vaLdJf8c5ugJTp5p7PqF9J1USgBx12qYMnZ9yUiswV7smbQ1DSweMqu8wn7Jociz4PWkuJ6EPvoVEgMw7"
 	xpubKey, err := hdkeychain.NewKeyFromString(xpubRaw)
 	if err != nil {
 		t.Fatalf("Failed to generate new key", err)
 	}
 
-	keys := make([]*btcutil.AddressPubKey, number)
+	keys := make([]*hdkeychain.ExtendedKey, number)
 	for i := uint32(0); i < uint32(len(keys)); i++ {
 		chPubKey, err := xpubKey.Child(i + uint32(offset))
 		if err != nil {
 			t.Fatalf("Failed to generate child key", err)
 		}
-
-		pubKey, err := chPubKey.ECPubKey()
-		if err != nil {
-			t.Fatalf("Failed to generate ECPubKey", err)
-		}
-
-		x, err := btcutil.NewAddressPubKey(pubKey.SerializeCompressed(), net)
-		if err != nil {
-			t.Fatalf("Failed to create new public key", err)
-		}
-		keys[i] = x
+		keys[i] = chPubKey
 	}
 	return keys
 }
