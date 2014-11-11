@@ -53,6 +53,14 @@ func (c FakeTxShaCredit) Address() votingpool.WithdrawalAddress {
 	return c.addr
 }
 
+func (c FakeTxShaCredit) Amount() btcutil.Amount {
+	return btcutil.Amount(0)
+}
+
+func (c FakeTxShaCredit) OutPoint() *btcwire.OutPoint {
+	return &btcwire.OutPoint{Hash: *c.txid, Index: c.outputIndex}
+}
+
 // Compile time check that FakeTxShaCredit implements the
 // CreditInterface.
 var _ votingpool.CreditInterface = (*FakeTxShaCredit)(nil)

@@ -73,7 +73,7 @@ func TestWithdrawal(t *testing.T) {
 	// XXX: The ntxid is deterministic so we hardcode it here, but if the test is changed
 	// in a way that causes the generated transactions to change (e.g. different
 	// inputs/outputs), the ntxid will change too.
-	ntxid := "a11470da31e2f724e8ba3785a2691f080771886a6b891ab1afe940fb35b0a195"
+	ntxid := "ea48d480a6a53ca72cf29f3494c14dfda8030103d05b0381a1844a9b80f784ae"
 	txSigs := sigs[ntxid]
 	// We should have 2 TxInSignatures entries as the transaction created by
 	// votingpool.Withdrawal() should have two inputs.
@@ -124,42 +124,57 @@ func checkWithdrawalOutput(
 	}
 }
 
+func createMasterKey(t *testing.T, seed []byte) *hdkeychain.ExtendedKey {
+	key, err := hdkeychain.NewMaster(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
 func createCredits(
 	t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.Pool, amounts []int64,
-	store *txstore.Store) []txstore.Credit {
+	store *txstore.Store) []votingpool.CreditInterface {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
-	master1, _ := hdkeychain.NewMaster(seed)
-	master2, _ := hdkeychain.NewMaster(append(seed, byte(0x01)))
-	master3, _ := hdkeychain.NewMaster(append(seed, byte(0x02)))
-	masters := []*hdkeychain.ExtendedKey{master1, master2, master3}
+	masters := []*hdkeychain.ExtendedKey{
+		createMasterKey(t, seed),
+		createMasterKey(t, append(seed, byte(0x01))),
+		createMasterKey(t, append(seed, byte(0x02))),
+	}
 	rawPubKeys := make([]string, 3)
+	rawPrivKeys := make([]string, 3)
 	for i, key := range masters {
+		rawPrivKeys[i] = key.String()
 		pubkey, _ := key.Neuter()
 		rawPubKeys[i] = pubkey.String()
 	}
 
-	// Create a series with the master pubkeys of our voting pool members.
+	// Create a series with the master pubkeys of our voting pool members, also empowering
+	// it with all corresponding private keys.
 	reqSigs := uint32(2)
 	seriesID := uint32(0)
 	if err := pool.CreateSeries(1, seriesID, reqSigs, rawPubKeys); err != nil {
 		t.Fatalf("Cannot creates series: %v", err)
 	}
-
-	idx := uint32(0)
-	// Import the 0th child of our master keys into the address manager as we're going
-	// to need them when signing the transactions later on.
-	wifs := make([]string, 3)
-	for i, master := range masters {
-		child, _ := master.Child(idx)
-		ecPrivKey, _ := child.ECPrivKey()
-		wif, _ := btcutil.NewWIF(ecPrivKey, mgr.Net(), true)
-		wifs[i] = wif.String()
+	mgr.Unlock(privPassphrase)
+	for _, key := range rawPrivKeys {
+		if err := pool.EmpowerSeries(seriesID, key); err != nil {
+			t.Fatal(err)
+		}
 	}
-	importPrivateKeys(t, mgr, wifs, bs)
 
 	// Finally create the Credit instances, locked to the voting pool's deposit
-	// address with branch==0, index==0.
-	branch := votingpool.Branch(0)
-	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, votingpool.Index(idx))
-	return createInputs(t, store, pkScript, amounts)
+	// address with branch==1, index==0.
+	branch := votingpool.Branch(1)
+	idx := votingpool.Index(0)
+	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, idx)
+	eligible := make([]votingpool.CreditInterface, len(amounts))
+	for i, credit := range createInputs(t, store, pkScript, amounts) {
+		addr, err := pool.WithdrawalAddress(seriesID, branch, idx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eligible[i] = votingpool.NewCredit(credit, *addr)
+	}
+	return eligible
 }
