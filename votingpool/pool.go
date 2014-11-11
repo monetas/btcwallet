@@ -482,8 +482,11 @@ func (vp *Pool) DepositScriptAddress(seriesID uint32, branch Branch, index Index
 	if err != nil {
 		return nil, err
 	}
-	scriptHash := btcutil.Hash160(script)
+	return vp.addressFor(script)
+}
 
+func (vp *Pool) addressFor(script []byte) (btcutil.Address, error) {
+	scriptHash := btcutil.Hash160(script)
 	return btcutil.NewAddressScriptHashFromHash(scriptHash, vp.manager.Net())
 }
 

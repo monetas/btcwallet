@@ -17,23 +17,29 @@ type CreditInterface interface {
 	TxSha() *btcwire.ShaHash
 	OutputIndex() uint32
 	Address() WithdrawalAddress
+	Amount() btcutil.Amount
+	OutPoint() *btcwire.OutPoint
 }
 
 // Credit implements the CreditInterface.
 type Credit struct {
-	addr   WithdrawalAddress
-	credit txstore.Credit
+	txstore.Credit
+	addr WithdrawalAddress
 }
 
-// TxID returns the sha hash of the underlying transaction.
+func NewCredit(credit txstore.Credit, addr WithdrawalAddress) Credit {
+	return Credit{Credit: credit, addr: addr}
+}
+
+// TxSha returns the sha hash of the underlying transaction.
 func (c Credit) TxSha() *btcwire.ShaHash {
-	return c.credit.TxRecord.Tx().Sha()
+	return c.Credit.TxRecord.Tx().Sha()
 }
 
 // OutputIndex returns the outputindex of the ouput in the underlying
 // transaction.
 func (c Credit) OutputIndex() uint32 {
-	return c.credit.OutputIndex
+	return c.Credit.OutputIndex
 }
 
 // Address returns the voting pool address.
@@ -44,7 +50,7 @@ func (c Credit) Address() WithdrawalAddress {
 // newCredit initialises a new Credit.
 func newCredit(credit txstore.Credit, addr WithdrawalAddress) Credit {
 	return Credit{
-		credit: credit,
+		Credit: credit,
 		addr:   addr,
 	}
 }
@@ -61,7 +67,7 @@ func (c Credits) Len() int {
 // Less returns true if the element at positions i is smaller than the
 // element at position j. The 'smaller-than' relation is defined to be
 // the lexicographic ordering defined on the tuple (SeriesID, Index,
-// Branch, TxID, OutputIndex).
+// Branch, TxSha, OutputIndex).
 func (c Credits) Less(i, j int) bool {
 	if c[i].Address().seriesID < c[j].Address().seriesID {
 		return true

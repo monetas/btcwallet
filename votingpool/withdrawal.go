@@ -22,11 +22,11 @@ import (
 	"os"
 	"sort"
 
-	"github.com/conformal/btcec"
 	"github.com/conformal/btclog"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
+	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/txstore"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
@@ -66,58 +66,88 @@ func init() {
 	log, _ = btclog.NewLoggerFromWriter(os.Stdout, btclog.DebugLvl)
 }
 
+func (s *seriesData) getPrivKeyFor(pubKey *hdkeychain.ExtendedKey) (*hdkeychain.ExtendedKey, error) {
+	for i, key := range s.publicKeys {
+		if key.String() == pubKey.String() {
+			return s.privateKeys[i], nil
+		}
+	}
+	return nil, newError(
+		ErrUnknownPubKey, fmt.Sprintf("Unknown public key '%s'", pubKey.String()), nil)
+}
+
 func (vp *Pool) ChangeAddress(seriesID uint32, index Index) (*ChangeAddress, error) {
 	// TODO: Ensure the given series is active.
 	// Branch is always 0 for change addresses.
-	branch := Branch(0)
-	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
+	vpAddr, err := vp.newVotingPoolAddress(seriesID, Branch(0), index)
 	if err != nil {
 		return nil, err
 	}
-	vpAddr := &votingPoolAddress{seriesID: seriesID, branch: branch, index: index, addr: addr}
-	return &ChangeAddress{vp: vp, votingPoolAddress: vpAddr}, nil
+	return &ChangeAddress{votingPoolAddress: vpAddr}, nil
 }
 
 func (vp *Pool) WithdrawalAddress(seriesID uint32, branch Branch, index Index) (*WithdrawalAddress, error) {
 	// TODO: Ensure the given series is hot.
-	addr, err := vp.DepositScriptAddress(seriesID, branch, index)
+	vpAddr, err := vp.newVotingPoolAddress(seriesID, branch, index)
 	if err != nil {
 		return nil, err
 	}
-	vpAddr := &votingPoolAddress{seriesID: seriesID, branch: branch, index: index, addr: addr}
 	return &WithdrawalAddress{votingPoolAddress: vpAddr}, nil
 }
 
 type votingPoolAddress struct {
+	p        *Pool
 	addr     btcutil.Address
+	script   []byte
 	seriesID uint32
 	branch   Branch
 	index    Index
+}
+
+func (p *Pool) newVotingPoolAddress(seriesID uint32, branch Branch, index Index) (*votingPoolAddress, error) {
+	script, err := p.DepositScript(seriesID, branch, index)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := p.addressFor(script)
+	if err != nil {
+		return nil, err
+	}
+	return &votingPoolAddress{
+			p: p, seriesID: seriesID, branch: branch, index: index, addr: addr, script: script},
+		nil
 }
 
 func (a *votingPoolAddress) Addr() btcutil.Address {
 	return a.addr
 }
 
-func (a votingPoolAddress) SeriesID() uint32 {
+func (a *votingPoolAddress) RedeemScript() []byte {
+	return a.script
+}
+
+func (a *votingPoolAddress) Series() *seriesData {
+	return a.p.GetSeries(a.seriesID)
+}
+
+func (a *votingPoolAddress) SeriesID() uint32 {
 	return a.seriesID
 }
 
-func (a votingPoolAddress) Branch() Branch {
+func (a *votingPoolAddress) Branch() Branch {
 	return a.branch
 }
 
-func (a votingPoolAddress) Index() Index {
+func (a *votingPoolAddress) Index() Index {
 	return a.index
 }
 
 type ChangeAddress struct {
 	*votingPoolAddress
-	vp *Pool
 }
 
 func (a *ChangeAddress) Next() (*ChangeAddress, error) {
-	return a.vp.ChangeAddress(a.seriesID, a.index+1)
+	return a.p.ChangeAddress(a.seriesID, a.index+1)
 }
 
 type WithdrawalAddress struct {
@@ -237,17 +267,17 @@ type withdrawal struct {
 	changeStart    *ChangeAddress
 	transactions   []*btcwire.MsgTx
 	pendingOutputs []*OutputRequest
-	eligibleInputs []txstore.Credit
+	eligibleInputs []CreditInterface
 	current        *currentTx
-	// A map of ntxids to lists of txstore.Credit, needed to sign the tx inputs.
-	usedInputs map[string][]txstore.Credit
+	// A map of ntxids to lists of CreditInterface, needed to sign the tx inputs.
+	usedInputs map[string][]CreditInterface
 }
 
 // The not-yet-finalized transaction to which new inputs/outputs are being added, and
 // some supporting data structures that apply only to it.
 type currentTx struct {
 	tx          *btcwire.MsgTx
-	inputs      []txstore.Credit
+	inputs      []CreditInterface
 	outputs     []*WithdrawalOutput
 	inputTotal  btcutil.Amount
 	outputTotal btcutil.Amount
@@ -260,7 +290,7 @@ func (c *currentTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32 {
 	return uint32(len(c.tx.TxOut) - 1)
 }
 
-func (c *currentTx) addTxIn(input txstore.Credit) {
+func (c *currentTx) addTxIn(input CreditInterface) {
 	c.tx.AddTxIn(btcwire.NewTxIn(input.OutPoint(), nil))
 	log.Infof("Added input with amount %v", input.Amount())
 	c.inputs = append(c.inputs, input)
@@ -282,7 +312,7 @@ func (c *currentTx) isTooBig() bool {
 func (vp *Pool) Withdrawal(
 	roundID uint32,
 	outputs []*OutputRequest,
-	inputs []txstore.Credit,
+	inputs []CreditInterface,
 	changeStart *ChangeAddress,
 	txStore *txstore.Store,
 ) (*WithdrawalStatus, map[string]TxInSignatures, error) {
@@ -290,7 +320,7 @@ func (vp *Pool) Withdrawal(
 		roundID:        roundID,
 		current:        &currentTx{tx: btcwire.NewMsgTx()},
 		pendingOutputs: outputs,
-		usedInputs:     make(map[string][]txstore.Credit),
+		usedInputs:     make(map[string][]CreditInterface),
 		eligibleInputs: inputs,
 		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
@@ -455,31 +485,6 @@ func getRedeemScript(mgr *waddrmgr.Manager, addr *btcutil.AddressScriptHash) ([]
 	return sa.Script()
 }
 
-// getPrivKey fetches the private key for the given pubkey address from the address
-// manager. If the private key is not available, we return nil, but we may also return an
-// error if something else prevents us from getting the private key (e.g. the manager
-// being locked).
-func getPrivKey(mgr *waddrmgr.Manager, addr *btcutil.AddressPubKey) (*btcec.PrivateKey, error) {
-	address, err := mgr.Address(addr.AddressPubKeyHash())
-	if err != nil {
-		return nil, err
-	}
-
-	// We're passed an AddressPubKey, so this type assertion should never fail.
-	pka := address.(waddrmgr.ManagedPubKeyAddress)
-	privKey, err := pka.PrivKey()
-	if err != nil && err.(waddrmgr.ManagerError).ErrorCode == waddrmgr.ErrCrypto {
-		// XXX: ErrCrypto is what's returned by PrivKey() when the private key is not
-		// available, but there might be other cases in which that error is returned.
-		// Ideally there should be a specific error for privkey-not-available.
-		return nil, nil
-	} else if err != nil {
-		return nil, newError(
-			ErrWithdrawalProcessing, "Failed to load private key", err)
-	}
-	return privKey, nil
-}
-
 // Ntxid returns a unique ID for the given transaction.
 func Ntxid(tx *btcwire.MsgTx) string {
 	// According to https://blockchain.info/q, the ntxid is the "hash of the serialized
@@ -502,37 +507,39 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 		txSigs := make(TxInSignatures, len(tx.TxIn))
 		ntxid := Ntxid(tx)
 		for idx := range tx.TxIn {
-			pkScript := w.usedInputs[ntxid][idx].TxOut().PkScript
-			class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, w.net)
-			if err != nil {
-				return nil, newError(
-					ErrWithdrawalProcessing, "Failed to extract addresses from pkScript", err)
-			}
-			if class != btcscript.ScriptHashTy {
-				// Assume pkScript is a P2SH because all voting pool addresses are P2SH.
-				str := fmt.Sprintf("Unexpected pkScript class: %v", class)
-				return nil, newError(ErrWithdrawalProcessing, str, nil)
-			}
-			redeemScript, err := getRedeemScript(mgr, addresses[0].(*btcutil.AddressScriptHash))
+			inputAddr := w.usedInputs[ntxid][idx].Address()
+			redeemScript := inputAddr.RedeemScript()
+			series := inputAddr.Series()
+			// The order of the raw signatures in the signature script must match the
+			// order of the public keys in the redeem script, so we sort the public keys
+			// here using the same API used to sort them in the redeem script and use
+			// series.getPrivKeyFor() to lookup the corresponding private keys.
+			pubKeys, err := branchOrder(series.publicKeys, inputAddr.Branch())
 			if err != nil {
 				return nil, err
 			}
-			// The order of the signatures in txInSigs must match the order of the corresponding
-			// pubkeys in the redeem script, but ExtractPkScriptAddrs() returns the pubkeys in
-			// the original order, so we don't need to do anything special here.
-			_, addresses, _, err = btcscript.ExtractPkScriptAddrs(redeemScript, w.net)
-			txInSigs := make([]RawSig, len(addresses))
-			for addrIdx, addr := range addresses {
+			txInSigs := make([]RawSig, len(pubKeys))
+			for i, pubKey := range pubKeys {
 				var sig RawSig
-				privKey, err := getPrivKey(mgr, addr.(*btcutil.AddressPubKey))
+				privKey, err := series.getPrivKeyFor(pubKey)
 				if err != nil {
 					return nil, err
 				}
 				if privKey != nil {
+					childKey, err := privKey.Child(uint32(inputAddr.Index()))
+					if err != nil {
+						return nil, newError(
+							ErrWithdrawalProcessing, "Failed to derive key", err)
+					}
+					ecPrivKey, err := childKey.ECPrivKey()
+					if err != nil {
+						return nil, newError(
+							ErrWithdrawalProcessing, "Failed to derive key", err)
+					}
 					log.Infof("Signing input %d of tx %s with privkey of %s",
-						idx, ntxid, addr)
+						idx, ntxid, pubKey.String())
 					sig, err = btcscript.RawTxInSignature(
-						tx, idx, redeemScript, btcscript.SigHashAll, privKey)
+						tx, idx, redeemScript, btcscript.SigHashAll, ecPrivKey)
 					if err != nil {
 						return nil, newError(
 							ErrWithdrawalProcessing, "Failed to generate raw signature", err)
@@ -540,10 +547,10 @@ func (w *withdrawal) sign(mgr *waddrmgr.Manager) (map[string]TxInSignatures, err
 				} else {
 					log.Infof(
 						"Not signing input %d of %s because private key for %s is "+
-							"not available: %v", idx, ntxid, addr, err)
+							"not available: %v", idx, ntxid, pubKey.String(), err)
 					sig = []byte{}
 				}
-				txInSigs[addrIdx] = sig
+				txInSigs[i] = sig
 			}
 			txSigs[idx] = txInSigs
 		}

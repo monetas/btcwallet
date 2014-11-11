@@ -33,6 +33,9 @@ const (
 	// request.
 	ErrWithdrawalProcessing
 
+	// ErrUnknownPubKey indicates a pubkey that does not belong to a given series.
+	ErrUnknownPubKey
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -44,6 +47,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrInputSelection:       "ErrInputSelection",
 	ErrInvalidAddressRange:  "ErrInvalidAddressRange",
 	ErrWithdrawalProcessing: "ErrWithdrawalProcessing",
+	ErrUnknownPubKey:        "ErrUnknownPubKey",
 }
 
 // String returns the ErrorCode as a human-readable name.
