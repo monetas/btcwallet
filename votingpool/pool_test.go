@@ -131,7 +131,7 @@ func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *voti
 	if err != nil {
 		t.Fatalf("Failed to create Manager: %v", err)
 	}
-	pool, err = votingpool.CreateVotingPool(mgr, []byte{0x00})
+	pool, err = votingpool.Create(mgr, []byte{0x00})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestCreateVotingPool(t *testing.T) {
 	tearDown, mgr, _ := setUp(t)
 	defer tearDown()
 
-	pool, err := votingpool.CreateVotingPool(mgr, []byte{0x02})
+	pool, err := votingpool.Create(mgr, []byte{0x02})
 	if err != nil {
 		t.Errorf("Error creating VotingPool: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestCreateVotingPoolWhenAlreadyExists(t *testing.T) {
 	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
-	_, err := votingpool.CreateVotingPool(mgr, pool.ID)
+	_, err := votingpool.Create(mgr, pool.ID)
 
 	checkManagerError(t, "", err, waddrmgr.ErrVotingPoolAlreadyExists)
 }
@@ -901,7 +901,7 @@ var testLoadAllSeriesTests = []testLoadAllSeriesTest{
 }
 
 func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSeriesTest) *votingpool.Pool {
-	pool, err := votingpool.CreateVotingPool(mgr, []byte{byte(test.id + 1)})
+	pool, err := votingpool.Create(mgr, []byte{byte(test.id + 1)})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}

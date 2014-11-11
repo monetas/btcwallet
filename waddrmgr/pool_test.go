@@ -79,7 +79,7 @@ func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *voti
 	if err != nil {
 		t.Fatalf("Failed to create Manager: %v", err)
 	}
-	pool, err = votingpool.CreateVotingPool(mgr, []byte{0x00})
+	pool, err = votingpool.Create(mgr, []byte{0x00})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
