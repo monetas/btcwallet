@@ -91,26 +91,6 @@ var (
 	privPassphrase = []byte("81lUHXnOMZ@?XXd7O9xyDIWIbXX-lj")
 )
 
-var (
-	decryptPub = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
-		return func(in []byte) ([]byte, error) {
-			return m.Decrypt(waddrmgr.CKTPublic, in)
-		}
-	}
-
-	encryptPub = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
-		return func(in []byte) ([]byte, error) {
-			return m.Encrypt(waddrmgr.CKTPublic, in)
-		}
-	}
-
-	encryptPriv = func(m *waddrmgr.Manager) func([]byte) ([]byte, error) {
-		return func(in []byte) ([]byte, error) {
-			return m.Encrypt(waddrmgr.CKTPrivate, in)
-		}
-	}
-)
-
 func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
@@ -471,7 +451,7 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, encryptPub(manager))
+	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, manager, waddrmgr.CKTPublic)
 	if err != nil {
 		t.Fatalf("Failed to encrypt public keys: %v", err)
 	}
@@ -480,7 +460,7 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 	// private key.
 	manager.Unlock(privPassphrase)
 
-	rawPrivKeys, err := encryptKeys([]string{privKey0, ""}, encryptPriv(manager))
+	rawPrivKeys, err := encryptKeys([]string{privKey0, ""}, manager, waddrmgr.CKTPrivate)
 	if err != nil {
 		t.Fatalf("Failed to encrypt private keys: %v", err)
 	}
@@ -519,10 +499,7 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	encryptedPubKeys, err := encryptKeys([]string{pubKey0},
-		func(in []byte) ([]byte, error) {
-			return manager.Encrypt(waddrmgr.CKTPublic, in)
-		})
+	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, manager, waddrmgr.CKTPublic)
 	if err != nil {
 		t.Fatalf("Failed to encrypt public key: %v", err)
 	}
@@ -531,10 +508,7 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	// private key.
 	manager.Unlock(privPassphrase)
 
-	encryptedPrivKeys, err := encryptKeys([]string{privKey1},
-		func(in []byte) ([]byte, error) {
-			return manager.Encrypt(waddrmgr.CKTPrivate, in)
-		})
+	encryptedPrivKeys, err := encryptKeys([]string{privKey1}, manager, waddrmgr.CKTPrivate)
 	if err != nil {
 		t.Fatalf("Failed to encrypt private key: %v", err)
 	}
@@ -577,14 +551,14 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	}
 }
 
-func encryptKeys(keys []string, cryptoFunc func([]byte) ([]byte, error)) ([][]byte, error) {
+func encryptKeys(keys []string, mgr *waddrmgr.Manager, keyType waddrmgr.CryptoKeyType) ([][]byte, error) {
 	encryptedKeys := make([][]byte, len(keys))
 	var err error
 	for i, key := range keys {
 		if key == "" {
 			encryptedKeys[i] = nil
 		} else {
-			encryptedKeys[i], err = cryptoFunc([]byte(key))
+			encryptedKeys[i], err = mgr.Encrypt(keyType, []byte(key))
 		}
 		if err != nil {
 			return nil, err
@@ -1149,7 +1123,7 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 }
 
 func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
-	tearDown, mgr, _ := setUp(t)
+	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
 	// the plaintext not being base58 encoded triggers the error
@@ -1158,7 +1132,7 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 		t.Fatalf("Failed to encrypt plaintext: %v", err)
 	}
 
-	if _, err := votingpool.TstDecryptExtendedKey(decryptPub(mgr), cipherText); err == nil {
+	if _, err := pool.TstDecryptExtendedKey(waddrmgr.CKTPublic, cipherText); err == nil {
 		t.Errorf("Expected function to fail, but it didn't")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
@@ -1170,10 +1144,10 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 }
 
 func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
-	tearDown, mgr, _ := setUp(t)
+	tearDown, _, pool := setUp(t)
 	defer tearDown()
 
-	if _, err := votingpool.TstDecryptExtendedKey(decryptPub(mgr), []byte{}); err == nil {
+	if _, err := pool.TstDecryptExtendedKey(waddrmgr.CKTPublic, []byte{}); err == nil {
 		t.Errorf("Expected function to fail, but it didn't")
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)

@@ -16,7 +16,10 @@
 
 package votingpool
 
-import "github.com/conformal/btcwallet/waddrmgr"
+import (
+	"github.com/conformal/btcutil/hdkeychain"
+	"github.com/conformal/btcwallet/waddrmgr"
+)
 
 // TstPutSeries transparently wraps the voting pool putSeries method.
 func (vp *Pool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
@@ -61,6 +64,9 @@ func (vp *Pool) TstEmptySeriesLookup() {
 	vp.seriesLookup = make(map[uint32]*seriesData)
 }
 
-var TstValidateAndDecryptKeys = validateAndDecryptKeys
+// TstDecryptExtendedKey expose the decryptExtendedKey method.
+func (vp *Pool) TstDecryptExtendedKey(keyType waddrmgr.CryptoKeyType, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
+	return vp.decryptExtendedKey(keyType, encrypted)
+}
 
-var TstDecryptExtendedKey = decryptExtendedKey
+var TstValidateAndDecryptKeys = validateAndDecryptKeys
