@@ -50,30 +50,6 @@ type Pool struct {
 	ID           []byte
 	seriesLookup map[uint32]*seriesData
 	manager      *waddrmgr.Manager
-
-	// encryptPub encapsulates the manager public key encryption
-	// functionality, so it can be replaced by a test double.
-	encryptPub func(in []byte) ([]byte, error)
-
-	// decryptPub encapsulates the manager public key decryption
-	// functionality, so it can be replaced by a test double.
-	decryptPub func(in []byte) ([]byte, error)
-
-	// encryptPriv encapsulates the manager private key encryption
-	// functionality, so it can be replaced by a test double.
-	encryptPriv func(in []byte) ([]byte, error)
-
-	// decryptPriv encapsulates the manager private key decryption
-	// functionality, so it can be replaced by a test double.
-	decryptPriv func(in []byte) ([]byte, error)
-
-	// encryptScript encapsulates the manager script key encryption
-	// functionality, so it can be replaced by a test double.
-	encryptScript func(in []byte) ([]byte, error)
-
-	// decryptScript encapsulates the manager script key decryption
-	// functionality, so it can be replaced by a test double.
-	decryptScript func(in []byte) ([]byte, error)
 }
 
 // Create creates a new entry in the database with the given ID
@@ -104,29 +80,9 @@ func Load(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 // newPool creates a new Pool instance.
 func newPool(m *waddrmgr.Manager, poolID []byte) *Pool {
 	return &Pool{
-		ID:            poolID,
-		seriesLookup:  make(map[uint32]*seriesData),
-		manager:       m,
-		encryptPub:    genEncryptFunc(m, waddrmgr.CKTPublic),
-		decryptPub:    genDecryptFunc(m, waddrmgr.CKTPublic),
-		encryptPriv:   genEncryptFunc(m, waddrmgr.CKTPrivate),
-		decryptPriv:   genDecryptFunc(m, waddrmgr.CKTPrivate),
-		encryptScript: genEncryptFunc(m, waddrmgr.CKTScript),
-		decryptScript: genDecryptFunc(m, waddrmgr.CKTScript),
-	}
-}
-
-func genEncryptFunc(m *waddrmgr.Manager,
-	keyType waddrmgr.CryptoKeyType) func([]byte) ([]byte, error) {
-	return func(in []byte) ([]byte, error) {
-		return m.Encrypt(keyType, in)
-	}
-}
-
-func genDecryptFunc(m *waddrmgr.Manager,
-	keyType waddrmgr.CryptoKeyType) func([]byte) ([]byte, error) {
-	return func(in []byte) ([]byte, error) {
-		return m.Decrypt(keyType, in)
+		ID:           poolID,
+		seriesLookup: make(map[uint32]*seriesData),
+		manager:      m,
 	}
 }
 
@@ -206,8 +162,8 @@ func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
 	for i, pubKey := range data.publicKeys {
-		encryptedPubKeys[i], err = vp.encryptPub(
-			[]byte(pubKey.String()))
+		encryptedPubKeys[i], err = vp.manager.Encrypt(
+			waddrmgr.CKTPublic, []byte(pubKey.String()))
 		if err != nil {
 			str := fmt.Sprintf("key %v failed encryption", pubKey)
 			return managerError(waddrmgr.ErrCrypto, str, err)
@@ -218,8 +174,8 @@ func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
 		if privKey == nil {
 			encryptedPrivKeys[i] = nil
 		} else {
-			encryptedPrivKeys[i], err = vp.encryptPriv(
-				[]byte(privKey.String()))
+			encryptedPrivKeys[i], err = vp.manager.Encrypt(
+				waddrmgr.CKTPrivate, []byte(privKey.String()))
 		}
 		if err != nil {
 			str := fmt.Sprintf("key %v failed encryption", privKey)
@@ -347,10 +303,10 @@ func (vp *Pool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []st
 	return vp.putSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
-// decryptExtendedKey uses the given cryptoKey to decrypt the encrypted
-// byte slice and return an extended (public or private) key representing it.
-func decryptExtendedKey(decryptor func([]byte) ([]byte, error), encrypted []byte) (*hdkeychain.ExtendedKey, error) {
-	decrypted, err := decryptor(encrypted)
+// decryptExtendedKey uses Manager.Decrypt() to decrypt the encrypted byte slice and return
+// an extended (public or private) key representing it.
+func (vp *Pool) decryptExtendedKey(keyType waddrmgr.CryptoKeyType, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
+	decrypted, err := vp.manager.Decrypt(keyType, encrypted)
 	if err != nil {
 		str := fmt.Sprintf("cannot decrypt key %v", encrypted)
 		return nil, managerError(waddrmgr.ErrCrypto, str, err)
@@ -364,9 +320,9 @@ func decryptExtendedKey(decryptor func([]byte) ([]byte, error), encrypted []byte
 	return result, nil
 }
 
-// validateAndDecryptSeriesKeys checks that the number of public and private
-// keys in the given dbSeriesRow is the same, decrypts them, ensures the
-// non-nil private keys have a matching public key and returns them.
+// validateAndDecryptSeriesKeys checks that the length of the public and private key
+// slices is the same, decrypts them, ensures the non-nil private keys have a matching
+// public key and returns them.
 func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
 	pubKeys = make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	privKeys = make([]*hdkeychain.ExtendedKey, len(rawPrivKeys))
@@ -377,7 +333,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 	}
 
 	for i, encryptedPub := range rawPubKeys {
-		pubKey, err := decryptExtendedKey(vp.decryptPub, encryptedPub)
+		pubKey, err := vp.decryptExtendedKey(waddrmgr.CKTPublic, encryptedPub)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -388,7 +344,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 		if encryptedPriv == nil {
 			privKey = nil
 		} else {
-			privKey, err = decryptExtendedKey(vp.decryptPriv, encryptedPriv)
+			privKey, err = vp.decryptExtendedKey(waddrmgr.CKTPrivate, encryptedPriv)
 			if err != nil {
 				return nil, nil, err
 			}
