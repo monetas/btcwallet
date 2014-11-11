@@ -24,6 +24,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/waddrmgr"
+	"github.com/conformal/btcwallet/walletdb"
 )
 
 const (
@@ -50,27 +51,38 @@ type Pool struct {
 	ID           []byte
 	seriesLookup map[uint32]*seriesData
 	manager      *waddrmgr.Manager
+	namespace    walletdb.Namespace
 }
 
 // Create creates a new entry in the database with the given ID
 // and returns the Pool representing it.
-func Create(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
-	err := waddrmgr.PutVotingPool(m, poolID)
+func Create(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
+	err := namespace.Update(
+		func(tx walletdb.Tx) error {
+			return putPool(tx, poolID)
+		})
 	if err != nil {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
 		return nil, managerError(waddrmgr.ErrVotingPoolAlreadyExists, str, err)
 	}
-	return newPool(m, poolID), nil
+	return newPool(namespace, m, poolID), nil
 }
 
 // Load fetches the entry in the database with the given ID and returns the Pool
 // representing it.
-func Load(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
-	err := waddrmgr.ExistsVotingPool(m, poolID)
+func Load(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
+	err := namespace.View(
+		func(tx walletdb.Tx) error {
+			if exists := existsPool(tx, poolID); !exists {
+				str := fmt.Sprintf("unable to find voting pool %v in db", poolID)
+				return managerError(waddrmgr.ErrVotingPoolNotExists, str, nil)
+			}
+			return nil
+		})
 	if err != nil {
 		return nil, err
 	}
-	vp := newPool(m, poolID)
+	vp := newPool(namespace, m, poolID)
 	if err = vp.LoadAllSeries(); err != nil {
 		return nil, err
 	}
@@ -78,19 +90,20 @@ func Load(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 }
 
 // newPool creates a new Pool instance.
-func newPool(m *waddrmgr.Manager, poolID []byte) *Pool {
+func newPool(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) *Pool {
 	return &Pool{
 		ID:           poolID,
 		seriesLookup: make(map[uint32]*seriesData),
 		manager:      m,
+		namespace:    namespace,
 	}
 }
 
 // LoadAndGetDepositScript generates and returns a deposit script for the given seriesID,
 // branch and index of the Pool identified by poolID.
-func LoadAndGetDepositScript(m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
+func LoadAndGetDepositScript(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
 	pid := []byte(poolID)
-	vp, err := Load(m, pid)
+	vp, err := Load(namespace, m, pid)
 	if err != nil {
 		return nil, err
 	}
@@ -104,14 +117,14 @@ func LoadAndGetDepositScript(m *waddrmgr.Manager, poolID string, seriesID, branc
 // LoadAndCreateSeries loads the Pool with the given ID, creating a new one if it doesn't
 // yet exist, and then creates and returns a Series with the given seriesID, rawPubKeys
 // and reqSigs. See CreateSeries for the constraints enforced on rawPubKeys and reqSigs.
-func LoadAndCreateSeries(m *waddrmgr.Manager, version uint32,
+func LoadAndCreateSeries(namespace walletdb.Namespace, m *waddrmgr.Manager, version uint32,
 	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
-	vp, err := Load(m, pid)
+	vp, err := Load(namespace, m, pid)
 	if err != nil {
 		managerErr := err.(waddrmgr.ManagerError)
 		if managerErr.ErrorCode == waddrmgr.ErrVotingPoolNotExists {
-			vp, err = Create(m, pid)
+			vp, err = Create(namespace, m, pid)
 			if err != nil {
 				return err
 			}
@@ -124,10 +137,10 @@ func LoadAndCreateSeries(m *waddrmgr.Manager, version uint32,
 
 // LoadAndReplaceSeries loads the voting pool with the given ID and calls ReplaceSeries,
 // passing the given series ID, public keys and reqSigs to it.
-func LoadAndReplaceSeries(m *waddrmgr.Manager, version uint32,
+func LoadAndReplaceSeries(namespace walletdb.Namespace, m *waddrmgr.Manager, version uint32,
 	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
-	vp, err := Load(m, pid)
+	vp, err := Load(namespace, m, pid)
 	if err != nil {
 		return err
 	}
@@ -136,10 +149,10 @@ func LoadAndReplaceSeries(m *waddrmgr.Manager, version uint32,
 
 // LoadAndEmpowerSeries loads the voting pool with the given ID and calls EmpowerSeries,
 // passing the given series ID and private key to it.
-func LoadAndEmpowerSeries(m *waddrmgr.Manager,
+func LoadAndEmpowerSeries(namespace walletdb.Namespace, m *waddrmgr.Manager,
 	poolID string, seriesID uint32, rawPrivKey string) error {
 	pid := []byte(poolID)
-	pool, err := Load(m, pid)
+	pool, err := Load(namespace, m, pid)
 	if err != nil {
 		return err
 	}
@@ -183,8 +196,10 @@ func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
 		}
 	}
 
-	err = waddrmgr.PutSeries(vp.manager, vp.ID, data.version, seriesID, data.active,
-		data.reqSigs, encryptedPubKeys, encryptedPrivKeys)
+	err = vp.namespace.Update(func(tx walletdb.Tx) error {
+		return putSeries(tx, vp.ID, data.version, seriesID, data.active,
+			data.reqSigs, encryptedPubKeys, encryptedPrivKeys)
+	})
 	if err != nil {
 		str := fmt.Sprintf("cannot put series #%d into db", seriesID)
 		return managerError(waddrmgr.ErrSeriesStorage, str, err)
@@ -373,23 +388,45 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 // a series, it will also ensure they have a matching extended public key
 // in that series.
 func (vp *Pool) LoadAllSeries() error {
-	series, err := waddrmgr.LoadAllSeries(vp.manager, vp.ID)
+	var series map[uint32]*dbSeriesRow
+	err := vp.namespace.View(func(tx walletdb.Tx) error {
+		var err error
+		series, err = loadAllSeries(tx, vp.ID)
+		return err
+	})
 	if err != nil {
 		return err
 	}
 	for id, series := range series {
 		pubKeys, privKeys, err := validateAndDecryptKeys(
-			series.PubKeysEncrypted, series.PrivKeysEncrypted, vp)
+			series.pubKeysEncrypted, series.privKeysEncrypted, vp)
 		if err != nil {
 			return err
 		}
-		vp.seriesLookup[uint32(id)] = &seriesData{
+		vp.seriesLookup[id] = &seriesData{
 			publicKeys:  pubKeys,
 			privateKeys: privKeys,
-			reqSigs:     series.ReqSigs,
+			reqSigs:     series.reqSigs,
 		}
 	}
 	return nil
+}
+
+// existsSeries checks whether a series is stored in the database.
+// Used solely by the series creation test.
+func (vp *Pool) existsSeries(seriesID uint32) bool {
+	var exists bool
+	vp.namespace.View(
+		func(tx walletdb.Tx) error {
+			bucket := tx.RootBucket().Bucket(vp.ID)
+			if bucket == nil {
+				exists = false
+				return nil
+			}
+			exists = bucket.Get(uint32ToBytes(seriesID)) != nil
+			return nil
+		})
+	return exists
 }
 
 // Change the order of the pubkeys based on branch number.

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
@@ -30,6 +31,8 @@ import (
 	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
+	"github.com/conformal/btcwallet/walletdb"
+	_ "github.com/conformal/btcwallet/walletdb/bdb"
 )
 
 var fastScrypt = &waddrmgr.Options{
@@ -98,43 +101,55 @@ func init() {
 func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.Pool) {
 	t.Parallel()
 
-	// Create a new manager.
-	// We create the file and immediately delete it, as the waddrmgr
-	// needs to be doing the creating.
-	file, err := ioutil.TempDir("", "pool_test")
+	// Create a new wallet DB and addr manager.
+	dir, err := ioutil.TempDir("", "pool_test")
 	if err != nil {
-		t.Fatalf("Failed to create db file: %v", err)
+		t.Fatalf("Failed to create db dir: %v", err)
 	}
-	os.Remove(file)
-	mgr, err = waddrmgr.Create(file, seed, pubPassphrase, privPassphrase,
+	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	mgr, err = waddrmgr.Create(mgrNamespace, seed, pubPassphrase, privPassphrase,
 		&btcnet.MainNetParams, fastScrypt)
 	if err != nil {
-		t.Fatalf("Failed to create Manager: %v", err)
+		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	pool, err = votingpool.Create(mgr, []byte{0x00})
+
+	// Create a walletdb for votingpools.
+	vpNamespace, err := db.Namespace([]byte("votingpool"))
+	if err != nil {
+		t.Fatalf("Failed to create VotingPool DB namespace: %v", err)
+	}
+	pool, err = votingpool.Create(vpNamespace, mgr, []byte{0x00})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
 	tearDownFunc = func() {
-		os.Remove(file)
+		db.Close()
 		mgr.Close()
+		os.Remove(dir)
 	}
 	return tearDownFunc, mgr, pool
 }
 
 func TestLoadVotingPoolAndDepositScript(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	// execute
-	script, err := votingpool.LoadAndGetDepositScript(manager, poolID, 0, 0, 0)
+	script, err := votingpool.LoadAndGetDepositScript(pool.TstNamespace(), manager, poolID, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to get deposit script: %v", err)
 	}
@@ -149,21 +164,21 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
 	poolID := "test"
 
 	// first time, the voting pool is created
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
 
 	// create another series where the voting pool is loaded this time
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = votingpool.LoadAndCreateSeries(manager, 1, poolID, 1, 2, pubKeys)
+	err = votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 1, 2, pubKeys)
 
 	if err != nil {
 		t.Fatalf("Loading voting pool and Creating series failed: %v", err)
@@ -171,32 +186,32 @@ func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = votingpool.LoadAndReplaceSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err = votingpool.LoadAndReplaceSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to replace series: %v", err)
 	}
 }
 
 func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
@@ -204,7 +219,7 @@ func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
 	// We need to unlock the manager in order to empower a series
 	manager.Unlock(privPassphrase)
 
-	err = votingpool.LoadAndEmpowerSeries(manager, poolID, 0, privKey0)
+	err = votingpool.LoadAndEmpowerSeries(pool.TstNamespace(), manager, poolID, 0, privKey0)
 	if err != nil {
 		t.Fatalf("Load voting pool and Empower series failed: %v", err)
 	}
@@ -294,7 +309,7 @@ func TestLoadVotingPool(t *testing.T) {
 	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
-	pool2, err := votingpool.Load(mgr, pool.ID)
+	pool2, err := votingpool.Load(pool.TstNamespace(), mgr, pool.ID)
 	if err != nil {
 		t.Errorf("Error loading VotingPool: %v", err)
 	}
@@ -304,15 +319,15 @@ func TestLoadVotingPool(t *testing.T) {
 }
 
 func TestCreateVotingPool(t *testing.T) {
-	tearDown, mgr, _ := setUp(t)
+	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
-	pool, err := votingpool.Create(mgr, []byte{0x02})
+	pool2, err := votingpool.Create(pool.TstNamespace(), mgr, []byte{0x02})
 	if err != nil {
 		t.Errorf("Error creating VotingPool: %v", err)
 	}
-	if !bytes.Equal(pool.ID, []byte{0x02}) {
-		t.Errorf("VotingPool ID mismatch: got %v, want %v", pool.ID, []byte{0x02})
+	if !bytes.Equal(pool2.ID, []byte{0x02}) {
+		t.Errorf("VotingPool ID mismatch: got %v, want %v", pool2.ID, []byte{0x02})
 	}
 }
 
@@ -320,7 +335,7 @@ func TestCreateVotingPoolWhenAlreadyExists(t *testing.T) {
 	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
-	_, err := votingpool.Create(mgr, pool.ID)
+	_, err := votingpool.Create(pool.TstNamespace(), mgr, pool.ID)
 
 	checkManagerError(t, "", err, waddrmgr.ErrVotingPoolAlreadyExists)
 }
@@ -368,11 +383,7 @@ func TestCreateSeries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%d: Cannot create series %d", testNum, test.series)
 		}
-		exists, err := pool.TstExistsSeries(test.series)
-		if err != nil {
-			t.Errorf("%d: Cannot retrieve series %d: %s", testNum, test.series, err)
-		}
-		if !exists {
+		if exists := pool.TstExistsSeries(test.series); !exists {
 			t.Errorf("%d: Series %d not in database", testNum, test.series)
 		}
 	}
@@ -874,8 +885,9 @@ var testLoadAllSeriesTests = []testLoadAllSeriesTest{
 	},
 }
 
-func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSeriesTest) *votingpool.Pool {
-	pool, err := votingpool.Create(mgr, []byte{byte(test.id + 1)})
+func setUpLoadAllSeries(t *testing.T, namespace walletdb.Namespace, mgr *waddrmgr.Manager,
+	test testLoadAllSeriesTest) *votingpool.Pool {
+	pool, err := votingpool.Create(namespace, mgr, []byte{byte(test.id + 1)})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
@@ -900,14 +912,14 @@ func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSer
 }
 
 func TestLoadAllSeries(t *testing.T) {
-	tearDown, manager, _ := setUp(t)
+	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
 	// We need to unlock the manager in order to empower a series.
 	manager.Unlock(privPassphrase)
 
 	for _, test := range testLoadAllSeriesTests {
-		pool := setUpLoadAllSeries(t, manager, test)
+		pool := setUpLoadAllSeries(t, pool.TstNamespace(), manager, test)
 		pool.TstEmptySeriesLookup()
 		err := pool.LoadAllSeries()
 		if err != nil {
@@ -1155,5 +1167,215 @@ func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
 		if gotErr.ErrorCode != wantErrCode {
 			t.Errorf("Got %s, want %s", gotErr.ErrorCode, wantErrCode)
 		}
+	}
+}
+
+func TestSerializationErrors(t *testing.T) {
+	tearDown, mgr, _ := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		version  uint32
+		pubKeys  []string
+		privKeys []string
+		reqSigs  uint32
+		err      waddrmgr.ErrorCode
+	}{
+		{
+			version: 2,
+			pubKeys: []string{pubKey0, pubKey1, pubKey2},
+			err:     waddrmgr.ErrSeriesVersion,
+		},
+		{
+			pubKeys: []string{"NONSENSE"},
+			// Not a valid length public key.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
+			privKeys: []string{privKey0},
+			// The number of public and private keys should be the same.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			pubKeys:  []string{pubKey0},
+			privKeys: []string{"NONSENSE"},
+			// Not a valid length private key.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+	}
+
+	// We need to unlock the manager in order to encrypt with the
+	// private key.
+	mgr.Unlock(privPassphrase)
+
+	active := true
+	for testNum, test := range tests {
+		encryptedPubs, err := encryptKeys(test.pubKeys, mgr, waddrmgr.CKTPublic)
+		if err != nil {
+			t.Fatalf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
+		}
+		encryptedPrivs, err := encryptKeys(test.privKeys, mgr, waddrmgr.CKTPrivate)
+		if err != nil {
+			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
+		}
+
+		_, err = votingpool.SerializeSeries(
+			test.version, active, test.reqSigs, encryptedPubs, encryptedPrivs)
+
+		checkManagerError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
+	}
+}
+
+func TestSerialization(t *testing.T) {
+	tearDown, mgr, _ := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		version  uint32
+		active   bool
+		pubKeys  []string
+		privKeys []string
+		reqSigs  uint32
+	}{
+		{
+			version: 1,
+			active:  true,
+			pubKeys: []string{pubKey0},
+			reqSigs: 1,
+		},
+		{
+			version:  0,
+			active:   false,
+			pubKeys:  []string{pubKey0},
+			privKeys: []string{privKey0},
+			reqSigs:  1,
+		},
+		{
+			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
+			privKeys: []string{privKey0, "", ""},
+			reqSigs:  2,
+		},
+		{
+			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4},
+			reqSigs: 3,
+		},
+		{
+			pubKeys:  []string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6},
+			privKeys: []string{"", privKey1, "", privKey3, "", "", ""},
+			reqSigs:  4,
+		},
+	}
+
+	// We need to unlock the manager in order to encrypt with the
+	// private key.
+	mgr.Unlock(privPassphrase)
+
+	for testNum, test := range tests {
+		encryptedPubs, err := encryptKeys(test.pubKeys, mgr, waddrmgr.CKTPublic)
+		if err != nil {
+			t.Fatalf("Test #%d - Error encrypting pubkeys: %v", testNum, err)
+		}
+		encryptedPrivs, err := encryptKeys(test.privKeys, mgr, waddrmgr.CKTPrivate)
+		if err != nil {
+			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
+		}
+
+		serialized, err := votingpool.SerializeSeries(
+			test.version, test.active, test.reqSigs, encryptedPubs, encryptedPrivs)
+		if err != nil {
+			t.Fatalf("Test #%d - Error in serialization %v", testNum, err)
+		}
+
+		row, err := votingpool.DeserializeSeries(serialized)
+		if err != nil {
+			t.Fatalf("Test #%d - Failed to deserialize %v %v", testNum, serialized, err)
+		}
+
+		// TODO: Move all of these checks into one or more separate functions.
+		if row.Version != test.version {
+			t.Errorf("Serialization #%d - version mismatch: got %d want %d",
+				testNum, row.Version, test.version)
+		}
+
+		if row.Active != test.active {
+			t.Errorf("Serialization #%d - active mismatch: got %d want %d",
+				testNum, row.Active, test.active)
+		}
+
+		if row.ReqSigs != test.reqSigs {
+			t.Errorf("Serialization #%d - row reqSigs off. Got %d, want %d",
+				testNum, row.ReqSigs, test.reqSigs)
+		}
+
+		if len(row.PubKeysEncrypted) != len(test.pubKeys) {
+			t.Errorf("Serialization #%d - Wrong no. of pubkeys. Got %d, want %d",
+				testNum, len(row.PubKeysEncrypted), len(test.pubKeys))
+		}
+
+		for i, encryptedPub := range encryptedPubs {
+			got := string(row.PubKeysEncrypted[i])
+
+			if got != string(encryptedPub) {
+				t.Errorf("Serialization #%d - Pubkey deserialization. Got %v, want %v",
+					testNum, got, string(encryptedPub))
+			}
+		}
+
+		if len(row.PrivKeysEncrypted) != len(row.PubKeysEncrypted) {
+			t.Errorf("Serialization #%d - no. privkeys (%d) != no. pubkeys (%d)",
+				testNum, len(row.PrivKeysEncrypted), len(row.PubKeysEncrypted))
+		}
+
+		for i, encryptedPriv := range encryptedPrivs {
+			got := string(row.PrivKeysEncrypted[i])
+
+			if got != string(encryptedPriv) {
+				t.Errorf("Serialization #%d - Privkey deserialization. Got %v, want %v",
+					testNum, got, string(encryptedPriv))
+			}
+		}
+	}
+}
+
+func TestDeserializationErrors(t *testing.T) {
+	tearDown, _, _ := setUp(t)
+	defer tearDown()
+
+	tests := []struct {
+		serialized []byte
+		err        waddrmgr.ErrorCode
+	}{
+		{
+			serialized: make([]byte, 1000000),
+			// Too many bytes (over waddrmgr.seriesMaxSerial).
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			serialized: make([]byte, 10),
+			// Not enough bytes (under waddrmgr.seriesMinSerial).
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			serialized: []byte{
+				1, 0, 0, 0, // 4 bytes (version)
+				0,          // 1 byte (active)
+				2, 0, 0, 0, // 4 bytes (reqSigs)
+				3, 0, 0, 0, // 4 bytes (nKeys)
+			},
+			// Here we have the constant data but are missing any public/private keys.
+			err: waddrmgr.ErrSeriesStorage,
+		},
+		{
+			serialized: []byte{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			// Unsupported version.
+			err: waddrmgr.ErrSeriesVersion,
+		},
+	}
+
+	for testNum, test := range tests {
+		_, err := votingpool.DeserializeSeries(test.serialized)
+
+		checkManagerError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
 	}
 }
