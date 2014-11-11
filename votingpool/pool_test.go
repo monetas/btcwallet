@@ -314,7 +314,7 @@ func TestLoadVotingPool(t *testing.T) {
 	tearDown, mgr, pool := setUp(t)
 	defer tearDown()
 
-	pool2, err := votingpool.LoadVotingPool(mgr, pool.ID)
+	pool2, err := votingpool.Load(mgr, pool.ID)
 	if err != nil {
 		t.Errorf("Error loading VotingPool: %v", err)
 	}

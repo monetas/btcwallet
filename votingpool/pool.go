@@ -89,7 +89,7 @@ func Create(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 
 // LoadVotingPool fetches the entry in the database with the given ID
 // and returns the VotingPool representing it.
-func LoadVotingPool(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
+func Load(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 	err := waddrmgr.ExistsVotingPool(m, poolID)
 	if err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func genDecryptFunc(m *waddrmgr.Manager,
 // by poolID.
 func LoadVotingPoolAndDepositScript(m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
 	pid := []byte(poolID)
-	vp, err := LoadVotingPool(m, pid)
+	vp, err := Load(m, pid)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ func LoadVotingPoolAndDepositScript(m *waddrmgr.Manager, poolID string, seriesID
 func LoadVotingPoolAndCreateSeries(m *waddrmgr.Manager, version uint32,
 	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
-	vp, err := LoadVotingPool(m, pid)
+	vp, err := Load(m, pid)
 	if err != nil {
 		managerErr := err.(waddrmgr.ManagerError)
 		if managerErr.ErrorCode == waddrmgr.ErrVotingPoolNotExists {
@@ -174,7 +174,7 @@ func LoadVotingPoolAndCreateSeries(m *waddrmgr.Manager, version uint32,
 func LoadVotingPoolAndReplaceSeries(m *waddrmgr.Manager, version uint32,
 	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
-	vp, err := LoadVotingPool(m, pid)
+	vp, err := Load(m, pid)
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func LoadVotingPoolAndReplaceSeries(m *waddrmgr.Manager, version uint32,
 func LoadVotingPoolAndEmpowerSeries(m *waddrmgr.Manager,
 	poolID string, seriesID uint32, rawPrivKey string) error {
 	pid := []byte(poolID)
-	pool, err := LoadVotingPool(m, pid)
+	pool, err := Load(m, pid)
 	if err != nil {
 		return err
 	}
