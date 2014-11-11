@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/conformal/btcec"
 	"github.com/conformal/btclog"
@@ -413,8 +414,7 @@ func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 	}
 
 	// Sort outputs by outBailmentID (hash(server ID, tx #))
-	// XXX(lars) enabling this sort breaks the TestWithdrawal test.
-	//sort.Sort(sortByOutBailmentID(w.pendingOutputs))
+	sort.Sort(sortByOutBailmentID(w.pendingOutputs))
 
 	for len(w.pendingOutputs) > 0 {
 		if err := w.fulfilNextOutput(); err != nil {
