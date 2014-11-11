@@ -63,7 +63,7 @@ var (
 	}
 )
 
-func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.VotingPool) {
+func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.Pool) {
 	t.Parallel()
 
 	// Create a new manager.

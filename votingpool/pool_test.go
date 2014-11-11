@@ -115,7 +115,7 @@ func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
-func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.VotingPool) {
+func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.Pool) {
 	t.Parallel()
 
 	// Create a new manager.
@@ -719,7 +719,7 @@ func TestReplaceExistingSeries(t *testing.T) {
 
 // validateReplaceSeries validate the created series stored in the system
 // corresponds to the series we replaced the original with.
-func validateReplaceSeries(t *testing.T, pool *votingpool.VotingPool, testID int, replacedWith seriesRaw) {
+func validateReplaceSeries(t *testing.T, pool *votingpool.Pool, testID int, replacedWith seriesRaw) {
 	seriesID := replacedWith.id
 	series := pool.GetSeries(seriesID)
 	if series == nil {
@@ -900,7 +900,7 @@ var testLoadAllSeriesTests = []testLoadAllSeriesTest{
 	},
 }
 
-func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSeriesTest) *votingpool.VotingPool {
+func setUpLoadAllSeries(t *testing.T, mgr *waddrmgr.Manager, test testLoadAllSeriesTest) *votingpool.Pool {
 	pool, err := votingpool.CreateVotingPool(mgr, []byte{byte(test.id + 1)})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
@@ -945,7 +945,7 @@ func TestLoadAllSeries(t *testing.T) {
 	}
 }
 
-func validateLoadAllSeries(t *testing.T, pool *votingpool.VotingPool, testID int, seriesData seriesRaw) {
+func validateLoadAllSeries(t *testing.T, pool *votingpool.Pool, testID int, seriesData seriesRaw) {
 	series := pool.GetSeries(seriesData.id)
 
 	// Check that the series exists.

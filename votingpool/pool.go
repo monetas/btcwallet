@@ -46,7 +46,7 @@ type seriesData struct {
 // store and account for customer cryptocurrency deposits and to redeem
 // valid withdrawals. For details about how the arrangement works, see
 // http://opentransactions.org/wiki/index.php?title=Category:Voting_Pools
-type VotingPool struct {
+type Pool struct {
 	ID           []byte
 	seriesLookup map[uint32]*seriesData
 	manager      *waddrmgr.Manager
@@ -78,7 +78,7 @@ type VotingPool struct {
 
 // CreateVotingPool creates a new entry in the database with the given ID
 // and returns the VotingPool representing it.
-func CreateVotingPool(m *waddrmgr.Manager, poolID []byte) (*VotingPool, error) {
+func CreateVotingPool(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 	err := waddrmgr.PutVotingPool(m, poolID)
 	if err != nil {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
@@ -89,7 +89,7 @@ func CreateVotingPool(m *waddrmgr.Manager, poolID []byte) (*VotingPool, error) {
 
 // LoadVotingPool fetches the entry in the database with the given ID
 // and returns the VotingPool representing it.
-func LoadVotingPool(m *waddrmgr.Manager, poolID []byte) (*VotingPool, error) {
+func LoadVotingPool(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 	err := waddrmgr.ExistsVotingPool(m, poolID)
 	if err != nil {
 		return nil, err
@@ -102,8 +102,8 @@ func LoadVotingPool(m *waddrmgr.Manager, poolID []byte) (*VotingPool, error) {
 }
 
 // newVotingPool creates a new VotingPool instance.
-func newVotingPool(m *waddrmgr.Manager, poolID []byte) *VotingPool {
-	return &VotingPool{
+func newVotingPool(m *waddrmgr.Manager, poolID []byte) *Pool {
+	return &Pool{
 		ID:            poolID,
 		seriesLookup:  make(map[uint32]*seriesData),
 		manager:       m,
@@ -196,7 +196,7 @@ func LoadVotingPoolAndEmpowerSeries(m *waddrmgr.Manager,
 
 // GetSeries returns the series with the given ID, or nil if it doesn't
 // exist.
-func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
+func (vp *Pool) GetSeries(seriesID uint32) *seriesData {
 	series, exists := vp.seriesLookup[seriesID]
 	if !exists {
 		return nil
@@ -206,7 +206,7 @@ func (vp *VotingPool) GetSeries(seriesID uint32) *seriesData {
 
 // saveSeriesToDisk stores the given series ID and data in the database,
 // first encrypting the public/private extended keys.
-func (vp *VotingPool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
+func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
 	for i, pubKey := range data.publicKeys {
@@ -284,7 +284,7 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 // pool's seriesLookup map. It also ensures inRawPubKeys has at least
 // MinSeriesPubKeys items and reqSigs is not greater than the number of items in
 // inRawPubKeys.
-func (vp *VotingPool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
+func (vp *Pool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
 	if len(inRawPubKeys) < MinSeriesPubKeys {
 		str := fmt.Sprintf("need at least %d public keys to create a series", MinSeriesPubKeys)
 		return managerError(waddrmgr.ErrTooFewPublicKeys, str, nil)
@@ -323,7 +323,7 @@ func (vp *VotingPool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys 
 //
 // - rawPubKeys has to contain three or more public keys;
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
-func (vp *VotingPool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
+func (vp *Pool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	if series := vp.GetSeries(seriesID); series != nil {
 		str := fmt.Sprintf("series #%d already exists", seriesID)
 		return managerError(waddrmgr.ErrSeriesAlreadyExists, str, nil)
@@ -336,7 +336,7 @@ func (vp *VotingPool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys
 //
 // - rawPubKeys has to contain three or more public keys
 // - reqSigs has to be less or equal than the number of public keys in rawPubKeys.
-func (vp *VotingPool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
+func (vp *Pool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist, cannot replace it", seriesID)
@@ -371,7 +371,7 @@ func decryptExtendedKey(decryptor func([]byte) ([]byte, error), encrypted []byte
 // validateAndDecryptSeriesKeys checks that the number of public and private
 // keys in the given dbSeriesRow is the same, decrypts them, ensures the
 // non-nil private keys have a matching public key and returns them.
-func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *VotingPool) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
+func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
 	pubKeys = make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	privKeys = make([]*hdkeychain.ExtendedKey, len(rawPrivKeys))
 	if len(pubKeys) != len(privKeys) {
@@ -420,7 +420,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *VotingPool) (p
 // seriesLookup map with them. If there are any private extended keys for
 // a series, it will also ensure they have a matching extended public key
 // in that series.
-func (vp *VotingPool) LoadAllSeries() error {
+func (vp *Pool) LoadAllSeries() error {
 	series, err := waddrmgr.LoadAllSeries(vp.manager, vp.ID)
 	if err != nil {
 		return err
@@ -482,7 +482,7 @@ func branchOrder(pks []*hdkeychain.ExtendedKey, branch uint32) ([]*hdkeychain.Ex
 
 // DepositScriptAddress constructs a multi-signature redemption script using DepositScript
 // and returns the pay-to-script-hash-address for that script.
-func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (btcutil.Address, error) {
+func (vp *Pool) DepositScriptAddress(seriesID, branch, index uint32) (btcutil.Address, error) {
 	script, err := vp.DepositScript(seriesID, branch, index)
 	if err != nil {
 		return nil, err
@@ -495,7 +495,7 @@ func (vp *VotingPool) DepositScriptAddress(seriesID, branch, index uint32) (btcu
 // DepositScript constructs and returns a multi-signature redemption script where
 // a certain number (Series.reqSigs) of the public keys belonging to the series
 // with the given ID are required to sign the transaction for it to be successful.
-func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
+func (vp *Pool) DepositScript(seriesID, branch, index uint32) ([]byte, error) {
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist", seriesID)
@@ -543,7 +543,7 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 // series with the given ID, thus allowing it to sign deposit/withdrawal
 // scripts. The series with the given ID must exist, the key must be a valid
 // private extended key and must match one of the series' extended public keys.
-func (vp *VotingPool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
+func (vp *Pool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	// make sure this series exists
 	series := vp.GetSeries(seriesID)
 	if series == nil {

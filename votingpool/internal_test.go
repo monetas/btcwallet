@@ -19,7 +19,7 @@ package votingpool
 import "github.com/conformal/btcwallet/waddrmgr"
 
 // TstPutSeries transparently wraps the voting pool putSeries method.
-func (vp *VotingPool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
+func (vp *Pool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
 	return vp.putSeries(version, seriesID, reqSigs, inRawPubKeys)
 }
 
@@ -27,7 +27,7 @@ var TstBranchOrder = branchOrder
 
 // TstExistsSeries checks whether a series is stored in the database.
 // Used by the series creation test.
-func (vp *VotingPool) TstExistsSeries(seriesID uint32) (bool, error) {
+func (vp *Pool) TstExistsSeries(seriesID uint32) (bool, error) {
 	return waddrmgr.ExistsSeries(vp.manager, vp.ID, seriesID)
 }
 
@@ -57,7 +57,7 @@ func (s *seriesData) TstGetReqSigs() uint32 {
 }
 
 // TstEmptySeriesLookup empties the voting pool seriesLookup attribute.
-func (vp *VotingPool) TstEmptySeriesLookup() {
+func (vp *Pool) TstEmptySeriesLookup() {
 	vp.seriesLookup = make(map[uint32]*seriesData)
 }
 
