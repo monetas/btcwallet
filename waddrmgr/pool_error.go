@@ -16,6 +16,9 @@
 
 package waddrmgr
 
+// XXX: All errors defined here will soon be moved to the votingpool package, where they
+// belong.
+
 // Constants that identify voting pool-related errors.
 // The codes start from 1000 to avoid confusion with the ones in error.go.
 const (
