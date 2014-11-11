@@ -73,7 +73,7 @@ func TestWithdrawal(t *testing.T) {
 	// XXX: The ntxid is deterministic so we hardcode it here, but if the test is changed
 	// in a way that causes the generated transactions to change (e.g. different
 	// inputs/outputs), the ntxid will change too.
-	ntxid := "c47af4b04a82caa5c34bded7cf3869fbb690fd572c2b87f70c915892fa828235"
+	ntxid := "a11470da31e2f724e8ba3785a2691f080771886a6b891ab1afe940fb35b0a195"
 	txSigs := sigs[ntxid]
 	// We should have 2 TxInSignatures entries as the transaction created by
 	// votingpool.Withdrawal() should have two inputs.
