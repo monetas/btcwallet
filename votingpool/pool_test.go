@@ -148,13 +148,13 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadVotingPoolAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	// execute
-	script, err := votingpool.LoadVotingPoolAndDepositScript(manager, poolID, 0, 0, 0)
+	script, err := votingpool.LoadAndGetDepositScript(manager, poolID, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to get deposit script: %v", err)
 	}
@@ -176,14 +176,14 @@ func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
 
 	// first time, the voting pool is created
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadVotingPoolAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
 
 	// create another series where the voting pool is loaded this time
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = votingpool.LoadVotingPoolAndCreateSeries(manager, 1, poolID, 1, 2, pubKeys)
+	err = votingpool.LoadAndCreateSeries(manager, 1, poolID, 1, 2, pubKeys)
 
 	if err != nil {
 		t.Fatalf("Loading voting pool and Creating series failed: %v", err)
@@ -197,13 +197,13 @@ func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadVotingPoolAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = votingpool.LoadVotingPoolAndReplaceSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err = votingpool.LoadAndReplaceSeries(manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to replace series: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadVotingPoolAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
+	err := votingpool.LoadAndCreateSeries(manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
 	// We need to unlock the manager in order to empower a series
 	manager.Unlock(privPassphrase)
 
-	err = votingpool.LoadVotingPoolAndEmpowerSeries(manager, poolID, 0, privKey0)
+	err = votingpool.LoadAndEmpowerSeries(manager, poolID, 0, privKey0)
 	if err != nil {
 		t.Fatalf("Load voting pool and Empower series failed: %v", err)
 	}

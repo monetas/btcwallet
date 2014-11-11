@@ -30,7 +30,7 @@ const (
 	MinSeriesPubKeys = 3
 )
 
-// seriesData represents a Series for a given VotingPool.
+// seriesData represents a Series for a given Pool.
 type seriesData struct {
 	version uint32
 	// Whether or not a series is active. This is serialized/deserialized but
@@ -42,7 +42,7 @@ type seriesData struct {
 	privateKeys []*hdkeychain.ExtendedKey
 }
 
-// VotingPool represents an arrangement of notary servers to securely
+// Pool represents an arrangement of notary servers to securely
 // store and account for customer cryptocurrency deposits and to redeem
 // valid withdrawals. For details about how the arrangement works, see
 // http://opentransactions.org/wiki/index.php?title=Category:Voting_Pools
@@ -76,33 +76,33 @@ type Pool struct {
 	decryptScript func(in []byte) ([]byte, error)
 }
 
-// CreateVotingPool creates a new entry in the database with the given ID
-// and returns the VotingPool representing it.
+// Create creates a new entry in the database with the given ID
+// and returns the Pool representing it.
 func Create(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 	err := waddrmgr.PutVotingPool(m, poolID)
 	if err != nil {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
 		return nil, managerError(waddrmgr.ErrVotingPoolAlreadyExists, str, err)
 	}
-	return newVotingPool(m, poolID), nil
+	return newPool(m, poolID), nil
 }
 
-// LoadVotingPool fetches the entry in the database with the given ID
-// and returns the VotingPool representing it.
+// Load fetches the entry in the database with the given ID and returns the Pool
+// representing it.
 func Load(m *waddrmgr.Manager, poolID []byte) (*Pool, error) {
 	err := waddrmgr.ExistsVotingPool(m, poolID)
 	if err != nil {
 		return nil, err
 	}
-	vp := newVotingPool(m, poolID)
+	vp := newPool(m, poolID)
 	if err = vp.LoadAllSeries(); err != nil {
 		return nil, err
 	}
 	return vp, nil
 }
 
-// newVotingPool creates a new VotingPool instance.
-func newVotingPool(m *waddrmgr.Manager, poolID []byte) *Pool {
+// newPool creates a new Pool instance.
+func newPool(m *waddrmgr.Manager, poolID []byte) *Pool {
 	return &Pool{
 		ID:            poolID,
 		seriesLookup:  make(map[uint32]*seriesData),
@@ -130,10 +130,9 @@ func genDecryptFunc(m *waddrmgr.Manager,
 	}
 }
 
-// LoadVotingPoolAndDepositScript generates and returns a deposit script
-// for the given seriesID, branch and index of the VotingPool identified
-// by poolID.
-func LoadVotingPoolAndDepositScript(m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
+// LoadAndGetDepositScript generates and returns a deposit script for the given seriesID,
+// branch and index of the Pool identified by poolID.
+func LoadAndGetDepositScript(m *waddrmgr.Manager, poolID string, seriesID, branch, index uint32) ([]byte, error) {
 	pid := []byte(poolID)
 	vp, err := Load(m, pid)
 	if err != nil {
@@ -146,11 +145,10 @@ func LoadVotingPoolAndDepositScript(m *waddrmgr.Manager, poolID string, seriesID
 	return script, nil
 }
 
-// LoadVotingPoolAndCreateSeries loads the VotingPool with the given ID,
-// creating a new one if it doesn't yet exist, and then creates and returns
-// a Series with the given seriesID, rawPubKeys and reqSigs. See CreateSeries
-// for the constraints enforced on rawPubKeys and reqSigs.
-func LoadVotingPoolAndCreateSeries(m *waddrmgr.Manager, version uint32,
+// LoadAndCreateSeries loads the Pool with the given ID, creating a new one if it doesn't
+// yet exist, and then creates and returns a Series with the given seriesID, rawPubKeys
+// and reqSigs. See CreateSeries for the constraints enforced on rawPubKeys and reqSigs.
+func LoadAndCreateSeries(m *waddrmgr.Manager, version uint32,
 	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
 	vp, err := Load(m, pid)
@@ -168,10 +166,9 @@ func LoadVotingPoolAndCreateSeries(m *waddrmgr.Manager, version uint32,
 	return vp.CreateSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
-// LoadVotingPoolAndReplaceSeries loads the voting pool with the given ID
-// and calls ReplaceSeries, passing the given series ID, public keys and
-// reqSigs to it.
-func LoadVotingPoolAndReplaceSeries(m *waddrmgr.Manager, version uint32,
+// LoadAndReplaceSeries loads the voting pool with the given ID and calls ReplaceSeries,
+// passing the given series ID, public keys and reqSigs to it.
+func LoadAndReplaceSeries(m *waddrmgr.Manager, version uint32,
 	poolID string, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	pid := []byte(poolID)
 	vp, err := Load(m, pid)
@@ -181,10 +178,9 @@ func LoadVotingPoolAndReplaceSeries(m *waddrmgr.Manager, version uint32,
 	return vp.ReplaceSeries(version, seriesID, reqSigs, rawPubKeys)
 }
 
-// LoadVotingPoolAndEmpowerSeries loads the voting pool with the given ID
-// and calls EmpowerSeries, passing the given series ID and private key
-// to it.
-func LoadVotingPoolAndEmpowerSeries(m *waddrmgr.Manager,
+// LoadAndEmpowerSeries loads the voting pool with the given ID and calls EmpowerSeries,
+// passing the given series ID and private key to it.
+func LoadAndEmpowerSeries(m *waddrmgr.Manager,
 	poolID string, seriesID uint32, rawPrivKey string) error {
 	pid := []byte(poolID)
 	pool, err := Load(m, pid)
@@ -416,7 +412,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 }
 
 // LoadAllSeries fetches all series (decrypting their public and private
-// extended keys) for this VotingPool from the database and populates the
+// extended keys) for this Pool from the database and populates the
 // seriesLookup map with them. If there are any private extended keys for
 // a series, it will also ensure they have a matching extended public key
 // in that series.
