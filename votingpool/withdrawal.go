@@ -29,6 +29,7 @@ import (
 	"github.com/conformal/btcwallet/txstore"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
+	"github.com/conformal/fastsha256"
 )
 
 /*  ==== What needs to be stored in the DB, and other notes ====
@@ -142,6 +143,24 @@ type OutputRequest struct {
 	server string
 	// The server-specific transaction number for the outbailment request.
 	transaction uint32
+
+	// cachedSortID is used to cache the value of sortID() so the value does
+	// not have to be recalulated again.
+	cachedSortID []byte
+}
+
+// sortID returns a byte slice which is used when sorting
+// OutputRequests.
+func (o *OutputRequest) sortID() []byte {
+	if o.cachedSortID != nil {
+		return o.cachedSortID
+	}
+	str := fmt.Sprintf("%s%d", o.server, o.transaction)
+	hasher := fastsha256.New()
+	hasher.Write([]byte(str))
+	id := hasher.Sum(nil)
+	o.cachedSortID = id
+	return id
 }
 
 func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
@@ -393,7 +412,9 @@ func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 		return errors.New("We don't seem to have inputs to cover any of the requested outputs")
 	}
 
-	// TODO: Sort outputs by outBailmentID (hash(server ID, tx #))
+	// Sort outputs by outBailmentID (hash(server ID, tx #))
+	// XXX(lars) enabling this sort breaks the TestWithdrawal test.
+	//sort.Sort(sortByOutBailmentID(w.pendingOutputs))
 
 	for len(w.pendingOutputs) > 0 {
 		if err := w.fulfilNextOutput(); err != nil {
