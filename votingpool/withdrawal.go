@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/conformal/btcec"
 	"github.com/conformal/btclog"
@@ -29,6 +30,7 @@ import (
 	"github.com/conformal/btcwallet/txstore"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
+	"github.com/conformal/fastsha256"
 )
 
 /*  ==== What needs to be stored in the DB, and other notes ====
@@ -138,10 +140,30 @@ func (s *WithdrawalStatus) Outputs() []*WithdrawalOutput {
 type OutputRequest struct {
 	address string
 	amount  btcutil.Amount
+
 	// The notary server that received the outbailment request.
 	server string
+
 	// The server-specific transaction number for the outbailment request.
 	transaction uint32
+
+	// cachedHash is used to cache the hash of the outBailmentID so it
+	// only has to be calculated once.
+	cachedHash []byte
+}
+
+// outBailmentIDHash returns a byte slice which is used when sorting
+// OutputRequests.
+func (o *OutputRequest) outBailmentIDHash() []byte {
+	if o.cachedHash != nil {
+		return o.cachedHash
+	}
+	str := fmt.Sprintf("%s%d", o.server, o.transaction)
+	hasher := fastsha256.New()
+	hasher.Write([]byte(str))
+	id := hasher.Sum(nil)
+	o.cachedHash = id
+	return id
 }
 
 func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
@@ -155,7 +177,11 @@ func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
 func NewOutputRequest(
 	server string, transaction uint32, address string, amount btcutil.Amount) *OutputRequest {
 	return &OutputRequest{
-		server: server, transaction: transaction, address: address, amount: amount}
+		address:     address,
+		amount:      amount,
+		server:      server,
+		transaction: transaction,
+	}
 }
 
 // WithdrawalOutput represents a possibly fulfilled OutputRequest.
@@ -393,7 +419,8 @@ func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 		return errors.New("We don't seem to have inputs to cover any of the requested outputs")
 	}
 
-	// TODO: Sort outputs by outBailmentID (hash(server ID, tx #))
+	// Sort outputs by outBailmentID (hash(server ID, tx #))
+	sort.Sort(byOutBailmentID(w.pendingOutputs))
 
 	for len(w.pendingOutputs) > 0 {
 		if err := w.fulfilNextOutput(); err != nil {
