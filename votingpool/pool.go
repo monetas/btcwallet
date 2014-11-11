@@ -446,7 +446,7 @@ func (vp *VotingPool) LoadAllSeries() error {
 // - branch 1: ABC (first key priority)
 // - branch 2: BAC (second key priority)
 // - branch 3: CAB (third key priority)
-func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.AddressPubKey, error) {
+func branchOrder(pks []*hdkeychain.ExtendedKey, branch uint32) ([]*hdkeychain.ExtendedKey, error) {
 	if pks == nil {
 		// This really shouldn't happen, but we want to be good citizens, so we
 		// return an error instead of crashing.
@@ -459,7 +459,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.Addres
 
 	if branch == 0 {
 		numKeys := len(pks)
-		res := make([]*btcutil.AddressPubKey, numKeys)
+		res := make([]*hdkeychain.ExtendedKey, numKeys)
 		copy(res, pks)
 		// reverse pk
 		for i, j := 0, numKeys-1; i < j; i, j = i+1, j-1 {
@@ -467,7 +467,7 @@ func branchOrder(pks []*btcutil.AddressPubKey, branch uint32) ([]*btcutil.Addres
 		}
 		return res, nil
 	} else {
-		tmp := make([]*btcutil.AddressPubKey, len(pks))
+		tmp := make([]*hdkeychain.ExtendedKey, len(pks))
 		tmp[0] = pks[branch-1]
 		j := 1
 		for i := 0; i < len(pks); i++ {
@@ -502,9 +502,13 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 		return nil, managerError(waddrmgr.ErrSeriesNotExists, str, nil)
 	}
 
-	pks := make([]*btcutil.AddressPubKey, len(series.publicKeys))
+	pubKeys, err := branchOrder(series.publicKeys, branch)
+	if err != nil {
+		return nil, err
+	}
 
-	for i, key := range series.publicKeys {
+	pks := make([]*btcutil.AddressPubKey, len(pubKeys))
+	for i, key := range pubKeys {
 		child, err := key.Child(index)
 		// TODO: implement getting the next index until we find a valid one,
 		// in case there is a hdkeychain.ErrInvalidChild.
@@ -524,11 +528,6 @@ func (vp *VotingPool) DepositScript(seriesID, branch, index uint32) ([]byte, err
 				index, i)
 			return nil, managerError(waddrmgr.ErrKeyChain, str, err)
 		}
-	}
-
-	pks, err := branchOrder(pks, branch)
-	if err != nil {
-		return nil, err
 	}
 
 	script, err := btcscript.MultiSigScript(pks, int(series.reqSigs))
