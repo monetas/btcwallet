@@ -35,10 +35,11 @@ func (s sortByOutBailmentID) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-// Less returns true if the sortID of ith element is less than the
-// sortID of jth element.
+// Less returns true if the hash of the outBailmentID of the ith
+// element is less than the hash of the outBailmentID of the jth
+// element.
 func (s sortByOutBailmentID) Less(i, j int) bool {
-	return bytes.Compare(s[i].sortID(), s[j].sortID()) < 0
+	return bytes.Compare(s[i].outBailmentID.hash(), s[j].outBailmentID.hash()) < 0
 }
 
 // Check at compile time that sortByOutBailmentID implements sort.Interface.

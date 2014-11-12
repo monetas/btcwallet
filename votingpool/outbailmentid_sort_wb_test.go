@@ -22,13 +22,13 @@ import (
 	"testing"
 )
 
-// TestOutBailmentIDSort tests that the sorting by
-// OutputRequest.sortID works as expected.
+// TestOutBailmentIDSort tests that the we can correctly sort the a
+// output request by a hash of the outbailmentID.
 func TestOutBailmentIDSort(t *testing.T) {
-	or00 := &OutputRequest{cachedSortID: []byte{0, 0}}
-	or01 := &OutputRequest{cachedSortID: []byte{0, 1}}
-	or10 := &OutputRequest{cachedSortID: []byte{1, 0}}
-	or11 := &OutputRequest{cachedSortID: []byte{1, 1}}
+	or00 := &OutputRequest{outBailmentID: OutBailmentID{cachedHash: []byte{0, 0}}}
+	or01 := &OutputRequest{outBailmentID: OutBailmentID{cachedHash: []byte{0, 1}}}
+	or10 := &OutputRequest{outBailmentID: OutBailmentID{cachedHash: []byte{1, 0}}}
+	or11 := &OutputRequest{outBailmentID: OutBailmentID{cachedHash: []byte{1, 1}}}
 
 	want := []*OutputRequest{or00, or01, or10, or11}
 	random := []*OutputRequest{or11, or00, or10, or01}
