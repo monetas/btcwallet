@@ -21,26 +21,23 @@ import (
 	"sort"
 )
 
-// sortByOutBailmentID is a type used solely for sorting slices of
-// *OutputRequest.
-type sortByOutBailmentID []*OutputRequest
+// byOutBailmentID defines the methods needed to satisify
+// sort.Interface to sort a slice of OutputRequests by
+// the value of outBailmentIDHash.
+type byOutBailmentID []*OutputRequest
 
-// Len returns the length of the underlying slice.
-func (s sortByOutBailmentID) Len() int {
+func (s byOutBailmentID) Len() int {
 	return len(s)
 }
 
-// Swap swaps the elements at position i and j.
-func (s sortByOutBailmentID) Swap(i, j int) {
+func (s byOutBailmentID) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-// Less returns true if the hash of the outBailmentID of the ith
-// element is less than the hash of the outBailmentID of the jth
-// element.
-func (s sortByOutBailmentID) Less(i, j int) bool {
-	return bytes.Compare(s[i].outBailmentID.hash(), s[j].outBailmentID.hash()) < 0
+func (s byOutBailmentID) Less(i, j int) bool {
+	return bytes.Compare(s[i].outBailmentIDHash(), s[j].outBailmentIDHash()) < 0
 }
 
-// Check at compile time that sortByOutBailmentID implements sort.Interface.
-var _ sort.Interface = (*sortByOutBailmentID)(nil)
+// Check at compile time that byOutBailmentID implements the
+// sort.Interface.
+var _ sort.Interface = (*byOutBailmentID)(nil)

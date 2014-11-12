@@ -135,23 +135,26 @@ func (s *WithdrawalStatus) Outputs() []*WithdrawalOutput {
 	return s.outputs
 }
 
-// OutBailmentID models the outbailment id which is used as a unique
-// identifier for an outbailment request.
-type OutBailmentID struct {
+// OutputRequest represents one of the outputs (address/amount) requested by a
+// withdrawal, and includes information about the user's outbailment request.
+type OutputRequest struct {
+	address string
+	amount  btcutil.Amount
+
 	// The notary server that received the outbailment request.
 	server string
 
 	// The server-specific transaction number for the outbailment request.
 	transaction uint32
 
-	// cachedHash is used to cache the hash of the OutBailmentID so it
+	// cachedHash is used to cache the hash of the outBailmentID so it
 	// only has to be calculated once.
 	cachedHash []byte
 }
 
-// hash returns a byte slice which is used when sorting
+// outBailmentIDHash returns a byte slice which is used when sorting
 // OutputRequests.
-func (o *OutBailmentID) hash() []byte {
+func (o *OutputRequest) outBailmentIDHash() []byte {
 	if o.cachedHash != nil {
 		return o.cachedHash
 	}
@@ -161,14 +164,6 @@ func (o *OutBailmentID) hash() []byte {
 	id := hasher.Sum(nil)
 	o.cachedHash = id
 	return id
-}
-
-// OutputRequest represents one of the outputs (address/amount) requested by a
-// withdrawal, and includes information about the user's outbailment request.
-type OutputRequest struct {
-	address       string
-	amount        btcutil.Amount
-	outBailmentID OutBailmentID
 }
 
 func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
@@ -182,12 +177,10 @@ func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
 func NewOutputRequest(
 	server string, transaction uint32, address string, amount btcutil.Amount) *OutputRequest {
 	return &OutputRequest{
-		outBailmentID: OutBailmentID{
-			server:      server,
-			transaction: transaction,
-		},
-		address: address,
-		amount:  amount,
+		address:     address,
+		amount:      amount,
+		server:      server,
+		transaction: transaction,
 	}
 }
 
@@ -427,7 +420,7 @@ func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
 	}
 
 	// Sort outputs by outBailmentID (hash(server ID, tx #))
-	sort.Sort(sortByOutBailmentID(w.pendingOutputs))
+	sort.Sort(byOutBailmentID(w.pendingOutputs))
 
 	for len(w.pendingOutputs) > 0 {
 		if err := w.fulfilNextOutput(); err != nil {
