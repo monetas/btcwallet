@@ -21,7 +21,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"code.google.com/p/go.crypto/nacl/secretbox"
 	"github.com/conformal/btcwallet/snacl"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwallet/walletdb"
@@ -31,10 +30,10 @@ import (
 //  public or private key.
 const (
 	// We can calculate the encrypted extended key length this way:
-	// secretbox.Overhead == overhead for encrypting (16)
+	// snacl.Overhead == overhead for encrypting (16)
 	// actual base58 extended key length = (111)
 	// snacl.NonceSize == nonce size used for encryption (24)
-	seriesKeyLength = secretbox.Overhead + 111 + snacl.NonceSize
+	seriesKeyLength = snacl.Overhead + 111 + snacl.NonceSize
 	// 4 bytes version + 1 byte active + 4 bytes nKeys + 4 bytes reqSigs
 	seriesMinSerial = 4 + 1 + 4 + 4
 	// 15 is the max number of keys in a voting pool, 1 each for
@@ -68,14 +67,14 @@ func putPool(tx walletdb.Tx, votingPoolID []byte) error {
 	return nil
 }
 
-// loadAllSeries returns a  map of all the series stored inside a voting pool
+// loadAllSeries returns a map of all the series stored inside a voting pool
 // bucket, keyed by id.
 func loadAllSeries(tx walletdb.Tx, votingPoolID []byte) (map[uint32]*dbSeriesRow, error) {
 	bucket := tx.RootBucket().Bucket(votingPoolID)
 	allSeries := make(map[uint32]*dbSeriesRow)
 	err := bucket.ForEach(
 		func(k, v []byte) error {
-			seriesID := binary.LittleEndian.Uint32(k)
+			seriesID := bytesToUint32(k)
 			series, err := deserializeSeriesRow(v)
 			if err != nil {
 				str := fmt.Sprintf("cannot deserialize series %v", v)
@@ -168,12 +167,8 @@ func deserializeSeriesRow(serializedSeries []byte) (*dbSeriesRow, error) {
 	}
 	current += 4
 
-	if serializedSeries[current] == 0x01 {
-		row.active = true
-	} else {
-		row.active = false
-	}
-	current += 1
+	row.active = serializedSeries[current] == 0x01
+	current++
 
 	row.reqSigs = bytesToUint32(serializedSeries[current : current+4])
 	current += 4
@@ -218,6 +213,7 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 	//
 	// 4 bytes version + 1 byte active + 4 bytes reqSigs + 4 bytes nKeys
 	// + seriesKeyLength * 2 * nKeys (1 for priv, 1 for pub)
+	serializedLen := 4 + 1 + 4 + 4 + (seriesKeyLength * 2 * len(row.pubKeysEncrypted))
 
 	if len(row.privKeysEncrypted) != 0 &&
 		len(row.pubKeysEncrypted) != len(row.privKeysEncrypted) {
@@ -232,7 +228,8 @@ func serializeSeriesRow(row *dbSeriesRow) ([]byte, error) {
 		return nil, managerError(waddrmgr.ErrSeriesVersion, str, nil)
 	}
 
-	serialized := uint32ToBytes(row.version)
+	serialized := make([]byte, 0, serializedLen)
+	serialized = append(serialized, uint32ToBytes(row.version)...)
 	if row.active {
 		serialized = append(serialized, 0x01)
 	} else {

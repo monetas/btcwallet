@@ -28,11 +28,11 @@ import (
 )
 
 const (
-	MinSeriesPubKeys = 3
+	minSeriesPubKeys = 3
 )
 
-// seriesData represents a Series for a given Pool.
-type seriesData struct {
+// SeriesData represents a Series for a given Pool.
+type SeriesData struct {
 	version uint32
 	// Whether or not a series is active. This is serialized/deserialized but
 	// for now there's no way to deactivate a series.
@@ -49,7 +49,7 @@ type seriesData struct {
 // http://opentransactions.org/wiki/index.php?title=Category:Voting_Pools
 type Pool struct {
 	ID           []byte
-	seriesLookup map[uint32]*seriesData
+	seriesLookup map[uint32]*SeriesData
 	manager      *waddrmgr.Manager
 	namespace    walletdb.Namespace
 }
@@ -93,7 +93,7 @@ func Load(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) (*Po
 func newPool(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) *Pool {
 	return &Pool{
 		ID:           poolID,
-		seriesLookup: make(map[uint32]*seriesData),
+		seriesLookup: make(map[uint32]*SeriesData),
 		manager:      m,
 		namespace:    namespace,
 	}
@@ -161,7 +161,7 @@ func LoadAndEmpowerSeries(namespace walletdb.Namespace, m *waddrmgr.Manager,
 
 // GetSeries returns the series with the given ID, or nil if it doesn't
 // exist.
-func (vp *Pool) GetSeries(seriesID uint32) *seriesData {
+func (vp *Pool) GetSeries(seriesID uint32) *SeriesData {
 	series, exists := vp.seriesLookup[seriesID]
 	if !exists {
 		return nil
@@ -171,7 +171,7 @@ func (vp *Pool) GetSeries(seriesID uint32) *seriesData {
 
 // saveSeriesToDisk stores the given series ID and data in the database,
 // first encrypting the public/private extended keys.
-func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *seriesData) error {
+func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *SeriesData) error {
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
 	for i, pubKey := range data.publicKeys {
@@ -226,9 +226,8 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 		if _, seen := seenKeys[rawPubKey]; seen {
 			str := fmt.Sprintf("duplicated public key: %v", rawPubKey)
 			return nil, managerError(waddrmgr.ErrKeyDuplicate, str, nil)
-		} else {
-			seenKeys[rawPubKey] = true
 		}
+		seenKeys[rawPubKey] = true
 
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
 		if err != nil {
@@ -249,11 +248,11 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 // given public keys (using CanonicalKeyOrder), validating and converting them
 // to hdkeychain.ExtendedKeys, saves that to disk and adds it to this voting
 // pool's seriesLookup map. It also ensures inRawPubKeys has at least
-// MinSeriesPubKeys items and reqSigs is not greater than the number of items in
+// minSeriesPubKeys items and reqSigs is not greater than the number of items in
 // inRawPubKeys.
 func (vp *Pool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
-	if len(inRawPubKeys) < MinSeriesPubKeys {
-		str := fmt.Sprintf("need at least %d public keys to create a series", MinSeriesPubKeys)
+	if len(inRawPubKeys) < minSeriesPubKeys {
+		str := fmt.Sprintf("need at least %d public keys to create a series", minSeriesPubKeys)
 		return managerError(waddrmgr.ErrTooFewPublicKeys, str, nil)
 	}
 
@@ -270,7 +269,7 @@ func (vp *Pool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []stri
 		return err
 	}
 
-	data := &seriesData{
+	data := &SeriesData{
 		version:     version,
 		active:      false,
 		reqSigs:     reqSigs,
@@ -403,7 +402,7 @@ func (vp *Pool) LoadAllSeries() error {
 		if err != nil {
 			return err
 		}
-		vp.seriesLookup[id] = &seriesData{
+		vp.seriesLookup[id] = &SeriesData{
 			publicKeys:  pubKeys,
 			privateKeys: privKeys,
 			reqSigs:     series.reqSigs,
@@ -414,9 +413,9 @@ func (vp *Pool) LoadAllSeries() error {
 
 // existsSeries checks whether a series is stored in the database.
 // Used solely by the series creation test.
-func (vp *Pool) existsSeries(seriesID uint32) bool {
+func (vp *Pool) existsSeries(seriesID uint32) (bool, error) {
 	var exists bool
-	vp.namespace.View(
+	err := vp.namespace.View(
 		func(tx walletdb.Tx) error {
 			bucket := tx.RootBucket().Bucket(vp.ID)
 			if bucket == nil {
@@ -426,7 +425,10 @@ func (vp *Pool) existsSeries(seriesID uint32) bool {
 			exists = bucket.Get(uint32ToBytes(seriesID)) != nil
 			return nil
 		})
-	return exists
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // Change the order of the pubkeys based on branch number.
@@ -455,18 +457,18 @@ func branchOrder(pks []*hdkeychain.ExtendedKey, branch uint32) ([]*hdkeychain.Ex
 			res[i], res[j] = res[j], res[i]
 		}
 		return res, nil
-	} else {
-		tmp := make([]*hdkeychain.ExtendedKey, len(pks))
-		tmp[0] = pks[branch-1]
-		j := 1
-		for i := 0; i < len(pks); i++ {
-			if i != int(branch-1) {
-				tmp[j] = pks[i]
-				j++
-			}
-		}
-		return tmp, nil
 	}
+
+	tmp := make([]*hdkeychain.ExtendedKey, len(pks))
+	tmp[0] = pks[branch-1]
+	j := 1
+	for i := 0; i < len(pks); i++ {
+		if i != int(branch-1) {
+			tmp[j] = pks[i]
+			j++
+		}
+	}
+	return tmp, nil
 }
 
 // DepositScriptAddress constructs a multi-signature redemption script using DepositScript
@@ -590,7 +592,7 @@ func (vp *Pool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 
 // IsEmpowered returns true if this series is empowered (i.e. if it has
 // at least one private key loaded).
-func (s *seriesData) IsEmpowered() bool {
+func (s *SeriesData) IsEmpowered() bool {
 	for _, key := range s.privateKeys {
 		if key != nil {
 			return true

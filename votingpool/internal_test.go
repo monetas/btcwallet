@@ -30,7 +30,7 @@ func (vp *Pool) TstPutSeries(version, seriesID, reqSigs uint32, inRawPubKeys []s
 var TstBranchOrder = branchOrder
 
 // TstExistsSeries checks whether a series is stored in the database.
-func (vp *Pool) TstExistsSeries(seriesID uint32) bool {
+func (vp *Pool) TstExistsSeries(seriesID uint32) (bool, error) {
 	return vp.existsSeries(seriesID)
 }
 
@@ -40,7 +40,7 @@ func (vp *Pool) TstNamespace() walletdb.Namespace {
 }
 
 // TstGetRawPublicKeys gets a series public keys in string format.
-func (s *seriesData) TstGetRawPublicKeys() []string {
+func (s *SeriesData) TstGetRawPublicKeys() []string {
 	rawKeys := make([]string, len(s.publicKeys))
 	for i, key := range s.publicKeys {
 		rawKeys[i] = key.String()
@@ -49,7 +49,7 @@ func (s *seriesData) TstGetRawPublicKeys() []string {
 }
 
 // TstGetRawPrivateKeys gets a series private keys in string format.
-func (s *seriesData) TstGetRawPrivateKeys() []string {
+func (s *SeriesData) TstGetRawPrivateKeys() []string {
 	rawKeys := make([]string, len(s.privateKeys))
 	for i, key := range s.privateKeys {
 		if key != nil {
@@ -60,13 +60,13 @@ func (s *seriesData) TstGetRawPrivateKeys() []string {
 }
 
 // TstGetReqSigs expose the series reqSigs attribute.
-func (s *seriesData) TstGetReqSigs() uint32 {
+func (s *SeriesData) TstGetReqSigs() uint32 {
 	return s.reqSigs
 }
 
 // TstEmptySeriesLookup empties the voting pool seriesLookup attribute.
 func (vp *Pool) TstEmptySeriesLookup() {
-	vp.seriesLookup = make(map[uint32]*seriesData)
+	vp.seriesLookup = make(map[uint32]*SeriesData)
 }
 
 // TstDecryptExtendedKey expose the decryptExtendedKey method.

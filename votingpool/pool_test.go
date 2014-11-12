@@ -132,7 +132,7 @@ func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *voti
 	tearDownFunc = func() {
 		db.Close()
 		mgr.Close()
-		os.Remove(dir)
+		os.RemoveAll(dir)
 	}
 	return tearDownFunc, mgr, pool
 }
@@ -383,7 +383,11 @@ func TestCreateSeries(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%d: Cannot create series %d", testNum, test.series)
 		}
-		if exists := pool.TstExistsSeries(test.series); !exists {
+		exists, err := pool.TstExistsSeries(test.series)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !exists {
 			t.Errorf("%d: Series %d not in database", testNum, test.series)
 		}
 	}
@@ -582,20 +586,20 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 	tearDown, manager, pool := setUp(t)
 	defer tearDown()
 
-	var seriesId uint32 = 1
+	var seriesID uint32 = 1
 
-	if err := pool.CreateSeries(1, seriesId, 3, []string{pubKey0, pubKey1, pubKey2, pubKey3}); err != nil {
+	if err := pool.CreateSeries(1, seriesID, 3, []string{pubKey0, pubKey1, pubKey2, pubKey3}); err != nil {
 		t.Fatalf("Failed to create series", err)
 	}
 
 	// We need to unlock the manager in order to empower a series.
 	manager.Unlock(privPassphrase)
 
-	if err := pool.EmpowerSeries(seriesId, privKey1); err != nil {
+	if err := pool.EmpowerSeries(seriesID, privKey1); err != nil {
 		t.Fatalf("Failed to empower series", err)
 	}
 
-	if err := pool.ReplaceSeries(1, seriesId, 2, []string{pubKey0, pubKey2, pubKey3}); err == nil {
+	if err := pool.ReplaceSeries(1, seriesID, 2, []string{pubKey0, pubKey2, pubKey3}); err == nil {
 		t.Errorf("Replaced an empowered series. That should not be possible", err)
 	} else {
 		gotErr := err.(waddrmgr.ManagerError)
@@ -623,14 +627,14 @@ func TestReplaceNonExistingSeries(t *testing.T) {
 }
 
 type replaceSeriesTestEntry struct {
-	testId      int
+	testID      int
 	orig        seriesRaw
 	replaceWith seriesRaw
 }
 
 var replaceSeriesTestData = []replaceSeriesTestEntry{
 	{
-		testId: 0,
+		testID: 0,
 		orig: seriesRaw{
 			id:      0,
 			version: 1,
@@ -647,7 +651,7 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 		},
 	},
 	{
-		testId: 1,
+		testID: 1,
 		orig: seriesRaw{
 			id:      2,
 			version: 1,
@@ -664,7 +668,7 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 		},
 	},
 	{
-		testId: 2,
+		testID: 2,
 		orig: seriesRaw{
 			id:      4,
 			version: 1,
@@ -686,7 +690,7 @@ func TestReplaceExistingSeries(t *testing.T) {
 
 	for _, data := range replaceSeriesTestData {
 		seriesID := data.orig.id
-		testID := data.testId
+		testID := data.testID
 
 		if err := pool.CreateSeries(data.orig.version, seriesID, data.orig.reqSigs, data.orig.pubKeys); err != nil {
 			t.Fatalf("Test #%d: failed to create series in replace series setup",
