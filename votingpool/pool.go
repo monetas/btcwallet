@@ -69,7 +69,7 @@ func Create(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) (*
 		})
 	if err != nil {
 		str := fmt.Sprintf("unable to add voting pool %v to db", poolID)
-		return nil, managerError(waddrmgr.ErrVotingPoolAlreadyExists, str, err)
+		return nil, newError(ErrVotingPoolAlreadyExists, str, err)
 	}
 	return newPool(namespace, m, poolID), nil
 }
@@ -81,7 +81,7 @@ func Load(namespace walletdb.Namespace, m *waddrmgr.Manager, poolID []byte) (*Po
 		func(tx walletdb.Tx) error {
 			if exists := existsPool(tx, poolID); !exists {
 				str := fmt.Sprintf("unable to find voting pool %v in db", poolID)
-				return managerError(waddrmgr.ErrVotingPoolNotExists, str, nil)
+				return newError(ErrVotingPoolNotExists, str, nil)
 			}
 			return nil
 		})
@@ -128,8 +128,8 @@ func LoadAndCreateSeries(namespace walletdb.Namespace, m *waddrmgr.Manager, vers
 	pid := []byte(poolID)
 	vp, err := Load(namespace, m, pid)
 	if err != nil {
-		managerErr := err.(waddrmgr.ManagerError)
-		if managerErr.ErrorCode == waddrmgr.ErrVotingPoolNotExists {
+		vpErr := err.(Error)
+		if vpErr.ErrorCode == ErrVotingPoolNotExists {
 			vp, err = Create(namespace, m, pid)
 			if err != nil {
 				return err
@@ -185,7 +185,7 @@ func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *SeriesData) error {
 			waddrmgr.CKTPublic, []byte(pubKey.String()))
 		if err != nil {
 			str := fmt.Sprintf("key %v failed encryption", pubKey)
-			return managerError(waddrmgr.ErrCrypto, str, err)
+			return newError(ErrCrypto, str, err)
 		}
 	}
 	encryptedPrivKeys := make([][]byte, len(data.privateKeys))
@@ -198,7 +198,7 @@ func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *SeriesData) error {
 		}
 		if err != nil {
 			str := fmt.Sprintf("key %v failed encryption", privKey)
-			return managerError(waddrmgr.ErrCrypto, str, err)
+			return newError(ErrCrypto, str, err)
 		}
 	}
 
@@ -208,7 +208,7 @@ func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *SeriesData) error {
 	})
 	if err != nil {
 		str := fmt.Sprintf("cannot put series #%d into db", seriesID)
-		return managerError(waddrmgr.ErrSeriesStorage, str, err)
+		return newError(ErrSeriesStorage, str, err)
 	}
 	return nil
 }
@@ -231,19 +231,19 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 	for i, rawPubKey := range rawPubKeys {
 		if _, seen := seenKeys[rawPubKey]; seen {
 			str := fmt.Sprintf("duplicated public key: %v", rawPubKey)
-			return nil, managerError(waddrmgr.ErrKeyDuplicate, str, nil)
+			return nil, newError(ErrKeyDuplicate, str, nil)
 		}
 		seenKeys[rawPubKey] = true
 
 		key, err := hdkeychain.NewKeyFromString(rawPubKey)
 		if err != nil {
 			str := fmt.Sprintf("invalid extended public key %v", rawPubKey)
-			return nil, managerError(waddrmgr.ErrKeyChain, str, err)
+			return nil, newError(ErrKeyChain, str, err)
 		}
 
 		if key.IsPrivate() {
 			str := fmt.Sprintf("private keys not accepted: %v", rawPubKey)
-			return nil, managerError(waddrmgr.ErrKeyIsPrivate, str, nil)
+			return nil, newError(ErrKeyIsPrivate, str, nil)
 		}
 		keys[i] = key
 	}
@@ -259,13 +259,13 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 func (vp *Pool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
 	if len(inRawPubKeys) < minSeriesPubKeys {
 		str := fmt.Sprintf("need at least %d public keys to create a series", minSeriesPubKeys)
-		return managerError(waddrmgr.ErrTooFewPublicKeys, str, nil)
+		return newError(ErrTooFewPublicKeys, str, nil)
 	}
 
 	if reqSigs > uint32(len(inRawPubKeys)) {
 		str := fmt.Sprintf(
 			"the number of required signatures cannot be more than the number of keys")
-		return managerError(waddrmgr.ErrTooManyReqSignatures, str, nil)
+		return newError(ErrTooManyReqSignatures, str, nil)
 	}
 
 	rawPubKeys := CanonicalKeyOrder(inRawPubKeys)
@@ -298,7 +298,7 @@ func (vp *Pool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []stri
 func (vp *Pool) CreateSeries(version, seriesID, reqSigs uint32, rawPubKeys []string) error {
 	if series := vp.GetSeries(seriesID); series != nil {
 		str := fmt.Sprintf("series #%d already exists", seriesID)
-		return managerError(waddrmgr.ErrSeriesAlreadyExists, str, nil)
+		return newError(ErrSeriesAlreadyExists, str, nil)
 	}
 
 	return vp.putSeries(version, seriesID, reqSigs, rawPubKeys)
@@ -312,12 +312,12 @@ func (vp *Pool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []st
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist, cannot replace it", seriesID)
-		return managerError(waddrmgr.ErrSeriesNotExists, str, nil)
+		return newError(ErrSeriesNotExists, str, nil)
 	}
 
 	if series.IsEmpowered() {
 		str := fmt.Sprintf("series #%d has private keys and cannot be replaced", seriesID)
-		return managerError(waddrmgr.ErrSeriesAlreadyEmpowered, str, nil)
+		return newError(ErrSeriesAlreadyEmpowered, str, nil)
 	}
 
 	return vp.putSeries(version, seriesID, reqSigs, rawPubKeys)
@@ -329,13 +329,13 @@ func (vp *Pool) decryptExtendedKey(keyType waddrmgr.CryptoKeyType, encrypted []b
 	decrypted, err := vp.manager.Decrypt(keyType, encrypted)
 	if err != nil {
 		str := fmt.Sprintf("cannot decrypt key %v", encrypted)
-		return nil, managerError(waddrmgr.ErrCrypto, str, err)
+		return nil, newError(ErrCrypto, str, err)
 	}
 	result, err := hdkeychain.NewKeyFromString(string(decrypted))
 	zero(decrypted)
 	if err != nil {
 		str := fmt.Sprintf("cannot get key from string %v", decrypted)
-		return nil, managerError(waddrmgr.ErrKeyChain, str, err)
+		return nil, newError(ErrKeyChain, str, err)
 	}
 	return result, nil
 }
@@ -347,7 +347,7 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 	pubKeys = make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	privKeys = make([]*hdkeychain.ExtendedKey, len(rawPrivKeys))
 	if len(pubKeys) != len(privKeys) {
-		return nil, nil, managerError(waddrmgr.ErrKeysPrivatePublicMismatch,
+		return nil, nil, newError(ErrKeysPrivatePublicMismatch,
 			"the pub key and priv key arrays should have the same number of elements",
 			nil)
 	}
@@ -375,12 +375,12 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 			checkPubKey, err := privKey.Neuter()
 			if err != nil {
 				str := fmt.Sprintf("cannot neuter key %v", privKey)
-				return nil, nil, managerError(waddrmgr.ErrKeyNeuter, str, err)
+				return nil, nil, newError(ErrKeyNeuter, str, err)
 			}
 			if pubKey.String() != checkPubKey.String() {
 				str := fmt.Sprintf("public key %v different than expected %v",
 					pubKey, checkPubKey)
-				return nil, nil, managerError(waddrmgr.ErrKeyMismatch, str, nil)
+				return nil, nil, newError(ErrKeyMismatch, str, nil)
 			}
 		}
 	}
@@ -447,11 +447,11 @@ func branchOrder(pks []*hdkeychain.ExtendedKey, branch Branch) ([]*hdkeychain.Ex
 	if pks == nil {
 		// This really shouldn't happen, but we want to be good citizens, so we
 		// return an error instead of crashing.
-		return nil, managerError(waddrmgr.ErrInvalidValue, "pks cannot be nil", nil)
+		return nil, newError(ErrInvalidValue, "pks cannot be nil", nil)
 	}
 
 	if branch > Branch(len(pks)) {
-		return nil, managerError(waddrmgr.ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
+		return nil, newError(ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
 	}
 
 	if branch == 0 {
@@ -499,7 +499,7 @@ func (vp *Pool) DepositScript(seriesID uint32, branch Branch, index Index) ([]by
 	series := vp.GetSeries(seriesID)
 	if series == nil {
 		str := fmt.Sprintf("series #%d does not exist", seriesID)
-		return nil, managerError(waddrmgr.ErrSeriesNotExists, str, nil)
+		return nil, newError(ErrSeriesNotExists, str, nil)
 	}
 
 	pubKeys, err := branchOrder(series.publicKeys, branch)
@@ -514,26 +514,26 @@ func (vp *Pool) DepositScript(seriesID uint32, branch Branch, index Index) ([]by
 		// in case there is a hdkeychain.ErrInvalidChild.
 		if err != nil {
 			str := fmt.Sprintf("child #%d for this pubkey %d does not exist", index, i)
-			return nil, managerError(waddrmgr.ErrKeyChain, str, err)
+			return nil, newError(ErrKeyChain, str, err)
 		}
 		pubkey, err := child.ECPubKey()
 		if err != nil {
 			str := fmt.Sprintf("child #%d for this pubkey %d does not exist", index, i)
-			return nil, managerError(waddrmgr.ErrKeyChain, str, err)
+			return nil, newError(ErrKeyChain, str, err)
 		}
 		pks[i], err = btcutil.NewAddressPubKey(pubkey.SerializeCompressed(), vp.manager.Net())
 		if err != nil {
 			str := fmt.Sprintf(
 				"child #%d for this pubkey %d could not be converted to an address",
 				index, i)
-			return nil, managerError(waddrmgr.ErrKeyChain, str, err)
+			return nil, newError(ErrKeyChain, str, err)
 		}
 	}
 
 	script, err := btcscript.MultiSigScript(pks, int(series.reqSigs))
 	if err != nil {
 		str := fmt.Sprintf("error while making multisig script hash, %d", len(pks))
-		return nil, managerError(waddrmgr.ErrScriptCreation, str, err)
+		return nil, newError(ErrScriptCreation, str, err)
 	}
 
 	return script, nil
@@ -549,27 +549,27 @@ func (vp *Pool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	if series == nil {
 		str := fmt.Sprintf("series %d does not exist for this voting pool",
 			seriesID)
-		return managerError(waddrmgr.ErrSeriesNotExists, str, nil)
+		return newError(ErrSeriesNotExists, str, nil)
 	}
 
 	// Check that the private key is valid.
 	privKey, err := hdkeychain.NewKeyFromString(rawPrivKey)
 	if err != nil {
 		str := fmt.Sprintf("invalid extended private key %v", rawPrivKey)
-		return managerError(waddrmgr.ErrKeyChain, str, err)
+		return newError(ErrKeyChain, str, err)
 	}
 	if !privKey.IsPrivate() {
 		str := fmt.Sprintf(
 			"to empower a series you need the extended private key, not an extended public key %v",
 			privKey)
-		return managerError(waddrmgr.ErrKeyIsPublic, str, err)
+		return newError(ErrKeyIsPublic, str, err)
 	}
 
 	pubKey, err := privKey.Neuter()
 	if err != nil {
 		str := fmt.Sprintf("invalid extended private key %v, can't convert to public key",
 			rawPrivKey)
-		return managerError(waddrmgr.ErrKeyNeuter, str, err)
+		return newError(ErrKeyNeuter, str, err)
 	}
 
 	lookingFor := pubKey.String()
@@ -587,7 +587,7 @@ func (vp *Pool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	if !found {
 		str := fmt.Sprintf(
 			"private Key does not have a corresponding public key in this series")
-		return managerError(waddrmgr.ErrKeysPrivatePublicMismatch, str, nil)
+		return newError(ErrKeysPrivatePublicMismatch, str, nil)
 	}
 
 	err = vp.saveSeriesToDisk(seriesID, series)
@@ -608,12 +608,6 @@ func (s *SeriesData) IsEmpowered() bool {
 		}
 	}
 	return false
-}
-
-// managerError creates a waddrmgr.ManagerError given a set of arguments.
-// XXX(lars): We should probably make our own votingpoolError function.
-func managerError(c waddrmgr.ErrorCode, desc string, err error) waddrmgr.ManagerError {
-	return waddrmgr.ManagerError{ErrorCode: c, Description: desc, Err: err}
 }
 
 // zero sets all bytes in the passed slice to zero.  This is used to

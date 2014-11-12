@@ -36,6 +36,87 @@ const (
 	// ErrUnknownPubKey indicates a pubkey that does not belong to a given series.
 	ErrUnknownPubKey
 
+	// ErrSeriesStorage indicates that an error occurred while serializing
+	// or deserializing one or more series for storing into database.
+	ErrSeriesStorage
+
+	// ErrSeriesVersion indicates that we've been asked to deal with
+	// a series whose version is unsupported
+	ErrSeriesVersion
+
+	// ErrSeriesNotExists indicates that an attempt has been made to access
+	// a series that does not exist.
+	ErrSeriesNotExists
+
+	// ErrSeriesAlreadyExists indicates that an attempt has been made to create
+	// a series that already exists.
+	ErrSeriesAlreadyExists
+
+	// ErrSeriesAlreadyEmpowered indicates that an already empowered series
+	// was used where a not empowered one was expected.
+	ErrSeriesAlreadyEmpowered
+
+	// ErrKeyIsPrivate indicates that a private key was used where a public
+	// one was expected.
+	ErrKeyIsPrivate
+
+	// ErrKeyIsPublic indicates that a public key was used where a private
+	// one was expected.
+	ErrKeyIsPublic
+
+	// ErrKeyNeuter indicates a problem when trying to neuter a private key.
+	ErrKeyNeuter
+
+	// ErrKeyMismatch indicates that the key is not the expected one.
+	ErrKeyMismatch
+
+	// ErrKeysPrivatePublicMismatch indicates that the number of private and
+	// public keys is not the same.
+	ErrKeysPrivatePublicMismatch
+
+	// ErrKeyDuplicate indicates that a key is duplicated.
+	ErrKeyDuplicate
+
+	// ErrTooFewPublicKeys indicates that a required minimum of public
+	// keys was not met.
+	ErrTooFewPublicKeys
+
+	// ErrVotingPoolAlreadyExists indicates that an attempt has been made to
+	// create a voting pool that already exists.
+	ErrVotingPoolAlreadyExists
+
+	// ErrVotingPoolNotExists indicates that an attempt has been made to access
+	// a voting pool that does not exist.
+	ErrVotingPoolNotExists
+
+	// ErrScriptCreation indicates that the creation of a deposit script failed.
+	ErrScriptCreation
+
+	// ErrTooManyReqSignatures indicates that too many required
+	// signatures are requested.
+	ErrTooManyReqSignatures
+
+	// ErrInvalidBranch indicates that the given branch number is not valid
+	// for a given set of public keys.
+	ErrInvalidBranch
+
+	// ErrInvalidValue indicates that the value of a given function argument
+	// is invalid.
+	ErrInvalidValue
+
+	// ErrDatabase indicates an error with the underlying database.
+	ErrDatabase
+
+	// ErrKeyChain indicates an error with the key chain typically either
+	// due to the inability to create an extended key or deriving a child
+	// extended key.
+	ErrKeyChain
+
+	// ErrCrypto indicates an error with the cryptography related operations
+	// such as decrypting or encrypting data, parsing an EC public key,
+	// or deriving a secret key from a password.
+	ErrCrypto
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -44,10 +125,31 @@ const (
 
 // Map of ErrorCode values back to their constant names for pretty printing.
 var errorCodeStrings = map[ErrorCode]string{
-	ErrInputSelection:       "ErrInputSelection",
-	ErrInvalidAddressRange:  "ErrInvalidAddressRange",
-	ErrWithdrawalProcessing: "ErrWithdrawalProcessing",
-	ErrUnknownPubKey:        "ErrUnknownPubKey",
+	ErrInputSelection:            "ErrInputSelection",
+	ErrInvalidAddressRange:       "ErrInvalidAddressRange",
+	ErrWithdrawalProcessing:      "ErrWithdrawalProcessing",
+	ErrUnknownPubKey:             "ErrUnknownPubKey",
+	ErrSeriesStorage:             "ErrSeriesStorage",
+	ErrSeriesVersion:             "ErrSeriesVersion",
+	ErrSeriesNotExists:           "ErrSeriesNotExists",
+	ErrSeriesAlreadyExists:       "ErrSeriesAlreadyExists",
+	ErrSeriesAlreadyEmpowered:    "ErrSeriesAlreadyEmpowered",
+	ErrKeyIsPrivate:              "ErrKeyIsPrivate",
+	ErrKeyIsPublic:               "ErrKeyIsPublic",
+	ErrKeyNeuter:                 "ErrKeyNeuter",
+	ErrKeyMismatch:               "ErrKeyMismatch",
+	ErrKeysPrivatePublicMismatch: "ErrKeysPrivatePublicMismatch",
+	ErrKeyDuplicate:              "ErrKeyDuplicate",
+	ErrTooFewPublicKeys:          "ErrTooFewPublicKeys",
+	ErrVotingPoolAlreadyExists:   "ErrVotingPoolAlreadyExists",
+	ErrVotingPoolNotExists:       "ErrVotingPoolNotExists",
+	ErrScriptCreation:            "ErrScriptCreation",
+	ErrTooManyReqSignatures:      "ErrTooManyReqSignatures",
+	ErrInvalidBranch:             "ErrInvalidBranch",
+	ErrInvalidValue:              "ErrInvalidValue",
+	ErrDatabase:                  "ErrDatabase",
+	ErrKeyChain:                  "ErrKeyChain",
+	ErrCrypto:                    "ErrCrypto",
 }
 
 // String returns the ErrorCode as a human-readable name.
