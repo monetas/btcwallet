@@ -17,33 +17,34 @@
 package votingpool_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/votingpool"
+	vp "github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
 
 var bsHeight int32 = 11112
-var bs *waddrmgr.BlockStamp = &waddrmgr.BlockStamp{Height: bsHeight}
+var bs = &waddrmgr.BlockStamp{Height: bsHeight}
 
 // XXX: This test could benefit from being split into smaller ones, but that won't be a
 // trivial endeavour.
 func TestWithdrawal(t *testing.T) {
-	teardown, mgr, pool := setUp(t)
-	store, storeTearDown := createTxStore(t)
+	teardown, mgr, pool := vp.TstSetUp(t)
+	store, storeTearDown := vp.TstCreateTxStore(t)
 	defer teardown()
 	defer storeTearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	eligible := createCredits(t, mgr, pool, []int64{5e6, 4e6}, store)
 	address := "1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX"
-	outputs := []*votingpool.OutputRequest{
-		votingpool.NewOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
-		votingpool.NewOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
+	outputs := []*vp.OutputRequest{
+		vp.NewOutputRequest("foo", 1, address, btcutil.Amount(4e6)),
+		vp.NewOutputRequest("foo", 2, address, btcutil.Amount(1e6)),
 	}
 	changeStart, err := pool.ChangeAddress(0, 0)
 	if err != nil {
@@ -73,10 +74,10 @@ func TestWithdrawal(t *testing.T) {
 	// XXX: The ntxid is deterministic so we hardcode it here, but if the test is changed
 	// in a way that causes the generated transactions to change (e.g. different
 	// inputs/outputs), the ntxid will change too.
-	ntxid := "ea48d480a6a53ca72cf29f3494c14dfda8030103d05b0381a1844a9b80f784ae"
+	ntxid := "3c78a70c0b1e78f56e7dba1fffa31a7240062ee4b66b2b8a45ee63485beb97b2"
 	txSigs := sigs[ntxid]
 	// We should have 2 TxInSignatures entries as the transaction created by
-	// votingpool.Withdrawal() should have two inputs.
+	// vp.Withdrawal() should have two inputs.
 	if len(txSigs) != 2 {
 		t.Fatalf("Unexpected number of signature lists; got %d, want %d", len(txSigs), 2)
 	}
@@ -96,19 +97,19 @@ func TestWithdrawal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = votingpool.SignMultiSigUTXO(mgr, tx, i, txOut.PkScript, txSigs[i], mgr.Net())
+		err = vp.SignMultiSigUTXO(mgr, tx, i, txOut.PkScript, txSigs[i], mgr.Net())
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	if err = votingpool.ValidateSigScripts(tx, store); err != nil {
+	if err = vp.ValidateSigScripts(tx, store); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func checkWithdrawalOutput(
-	t *testing.T, withdrawalOutput *votingpool.WithdrawalOutput, address, status string,
+	t *testing.T, withdrawalOutput *vp.WithdrawalOutput, address, status string,
 	nOutpoints int) {
 	if withdrawalOutput.Address() != address {
 		t.Fatalf("Unexpected address; got %s, want %s", withdrawalOutput.Address(), address)
@@ -133,13 +134,13 @@ func createMasterKey(t *testing.T, seed []byte) *hdkeychain.ExtendedKey {
 }
 
 func createCredits(
-	t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.Pool, amounts []int64,
-	store *txstore.Store) []votingpool.CreditInterface {
+	t *testing.T, mgr *waddrmgr.Manager, pool *vp.Pool, amounts []int64,
+	store *txstore.Store) []vp.CreditInterface {
 	// Create 3 master extended keys, as if we had 3 voting pool members.
 	masters := []*hdkeychain.ExtendedKey{
-		createMasterKey(t, seed),
-		createMasterKey(t, append(seed, byte(0x01))),
-		createMasterKey(t, append(seed, byte(0x02))),
+		createMasterKey(t, bytes.Repeat([]byte{0x00, 0x01}, 16)),
+		createMasterKey(t, bytes.Repeat([]byte{0x02, 0x01}, 16)),
+		createMasterKey(t, bytes.Repeat([]byte{0x03, 0x01}, 16)),
 	}
 	rawPubKeys := make([]string, 3)
 	rawPrivKeys := make([]string, 3)
@@ -156,7 +157,7 @@ func createCredits(
 	if err := pool.CreateSeries(1, seriesID, reqSigs, rawPubKeys); err != nil {
 		t.Fatalf("Cannot creates series: %v", err)
 	}
-	mgr.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, mgr)
 	for _, key := range rawPrivKeys {
 		if err := pool.EmpowerSeries(seriesID, key); err != nil {
 			t.Fatal(err)
@@ -165,16 +166,16 @@ func createCredits(
 
 	// Finally create the Credit instances, locked to the voting pool's deposit
 	// address with branch==1, index==0.
-	branch := votingpool.Branch(1)
-	idx := votingpool.Index(0)
-	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, idx)
-	eligible := make([]votingpool.CreditInterface, len(amounts))
-	for i, credit := range createInputs(t, store, pkScript, amounts) {
+	branch := vp.Branch(1)
+	idx := vp.Index(0)
+	pkScript := vp.TstCreatePkScript(t, mgr, pool, seriesID, branch, idx)
+	eligible := make([]vp.CreditInterface, len(amounts))
+	for i, credit := range vp.TstCreateInputs(t, store, pkScript, amounts) {
 		addr, err := pool.WithdrawalAddress(seriesID, branch, idx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		eligible[i] = votingpool.NewCredit(credit, *addr)
+		eligible[i] = vp.NewCredit(credit, *addr)
 	}
 	return eligible
 }

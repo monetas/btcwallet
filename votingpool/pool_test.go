@@ -20,132 +20,29 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"reflect"
-	"runtime"
 	"testing"
 
-	"github.com/conformal/btcnet"
 	"github.com/conformal/btcutil/hdkeychain"
-	"github.com/conformal/btcwallet/votingpool"
+	vp "github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwallet/walletdb"
 	_ "github.com/conformal/btcwallet/walletdb/bdb"
 )
 
-var fastScrypt = &waddrmgr.Options{
-	ScryptN: 16,
-	ScryptR: 8,
-	ScryptP: 1,
-}
-
-// checkError ensures the passed error is a votingpool.Error with an error
-// code that matches the passed error code.
-func checkError(t *testing.T, testName string, gotErr error, wantErrCode votingpool.ErrorCode) {
-	vpErr, ok := gotErr.(votingpool.Error)
-	if !ok {
-		t.Errorf("%s: unexpected error type - got %T, want %T",
-			testName, gotErr, votingpool.Error{})
-	}
-	if vpErr.ErrorCode != wantErrCode {
-		t.Errorf("%s: unexpected error code - got %s, want %s",
-			testName, vpErr.ErrorCode, wantErrCode)
-	}
-}
-
-const (
-	privKey0 = "xprv9s21ZrQH143K2j9PK4CXkCu8sgxkpUxCF7p1KVwiV5tdnkeYzJXReUkxz5iB2FUzTXC1L15abCDG4RMxSYT5zhm67uvsnLYxuDhZfoFcB6a"
-	privKey1 = "xprv9s21ZrQH143K4PtW77ATQAKAGk7KAFFCzxFuAcWduoMEeQhCgWpuYWQvMGZknqdispUbgLZV1YPqFCbpzMJij8tSZ5xPSaZqPbchojeNuq7"
-	privKey2 = "xprv9s21ZrQH143K27XboWxXZGU5j7VZ9SqVBnmMQPKTbddiWAhuNzeLynKHaZTAti6N454tVUUcvy6u15DfuW68NCBUxry6ZsHHzqoA8UtzdMn"
-	privKey3 = "xprv9s21ZrQH143K2vb4DGQymRejLcZSksBHTYLxB7Stg1c7Lk9JxgEUGZTozwUKxoEWJPoGSdGnJY1TW7LNFQCWrpZjDdEXJeqJuDde6BmdD4P"
-	privKey4 = "xprv9s21ZrQH143K4JNmRvWeLc1PggzusKcDYV1y8fAMNDdb9Rm5X1AvGHizxEdhTVR3sc62XvifC6dLAXMuQesX1y6999xnDwQ3aVno8KviU9d"
-	privKey5 = "xprv9s21ZrQH143K3dxrqESqeHZ7pSwM6Uq77ssQADSBs7qdFs6dyRWmRcPyLUTQRpgB3EduNhJuWkCGG2LHjuUisw8KKfXJpPqYJ1MSPrZpe1z"
-	privKey6 = "xprv9s21ZrQH143K2nE8ENAMNksTTVxPrMxFNWUuwThMy2bcH9LHTtQDXSNq2pTNcbuq36n5A3J9pbXVqnq5LDXvqniFRLN299kW7Svnxsx9tQv"
-	privKey7 = "xprv9s21ZrQH143K3p93xF1oFeB6ey5ruUesWjuPxA9Z2R5wf6BLYfGXz7fg7NavWkQ2cx3Vm8w2HV9uKpSprNNHnenGeW9XhYDPSjwS9hyCs33"
-	privKey8 = "xprv9s21ZrQH143K3WxnnvPZ8SDGXndASvLTFwMLBVzNCVgs9rzP6rXgW92DLvozdyBm8T9bSQvrFm1jMpTJrRE6w1KY5tshFeDk9Nn3K6V5FYX"
-
-	pubKey0 = "xpub661MyMwAqRbcFDDrR5jY7LqsRioFDwg3cLjc7tML3RRcfYyhXqqgCH5SqMSQdpQ1Xh8EtVwcfm8psD8zXKPcRaCVSY4GCqbb3aMEs27GitE"
-	pubKey1 = "xpub661MyMwAqRbcGsxyD8hTmJFtpmwoZhy4NBBVxzvFU8tDXD2ME49A6JjQCYgbpSUpHGP1q4S2S1Pxv2EqTjwfERS5pc9Q2yeLkPFzSgRpjs9"
-	pubKey2 = "xpub661MyMwAqRbcEbc4uYVXvQQpH9L3YuZLZ1gxCmj59yAhNy33vXxbXadmRpx5YZEupNSqWRrR7PqU6duS2FiVCGEiugBEa5zuEAjsyLJjKCh"
-	pubKey3 = "xpub661MyMwAqRbcFQfXKHwz8ZbTtePwAKu8pmGYyVrWEM96DYUTWDYipMnHrFcemZHn13jcRMfsNU3UWQUudiaE7mhkWCHGFRMavF167DQM4Va"
-	pubKey4 = "xpub661MyMwAqRbcGnTEXx3ehjx8EiqQGnL4uhwZw3ZxvZAa2E6E4YVAp63UoVtvm2vMDDF8BdPpcarcf7PWcEKvzHhxzAYw1zG23C2egeh82AR"
-	pubKey5 = "xpub661MyMwAqRbcG83KwFyr1RVrNUmqVwYxV6nzxbqoRTNc8fRnWxq1yQiTBifTHhevcEM9ucZ1TqFS7Kv17Gd81cesv6RDrrvYS9SLPjPXhV5"
-	pubKey6 = "xpub661MyMwAqRbcFGJbLPhMjtpC1XntFpg6jjQWjr6yXN8b9wfS1RiU5EhJt5L7qoFuidYawc3XJoLjT2PcjVpXryS3hn1WmSPCyvQDNuKsfgM"
-	pubKey7 = "xpub661MyMwAqRbcGJDX4GYocn7qCzvMJwNisxpzkYZAakcvXtWV6CanXuz9xdfe5kTptFMJ4hDt2iTiT11zyN14u8R5zLvoZ1gnEVqNLxp1r3v"
-	pubKey8 = "xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E"
-)
-
-var (
-	// seed is the master seed used throughout the tests.
-	seed = []byte{
-		0x2a, 0x64, 0xdf, 0x08, 0x5e, 0xef, 0xed, 0xd8, 0xbf,
-		0xdb, 0xb3, 0x31, 0x76, 0xb5, 0xba, 0x2e, 0x62, 0xe8,
-		0xbe, 0x8b, 0x56, 0xc8, 0x83, 0x77, 0x95, 0x59, 0x8b,
-		0xb6, 0xc4, 0x40, 0xc0, 0x64,
-	}
-
-	pubPassphrase  = []byte("_DJr{fL4H0O}*-0\n:V1izc)(6BomK")
-	privPassphrase = []byte("81lUHXnOMZ@?XXd7O9xyDIWIbXX-lj")
-)
-
-func init() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
-}
-
-func setUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *votingpool.Pool) {
-	t.Parallel()
-
-	// Create a new wallet DB and addr manager.
-	dir, err := ioutil.TempDir("", "pool_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
-	if err != nil {
-		t.Fatalf("Failed to create wallet DB: %v", err)
-	}
-	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
-	if err != nil {
-		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
-	}
-	mgr, err = waddrmgr.Create(mgrNamespace, seed, pubPassphrase, privPassphrase,
-		&btcnet.MainNetParams, fastScrypt)
-	if err != nil {
-		t.Fatalf("Failed to create addr manager: %v", err)
-	}
-
-	// Create a walletdb for votingpools.
-	vpNamespace, err := db.Namespace([]byte("votingpool"))
-	if err != nil {
-		t.Fatalf("Failed to create VotingPool DB namespace: %v", err)
-	}
-	pool, err = votingpool.Create(vpNamespace, mgr, []byte{0x00})
-	if err != nil {
-		t.Fatalf("Voting Pool creation failed: %v", err)
-	}
-	tearDownFunc = func() {
-		db.Close()
-		mgr.Close()
-		os.RemoveAll(dir)
-	}
-	return tearDownFunc, mgr, pool
-}
-
 func TestLoadVotingPoolAndDepositScript(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
+	err := vp.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	// execute
-	script, err := votingpool.LoadAndGetDepositScript(pool.TstNamespace(), manager, poolID, 0, 0, 0)
+	script, err := vp.LoadAndGetDepositScript(pool.TstNamespace(), manager, poolID, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("Failed to get deposit script: %v", err)
 	}
@@ -160,21 +57,21 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	poolID := "test"
 
 	// first time, the voting pool is created
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
+	err := vp.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
 
 	// create another series where the voting pool is loaded this time
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 1, 2, pubKeys)
+	err = vp.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 1, 2, pubKeys)
 
 	if err != nil {
 		t.Fatalf("Loading voting pool and Creating series failed: %v", err)
@@ -182,47 +79,47 @@ func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
+	err := vp.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to create voting pool and series: %v", err)
 	}
 
 	pubKeys = []string{pubKey3, pubKey4, pubKey5}
-	err = votingpool.LoadAndReplaceSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
+	err = vp.LoadAndReplaceSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Failed to replace series: %v", err)
 	}
 }
 
 func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	// setup
 	poolID := "test"
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
-	err := votingpool.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
+	err := vp.LoadAndCreateSeries(pool.TstNamespace(), manager, 1, poolID, 0, 2, pubKeys)
 	if err != nil {
 		t.Fatalf("Creating voting pool and Creating series failed: %v", err)
 	}
 
 	// We need to unlock the manager in order to empower a series
-	manager.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, manager)
 
-	err = votingpool.LoadAndEmpowerSeries(pool.TstNamespace(), manager, poolID, 0, privKey0)
+	err = vp.LoadAndEmpowerSeries(pool.TstNamespace(), manager, poolID, 0, privKey0)
 	if err != nil {
 		t.Fatalf("Load voting pool and Empower series failed: %v", err)
 	}
 }
 
 func TestDepositScriptAddress(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -253,7 +150,7 @@ func TestDepositScriptAddress(t *testing.T) {
 			t.Fatalf("Cannot creates series %v", test.series)
 		}
 		for branch, expectedAddress := range test.addresses {
-			addr, err := pool.DepositScriptAddress(test.series, votingpool.Branch(branch), votingpool.Index(0))
+			addr, err := pool.DepositScriptAddress(test.series, vp.Branch(branch), vp.Index(0))
 			if err != nil {
 				t.Fatalf("Failed to get DepositScriptAddress #%d: %v", i, err)
 			}
@@ -267,16 +164,16 @@ func TestDepositScriptAddress(t *testing.T) {
 }
 
 func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	_, err := pool.DepositScriptAddress(0, 0, 0)
 
-	checkError(t, "", err, votingpool.ErrSeriesNotExists)
+	vp.TstCheckError(t, "", err, vp.ErrSeriesNotExists)
 }
 
 func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 	if err := pool.CreateSeries(1, 0, 2, []string{pubKey0, pubKey1, pubKey2}); err != nil {
 		t.Fatalf("Cannot creates series")
@@ -284,16 +181,16 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 
 	// Ask for a DepositScriptAddress using an index for a hardened child, which should
 	// fail as we use the extended public keys to derive childs.
-	_, err := pool.DepositScriptAddress(0, 0, votingpool.Index(hdkeychain.HardenedKeyStart+1))
+	_, err := pool.DepositScriptAddress(0, 0, vp.Index(hdkeychain.HardenedKeyStart+1))
 
-	checkError(t, "", err, votingpool.ErrKeyChain)
+	vp.TstCheckError(t, "", err, vp.ErrKeyChain)
 }
 
 func TestLoadVotingPool(t *testing.T) {
-	tearDown, mgr, pool := setUp(t)
+	tearDown, mgr, pool := vp.TstSetUp(t)
 	defer tearDown()
 
-	pool2, err := votingpool.Load(pool.TstNamespace(), mgr, pool.ID)
+	pool2, err := vp.Load(pool.TstNamespace(), mgr, pool.ID)
 	if err != nil {
 		t.Errorf("Error loading VotingPool: %v", err)
 	}
@@ -303,10 +200,10 @@ func TestLoadVotingPool(t *testing.T) {
 }
 
 func TestCreateVotingPool(t *testing.T) {
-	tearDown, mgr, pool := setUp(t)
+	tearDown, mgr, pool := vp.TstSetUp(t)
 	defer tearDown()
 
-	pool2, err := votingpool.Create(pool.TstNamespace(), mgr, []byte{0x02})
+	pool2, err := vp.Create(pool.TstNamespace(), mgr, []byte{0x02})
 	if err != nil {
 		t.Errorf("Error creating VotingPool: %v", err)
 	}
@@ -316,16 +213,16 @@ func TestCreateVotingPool(t *testing.T) {
 }
 
 func TestCreateVotingPoolWhenAlreadyExists(t *testing.T) {
-	tearDown, mgr, pool := setUp(t)
+	tearDown, mgr, pool := vp.TstSetUp(t)
 	defer tearDown()
 
-	_, err := votingpool.Create(pool.TstNamespace(), mgr, pool.ID)
+	_, err := vp.Create(pool.TstNamespace(), mgr, pool.ID)
 
-	checkError(t, "", err, votingpool.ErrVotingPoolAlreadyExists)
+	vp.TstCheckError(t, "", err, vp.ErrVotingPoolAlreadyExists)
 }
 
 func TestCreateSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -378,7 +275,7 @@ func TestCreateSeries(t *testing.T) {
 }
 
 func TestCreateSeriesWhenAlreadyExists(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
 	if err := pool.CreateSeries(1, 0, 1, pubKeys); err != nil {
@@ -387,56 +284,56 @@ func TestCreateSeriesWhenAlreadyExists(t *testing.T) {
 
 	err := pool.CreateSeries(1, 0, 1, pubKeys)
 
-	checkError(t, "", err, votingpool.ErrSeriesAlreadyExists)
+	vp.TstCheckError(t, "", err, vp.ErrSeriesAlreadyExists)
 }
 
 func TestPutSeriesErrors(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	tests := []struct {
 		version uint32
 		reqSigs uint32
 		pubKeys []string
-		err     votingpool.ErrorCode
+		err     vp.ErrorCode
 		msg     string
 	}{
 		{
 			pubKeys: []string{pubKey0},
-			err:     votingpool.ErrTooFewPublicKeys,
+			err:     vp.ErrTooFewPublicKeys,
 			msg:     "Should return error when passed too few pubkeys",
 		},
 		{
 			reqSigs: 5,
 			pubKeys: []string{pubKey0, pubKey1, pubKey2},
-			err:     votingpool.ErrTooManyReqSignatures,
+			err:     vp.ErrTooManyReqSignatures,
 			msg:     "Should return error when reqSigs > len(pubKeys)",
 		},
 		{
 			pubKeys: []string{pubKey0, pubKey1, pubKey2, pubKey0},
-			err:     votingpool.ErrKeyDuplicate,
+			err:     vp.ErrKeyDuplicate,
 			msg:     "Should return error when passed duplicate pubkeys",
 		},
 		{
 			pubKeys: []string{"invalidxpub1", "invalidxpub2", "invalidxpub3"},
-			err:     votingpool.ErrKeyChain,
+			err:     vp.ErrKeyChain,
 			msg:     "Should return error when passed invalid pubkey",
 		},
 		{
 			pubKeys: []string{privKey0, privKey1, privKey2},
-			err:     votingpool.ErrKeyIsPrivate,
+			err:     vp.ErrKeyIsPrivate,
 			msg:     "Should return error when passed private keys",
 		},
 	}
 
 	for i, test := range tests {
 		err := pool.TstPutSeries(test.version, uint32(i), test.reqSigs, test.pubKeys)
-		checkError(t, fmt.Sprintf("Create series #%d", i), err, test.err)
+		vp.TstCheckError(t, fmt.Sprintf("Create series #%d", i), err, test.err)
 	}
 }
 
 func TestValidateAndDecryptKeys(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, manager, waddrmgr.CKTPublic)
@@ -446,14 +343,14 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 
 	// We need to unlock the manager in order to encrypt with the
 	// private key.
-	manager.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, manager)
 
 	rawPrivKeys, err := encryptKeys([]string{privKey0, ""}, manager, waddrmgr.CKTPrivate)
 	if err != nil {
 		t.Fatalf("Failed to encrypt private keys: %v", err)
 	}
 
-	pubKeys, privKeys, err := votingpool.TstValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, pool)
+	pubKeys, privKeys, err := vp.TstValidateAndDecryptKeys(rawPubKeys, rawPrivKeys, pool)
 	if err != nil {
 		t.Fatalf("Error when validating/decrypting keys: %v", err)
 	}
@@ -484,7 +381,7 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 }
 
 func TestValidateAndDecryptKeysErrors(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, manager, waddrmgr.CKTPublic)
@@ -494,7 +391,7 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 
 	// We need to unlock the manager in order to encrypt with the
 	// private key.
-	manager.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, manager)
 
 	encryptedPrivKeys, err := encryptKeys([]string{privKey1}, manager, waddrmgr.CKTPrivate)
 	if err != nil {
@@ -504,38 +401,38 @@ func TestValidateAndDecryptKeysErrors(t *testing.T) {
 	tests := []struct {
 		rawPubKeys  [][]byte
 		rawPrivKeys [][]byte
-		err         votingpool.ErrorCode
+		err         vp.ErrorCode
 	}{
 		{
 			// Number of public keys does not match number of private keys.
 			rawPubKeys:  [][]byte{[]byte(pubKey0)},
 			rawPrivKeys: [][]byte{},
-			err:         votingpool.ErrKeysPrivatePublicMismatch,
+			err:         vp.ErrKeysPrivatePublicMismatch,
 		},
 		{
 			// Failure to decrypt public key.
 			rawPubKeys:  [][]byte{[]byte(pubKey0)},
 			rawPrivKeys: [][]byte{[]byte(privKey0)},
-			err:         votingpool.ErrCrypto,
+			err:         vp.ErrCrypto,
 		},
 		{
 			// Failure to decrypt private key.
 			rawPubKeys:  encryptedPubKeys,
 			rawPrivKeys: [][]byte{[]byte(privKey0)},
-			err:         votingpool.ErrCrypto,
+			err:         vp.ErrCrypto,
 		},
 		{
 			// One public and one private key, but they don't match.
 			rawPubKeys:  encryptedPubKeys,
 			rawPrivKeys: encryptedPrivKeys,
-			err:         votingpool.ErrKeyMismatch,
+			err:         vp.ErrKeyMismatch,
 		},
 	}
 
 	for i, test := range tests {
-		_, _, err := votingpool.TstValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, pool)
+		_, _, err := vp.TstValidateAndDecryptKeys(test.rawPubKeys, test.rawPrivKeys, pool)
 
-		checkError(t, fmt.Sprintf("Test #%d", i), err, test.err)
+		vp.TstCheckError(t, fmt.Sprintf("Test #%d", i), err, test.err)
 	}
 }
 
@@ -556,7 +453,7 @@ func encryptKeys(keys []string, mgr *waddrmgr.Manager, keyType waddrmgr.CryptoKe
 }
 
 func TestCannotReplaceEmpoweredSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	var seriesID uint32 = 1
@@ -566,7 +463,7 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 	}
 
 	// We need to unlock the manager in order to empower a series.
-	manager.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, manager)
 
 	if err := pool.EmpowerSeries(seriesID, privKey1); err != nil {
 		t.Fatalf("Failed to empower series", err)
@@ -574,18 +471,18 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 
 	err := pool.ReplaceSeries(1, seriesID, 2, []string{pubKey0, pubKey2, pubKey3})
 
-	checkError(t, "", err, votingpool.ErrSeriesAlreadyEmpowered)
+	vp.TstCheckError(t, "", err, vp.ErrSeriesAlreadyEmpowered)
 }
 
 func TestReplaceNonExistingSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
 
 	err := pool.ReplaceSeries(1, 1, 3, pubKeys)
 
-	checkError(t, "", err, votingpool.ErrSeriesNotExists)
+	vp.TstCheckError(t, "", err, vp.ErrSeriesNotExists)
 }
 
 type replaceSeriesTestEntry struct {
@@ -601,14 +498,14 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 			id:      0,
 			version: 1,
 			reqSigs: 2,
-			pubKeys: votingpool.CanonicalKeyOrder(
+			pubKeys: vp.CanonicalKeyOrder(
 				[]string{pubKey0, pubKey1, pubKey2, pubKey4}),
 		},
 		replaceWith: seriesRaw{
 			id:      0,
 			version: 1,
 			reqSigs: 1,
-			pubKeys: votingpool.CanonicalKeyOrder(
+			pubKeys: vp.CanonicalKeyOrder(
 				[]string{pubKey3, pubKey4, pubKey5}),
 		},
 	},
@@ -618,14 +515,14 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 			id:      2,
 			version: 1,
 			reqSigs: 2,
-			pubKeys: votingpool.CanonicalKeyOrder(
+			pubKeys: vp.CanonicalKeyOrder(
 				[]string{pubKey0, pubKey1, pubKey2}),
 		},
 		replaceWith: seriesRaw{
 			id:      2,
 			version: 1,
 			reqSigs: 2,
-			pubKeys: votingpool.CanonicalKeyOrder(
+			pubKeys: vp.CanonicalKeyOrder(
 				[]string{pubKey3, pubKey4, pubKey5, pubKey6}),
 		},
 	},
@@ -635,19 +532,19 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 			id:      4,
 			version: 1,
 			reqSigs: 8,
-			pubKeys: votingpool.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
+			pubKeys: vp.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7, pubKey8}),
 		},
 		replaceWith: seriesRaw{
 			id:      4,
 			version: 1,
 			reqSigs: 7,
-			pubKeys: votingpool.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
+			pubKeys: vp.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2, pubKey3, pubKey4, pubKey5, pubKey6, pubKey7}),
 		},
 	},
 }
 
 func TestReplaceExistingSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	for _, data := range replaceSeriesTestData {
@@ -670,7 +567,7 @@ func TestReplaceExistingSeries(t *testing.T) {
 
 // validateReplaceSeries validate the created series stored in the system
 // corresponds to the series we replaced the original with.
-func validateReplaceSeries(t *testing.T, pool *votingpool.Pool, testID int, replacedWith seriesRaw) {
+func validateReplaceSeries(t *testing.T, pool *vp.Pool, testID int, replacedWith seriesRaw) {
 	seriesID := replacedWith.id
 	series := pool.GetSeries(seriesID)
 	if series == nil {
@@ -698,7 +595,7 @@ func validateReplaceSeries(t *testing.T, pool *votingpool.Pool, testID int, repl
 }
 
 func TestEmpowerSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -706,7 +603,7 @@ func TestEmpowerSeries(t *testing.T) {
 		t.Fatalf("Failed to create series: %v", err)
 	}
 	// We need to unlock the manager in order to empower a series.
-	manager.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, manager)
 
 	err := pool.EmpowerSeries(seriesID, privKey0)
 
@@ -716,7 +613,7 @@ func TestEmpowerSeries(t *testing.T) {
 }
 
 func TestEmpowerSeriesErrors(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -727,48 +624,48 @@ func TestEmpowerSeriesErrors(t *testing.T) {
 	tests := []struct {
 		seriesID uint32
 		key      string
-		err      votingpool.ErrorCode
+		err      vp.ErrorCode
 	}{
 		{
 			seriesID: 1,
 			key:      privKey0,
 			// Invalid series.
-			err: votingpool.ErrSeriesNotExists,
+			err: vp.ErrSeriesNotExists,
 		},
 		{
 			seriesID: seriesID,
 			key:      "NONSENSE",
 			// Invalid private key.
-			err: votingpool.ErrKeyChain,
+			err: vp.ErrKeyChain,
 		},
 		{
 			seriesID: seriesID,
 			key:      pubKey5,
 			// Wrong type of key.
-			err: votingpool.ErrKeyIsPublic,
+			err: vp.ErrKeyIsPublic,
 		},
 		{
 			seriesID: seriesID,
 			key:      privKey5,
 			// Key not corresponding to public key.
-			err: votingpool.ErrKeysPrivatePublicMismatch,
+			err: vp.ErrKeysPrivatePublicMismatch,
 		},
 	}
 
 	// We need to unlock the manager in order to empower a series.
-	manager.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, manager)
 
 	for i, test := range tests {
 		err := pool.EmpowerSeries(test.seriesID, test.key)
-		checkError(t, fmt.Sprintf("EmpowerSeries #%d", i), err, test.err)
+		vp.TstCheckError(t, fmt.Sprintf("EmpowerSeries #%d", i), err, test.err)
 	}
 
 }
 
 func TestGetSeries(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
-	expectedPubKeys := votingpool.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
+	expectedPubKeys := vp.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
 	if err := pool.CreateSeries(1, 0, 2, expectedPubKeys); err != nil {
 		t.Fatalf("Failed to create series: %v", err)
 	}
@@ -837,8 +734,8 @@ var testLoadAllSeriesTests = []testLoadAllSeriesTest{
 }
 
 func setUpLoadAllSeries(t *testing.T, namespace walletdb.Namespace, mgr *waddrmgr.Manager,
-	test testLoadAllSeriesTest) *votingpool.Pool {
-	pool, err := votingpool.Create(namespace, mgr, []byte{byte(test.id + 1)})
+	test testLoadAllSeriesTest) *vp.Pool {
+	pool, err := vp.Create(namespace, mgr, []byte{byte(test.id + 1)})
 	if err != nil {
 		t.Fatalf("Voting Pool creation failed: %v", err)
 	}
@@ -863,11 +760,11 @@ func setUpLoadAllSeries(t *testing.T, namespace walletdb.Namespace, mgr *waddrmg
 }
 
 func TestLoadAllSeries(t *testing.T) {
-	tearDown, manager, pool := setUp(t)
+	tearDown, manager, pool := vp.TstSetUp(t)
 	defer tearDown()
 
-	// We need to unlock the manager in order to empower a series.
-	manager.Unlock(privPassphrase)
+	// We need to unlock the manager in order to load all series.
+	vp.TstUnlockManager(t, manager)
 
 	for _, test := range testLoadAllSeriesTests {
 		pool := setUpLoadAllSeries(t, pool.TstNamespace(), manager, test)
@@ -882,7 +779,7 @@ func TestLoadAllSeries(t *testing.T) {
 	}
 }
 
-func validateLoadAllSeries(t *testing.T, pool *votingpool.Pool, testID int, seriesData seriesRaw) {
+func validateLoadAllSeries(t *testing.T, pool *vp.Pool, testID int, seriesData seriesRaw) {
 	series := pool.GetSeries(seriesData.id)
 
 	// Check that the series exists.
@@ -904,7 +801,7 @@ func validateLoadAllSeries(t *testing.T, pool *votingpool.Pool, testID int, seri
 			testID, seriesData.id, len(privateKeys), len(publicKeys))
 	}
 
-	sortedKeys := votingpool.CanonicalKeyOrder(seriesData.pubKeys)
+	sortedKeys := vp.CanonicalKeyOrder(seriesData.pubKeys)
 	if !reflect.DeepEqual(publicKeys, sortedKeys) {
 		t.Errorf("Test #%d, series #%d: public keys mismatch. Got %d, want %d",
 			testID, seriesData.id, sortedKeys, publicKeys)
@@ -917,8 +814,8 @@ func validateLoadAllSeries(t *testing.T, pool *votingpool.Pool, testID int, seri
 			foundPrivKeys = append(foundPrivKeys, privateKey)
 		}
 	}
-	foundPrivKeys = votingpool.CanonicalKeyOrder(foundPrivKeys)
-	privKeys := votingpool.CanonicalKeyOrder(seriesData.privKeys)
+	foundPrivKeys = vp.CanonicalKeyOrder(foundPrivKeys)
+	privKeys := vp.CanonicalKeyOrder(seriesData.privKeys)
 	if !reflect.DeepEqual(privKeys, foundPrivKeys) {
 		t.Errorf("Test #%d, series #%d: private keys mismatch. Got %d, want %d",
 			testID, seriesData.id, foundPrivKeys, privKeys)
@@ -939,7 +836,7 @@ func TestBranchOrderZero(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		inKeys := createTestPubKeys(t, i, 0)
 		wantKeys := reverse(inKeys)
-		resKeys, err := votingpool.TstBranchOrder(inKeys, 0)
+		resKeys, err := vp.TstBranchOrder(inKeys, 0)
 		if err != nil {
 			t.Fatalf("Error ordering keys: %v", err)
 		}
@@ -975,7 +872,7 @@ func TestBranchOrderNonZero(t *testing.T) {
 
 			inKeys := append(append(first, pivot...), last...)
 			wantKeys := append(append(pivot, first...), last...)
-			resKeys, err := votingpool.TstBranchOrder(inKeys, votingpool.Branch(branch))
+			resKeys, err := vp.TstBranchOrder(inKeys, vp.Branch(branch))
 			if err != nil {
 				t.Fatalf("Error ordering keys: %v", err)
 			}
@@ -996,15 +893,15 @@ func TestBranchOrderNonZero(t *testing.T) {
 }
 
 func TestBranchOrderNilKeys(t *testing.T) {
-	_, err := votingpool.TstBranchOrder(nil, 1)
+	_, err := vp.TstBranchOrder(nil, 1)
 
-	checkError(t, "", err, votingpool.ErrInvalidValue)
+	vp.TstCheckError(t, "", err, vp.ErrInvalidValue)
 }
 
 func TestBranchOrderInvalidBranch(t *testing.T) {
-	_, err := votingpool.TstBranchOrder(createTestPubKeys(t, 3, 0), 4)
+	_, err := vp.TstBranchOrder(createTestPubKeys(t, 3, 0), 4)
 
-	checkError(t, "", err, votingpool.ErrInvalidBranch)
+	vp.TstCheckError(t, "", err, vp.ErrInvalidBranch)
 }
 
 func branchErrorFormat(orig, want, got []*hdkeychain.ExtendedKey) (origOrder, wantOrder, gotOrder []int) {
@@ -1067,7 +964,7 @@ func TestReverse(t *testing.T) {
 }
 
 func TestEmpowerSeriesNeuterFailed(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -1082,11 +979,11 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 	badKey := "wM5uZBNTYmaYGiK8VaGi7zPGbZGLuQgDiR2Zk4nGfbRFLXwHGcMUdVdazRpNHFSR7X7WLmzzbAq8dA1ViN6eWKgKqPye1rJTDQTvBiXvZ7E3nmdx"
 	err = pool.EmpowerSeries(seriesID, badKey)
 
-	checkError(t, "", err, votingpool.ErrKeyNeuter)
+	vp.TstCheckError(t, "", err, vp.ErrKeyNeuter)
 }
 
 func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
-	tearDown, mgr, pool := setUp(t)
+	tearDown, mgr, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	// the plaintext not being base58 encoded triggers the error
@@ -1097,20 +994,20 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 
 	_, err = pool.TstDecryptExtendedKey(waddrmgr.CKTPublic, cipherText)
 
-	checkError(t, "", err, votingpool.ErrKeyChain)
+	vp.TstCheckError(t, "", err, vp.ErrKeyChain)
 }
 
 func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
-	tearDown, _, pool := setUp(t)
+	tearDown, _, pool := vp.TstSetUp(t)
 	defer tearDown()
 
 	_, err := pool.TstDecryptExtendedKey(waddrmgr.CKTPublic, []byte{})
 
-	checkError(t, "", err, votingpool.ErrCrypto)
+	vp.TstCheckError(t, "", err, vp.ErrCrypto)
 }
 
 func TestSerializationErrors(t *testing.T) {
-	tearDown, mgr, _ := setUp(t)
+	tearDown, mgr, _ := vp.TstSetUp(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -1118,35 +1015,35 @@ func TestSerializationErrors(t *testing.T) {
 		pubKeys  []string
 		privKeys []string
 		reqSigs  uint32
-		err      votingpool.ErrorCode
+		err      vp.ErrorCode
 	}{
 		{
 			version: 2,
 			pubKeys: []string{pubKey0, pubKey1, pubKey2},
-			err:     votingpool.ErrSeriesVersion,
+			err:     vp.ErrSeriesVersion,
 		},
 		{
 			pubKeys: []string{"NONSENSE"},
 			// Not a valid length public key.
-			err: votingpool.ErrSeriesStorage,
+			err: vp.ErrSeriesStorage,
 		},
 		{
 			pubKeys:  []string{pubKey0, pubKey1, pubKey2},
 			privKeys: []string{privKey0},
 			// The number of public and private keys should be the same.
-			err: votingpool.ErrSeriesStorage,
+			err: vp.ErrSeriesStorage,
 		},
 		{
 			pubKeys:  []string{pubKey0},
 			privKeys: []string{"NONSENSE"},
 			// Not a valid length private key.
-			err: votingpool.ErrSeriesStorage,
+			err: vp.ErrSeriesStorage,
 		},
 	}
 
 	// We need to unlock the manager in order to encrypt with the
 	// private key.
-	mgr.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, mgr)
 
 	active := true
 	for testNum, test := range tests {
@@ -1159,15 +1056,15 @@ func TestSerializationErrors(t *testing.T) {
 			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
 		}
 
-		_, err = votingpool.SerializeSeries(
+		_, err = vp.SerializeSeries(
 			test.version, active, test.reqSigs, encryptedPubs, encryptedPrivs)
 
-		checkError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
+		vp.TstCheckError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
 	}
 }
 
 func TestSerialization(t *testing.T) {
-	tearDown, mgr, _ := setUp(t)
+	tearDown, mgr, _ := vp.TstSetUp(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -1208,7 +1105,7 @@ func TestSerialization(t *testing.T) {
 
 	// We need to unlock the manager in order to encrypt with the
 	// private key.
-	mgr.Unlock(privPassphrase)
+	vp.TstUnlockManager(t, mgr)
 
 	for testNum, test := range tests {
 		encryptedPubs, err := encryptKeys(test.pubKeys, mgr, waddrmgr.CKTPublic)
@@ -1220,13 +1117,13 @@ func TestSerialization(t *testing.T) {
 			t.Fatalf("Test #%d - Error encrypting privkeys: %v", testNum, err)
 		}
 
-		serialized, err := votingpool.SerializeSeries(
+		serialized, err := vp.SerializeSeries(
 			test.version, test.active, test.reqSigs, encryptedPubs, encryptedPrivs)
 		if err != nil {
 			t.Fatalf("Test #%d - Error in serialization %v", testNum, err)
 		}
 
-		row, err := votingpool.DeserializeSeries(serialized)
+		row, err := vp.DeserializeSeries(serialized)
 		if err != nil {
 			t.Fatalf("Test #%d - Failed to deserialize %v %v", testNum, serialized, err)
 		}
@@ -1278,22 +1175,22 @@ func TestSerialization(t *testing.T) {
 }
 
 func TestDeserializationErrors(t *testing.T) {
-	tearDown, _, _ := setUp(t)
+	tearDown, _, _ := vp.TstSetUp(t)
 	defer tearDown()
 
 	tests := []struct {
 		serialized []byte
-		err        votingpool.ErrorCode
+		err        vp.ErrorCode
 	}{
 		{
 			serialized: make([]byte, 1000000),
 			// Too many bytes (over waddrmgr.seriesMaxSerial).
-			err: votingpool.ErrSeriesStorage,
+			err: vp.ErrSeriesStorage,
 		},
 		{
 			serialized: make([]byte, 10),
 			// Not enough bytes (under waddrmgr.seriesMinSerial).
-			err: votingpool.ErrSeriesStorage,
+			err: vp.ErrSeriesStorage,
 		},
 		{
 			serialized: []byte{
@@ -1303,18 +1200,41 @@ func TestDeserializationErrors(t *testing.T) {
 				3, 0, 0, 0, // 4 bytes (nKeys)
 			},
 			// Here we have the constant data but are missing any public/private keys.
-			err: votingpool.ErrSeriesStorage,
+			err: vp.ErrSeriesStorage,
 		},
 		{
 			serialized: []byte{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 			// Unsupported version.
-			err: votingpool.ErrSeriesVersion,
+			err: vp.ErrSeriesVersion,
 		},
 	}
 
 	for testNum, test := range tests {
-		_, err := votingpool.DeserializeSeries(test.serialized)
+		_, err := vp.DeserializeSeries(test.serialized)
 
-		checkError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
+		vp.TstCheckError(t, fmt.Sprintf("Test #%d", testNum), err, test.err)
 	}
 }
+
+// Sample raw public/private extended keys used across our tests.
+const (
+	privKey0 = "xprv9s21ZrQH143K2j9PK4CXkCu8sgxkpUxCF7p1KVwiV5tdnkeYzJXReUkxz5iB2FUzTXC1L15abCDG4RMxSYT5zhm67uvsnLYxuDhZfoFcB6a"
+	privKey1 = "xprv9s21ZrQH143K4PtW77ATQAKAGk7KAFFCzxFuAcWduoMEeQhCgWpuYWQvMGZknqdispUbgLZV1YPqFCbpzMJij8tSZ5xPSaZqPbchojeNuq7"
+	privKey2 = "xprv9s21ZrQH143K27XboWxXZGU5j7VZ9SqVBnmMQPKTbddiWAhuNzeLynKHaZTAti6N454tVUUcvy6u15DfuW68NCBUxry6ZsHHzqoA8UtzdMn"
+	privKey3 = "xprv9s21ZrQH143K2vb4DGQymRejLcZSksBHTYLxB7Stg1c7Lk9JxgEUGZTozwUKxoEWJPoGSdGnJY1TW7LNFQCWrpZjDdEXJeqJuDde6BmdD4P"
+	privKey4 = "xprv9s21ZrQH143K4JNmRvWeLc1PggzusKcDYV1y8fAMNDdb9Rm5X1AvGHizxEdhTVR3sc62XvifC6dLAXMuQesX1y6999xnDwQ3aVno8KviU9d"
+	privKey5 = "xprv9s21ZrQH143K3dxrqESqeHZ7pSwM6Uq77ssQADSBs7qdFs6dyRWmRcPyLUTQRpgB3EduNhJuWkCGG2LHjuUisw8KKfXJpPqYJ1MSPrZpe1z"
+	privKey6 = "xprv9s21ZrQH143K2nE8ENAMNksTTVxPrMxFNWUuwThMy2bcH9LHTtQDXSNq2pTNcbuq36n5A3J9pbXVqnq5LDXvqniFRLN299kW7Svnxsx9tQv"
+	privKey7 = "xprv9s21ZrQH143K3p93xF1oFeB6ey5ruUesWjuPxA9Z2R5wf6BLYfGXz7fg7NavWkQ2cx3Vm8w2HV9uKpSprNNHnenGeW9XhYDPSjwS9hyCs33"
+	privKey8 = "xprv9s21ZrQH143K3WxnnvPZ8SDGXndASvLTFwMLBVzNCVgs9rzP6rXgW92DLvozdyBm8T9bSQvrFm1jMpTJrRE6w1KY5tshFeDk9Nn3K6V5FYX"
+
+	pubKey0 = "xpub661MyMwAqRbcFDDrR5jY7LqsRioFDwg3cLjc7tML3RRcfYyhXqqgCH5SqMSQdpQ1Xh8EtVwcfm8psD8zXKPcRaCVSY4GCqbb3aMEs27GitE"
+	pubKey1 = "xpub661MyMwAqRbcGsxyD8hTmJFtpmwoZhy4NBBVxzvFU8tDXD2ME49A6JjQCYgbpSUpHGP1q4S2S1Pxv2EqTjwfERS5pc9Q2yeLkPFzSgRpjs9"
+	pubKey2 = "xpub661MyMwAqRbcEbc4uYVXvQQpH9L3YuZLZ1gxCmj59yAhNy33vXxbXadmRpx5YZEupNSqWRrR7PqU6duS2FiVCGEiugBEa5zuEAjsyLJjKCh"
+	pubKey3 = "xpub661MyMwAqRbcFQfXKHwz8ZbTtePwAKu8pmGYyVrWEM96DYUTWDYipMnHrFcemZHn13jcRMfsNU3UWQUudiaE7mhkWCHGFRMavF167DQM4Va"
+	pubKey4 = "xpub661MyMwAqRbcGnTEXx3ehjx8EiqQGnL4uhwZw3ZxvZAa2E6E4YVAp63UoVtvm2vMDDF8BdPpcarcf7PWcEKvzHhxzAYw1zG23C2egeh82AR"
+	pubKey5 = "xpub661MyMwAqRbcG83KwFyr1RVrNUmqVwYxV6nzxbqoRTNc8fRnWxq1yQiTBifTHhevcEM9ucZ1TqFS7Kv17Gd81cesv6RDrrvYS9SLPjPXhV5"
+	pubKey6 = "xpub661MyMwAqRbcFGJbLPhMjtpC1XntFpg6jjQWjr6yXN8b9wfS1RiU5EhJt5L7qoFuidYawc3XJoLjT2PcjVpXryS3hn1WmSPCyvQDNuKsfgM"
+	pubKey7 = "xpub661MyMwAqRbcGJDX4GYocn7qCzvMJwNisxpzkYZAakcvXtWV6CanXuz9xdfe5kTptFMJ4hDt2iTiT11zyN14u8R5zLvoZ1gnEVqNLxp1r3v"
+	pubKey8 = "xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E"
+)

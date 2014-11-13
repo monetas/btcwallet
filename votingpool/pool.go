@@ -31,6 +31,9 @@ const (
 	minSeriesPubKeys = 3
 )
 
+// CurrentVersion is the version used for newly created Series.
+var CurrentVersion uint32 = 1
+
 // Branch is the type used to represent a branch number in a series.
 type Branch uint32
 
@@ -177,6 +180,8 @@ func (vp *Pool) GetSeries(seriesID uint32) *SeriesData {
 
 // saveSeriesToDisk stores the given series ID and data in the database,
 // first encrypting the public/private extended keys.
+//
+// This method must be called with the Pool's manager unlocked.
 func (vp *Pool) saveSeriesToDisk(seriesID uint32, data *SeriesData) error {
 	var err error
 	encryptedPubKeys := make([][]byte, len(data.publicKeys))
@@ -256,6 +261,8 @@ func convertAndValidatePubKeys(rawPubKeys []string) ([]*hdkeychain.ExtendedKey, 
 // pool's seriesLookup map. It also ensures inRawPubKeys has at least
 // minSeriesPubKeys items and reqSigs is not greater than the number of items in
 // inRawPubKeys.
+//
+// This method must be called with the Pool's manager unlocked.
 func (vp *Pool) putSeries(version, seriesID, reqSigs uint32, inRawPubKeys []string) error {
 	if len(inRawPubKeys) < minSeriesPubKeys {
 		str := fmt.Sprintf("need at least %d public keys to create a series", minSeriesPubKeys)
@@ -325,6 +332,8 @@ func (vp *Pool) ReplaceSeries(version, seriesID, reqSigs uint32, rawPubKeys []st
 
 // decryptExtendedKey uses Manager.Decrypt() to decrypt the encrypted byte slice and return
 // an extended (public or private) key representing it.
+//
+// This method must be called with the Pool's manager unlocked.
 func (vp *Pool) decryptExtendedKey(keyType waddrmgr.CryptoKeyType, encrypted []byte) (*hdkeychain.ExtendedKey, error) {
 	decrypted, err := vp.manager.Decrypt(keyType, encrypted)
 	if err != nil {
@@ -343,6 +352,8 @@ func (vp *Pool) decryptExtendedKey(keyType waddrmgr.CryptoKeyType, encrypted []b
 // validateAndDecryptSeriesKeys checks that the length of the public and private key
 // slices is the same, decrypts them, ensures the non-nil private keys have a matching
 // public key and returns them.
+//
+// This function must be called with the Pool's manager unlocked.
 func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys, privKeys []*hdkeychain.ExtendedKey, err error) {
 	pubKeys = make([]*hdkeychain.ExtendedKey, len(rawPubKeys))
 	privKeys = make([]*hdkeychain.ExtendedKey, len(rawPrivKeys))
@@ -392,6 +403,8 @@ func validateAndDecryptKeys(rawPubKeys, rawPrivKeys [][]byte, vp *Pool) (pubKeys
 // seriesLookup map with them. If there are any private extended keys for
 // a series, it will also ensure they have a matching extended public key
 // in that series.
+//
+// This method must be called with the Pool's manager unlocked.
 func (vp *Pool) LoadAllSeries() error {
 	var series map[uint32]*dbSeriesRow
 	err := vp.namespace.View(func(tx walletdb.Tx) error {
@@ -543,6 +556,8 @@ func (vp *Pool) DepositScript(seriesID uint32, branch Branch, index Index) ([]by
 // series with the given ID, thus allowing it to sign deposit/withdrawal
 // scripts. The series with the given ID must exist, the key must be a valid
 // private extended key and must match one of the series' extended public keys.
+//
+// This method must be called with the Pool's manager unlocked.
 func (vp *Pool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 	// make sure this series exists
 	series := vp.GetSeries(seriesID)
@@ -590,9 +605,7 @@ func (vp *Pool) EmpowerSeries(seriesID uint32, rawPrivKey string) error {
 		return newError(ErrKeysPrivatePublicMismatch, str, nil)
 	}
 
-	err = vp.saveSeriesToDisk(seriesID, series)
-
-	if err != nil {
+	if err = vp.saveSeriesToDisk(seriesID, series); err != nil {
 		return err
 	}
 

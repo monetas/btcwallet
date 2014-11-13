@@ -7,14 +7,13 @@ import (
 
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/txstore"
-	"github.com/conformal/btcwallet/votingpool"
+	vp "github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
 
 var (
-	version uint32 = 1
-	minConf int    = 100
+	minConf int = 100
 
 	// random small number of satoshis used as dustThreshold
 	dustThreshold btcutil.Amount = 1e4
@@ -22,15 +21,15 @@ var (
 
 // A test version of credit implementing the CreditInterface.
 type FakeTxShaCredit struct {
-	addr        votingpool.WithdrawalAddress
+	addr        vp.WithdrawalAddress
 	txid        *btcwire.ShaHash
 	outputIndex uint32
 }
 
-func newFakeTxShaCredit(t *testing.T, vp *votingpool.Pool, series, index votingpool.Index, branch votingpool.Branch, txid []byte, outputIdx int) FakeTxShaCredit {
+func newFakeTxShaCredit(t *testing.T, pool *vp.Pool, series, index vp.Index, branch vp.Branch, txid []byte, outputIdx int) FakeTxShaCredit {
 	var hash btcwire.ShaHash
 	copy(hash[:], txid)
-	addr, err := vp.WithdrawalAddress(uint32(series), branch, index)
+	addr, err := pool.WithdrawalAddress(uint32(series), branch, index)
 	if err != nil {
 		t.Fatalf("WithdrawalAddress failed: %v", err)
 	}
@@ -49,7 +48,7 @@ func (c FakeTxShaCredit) OutputIndex() uint32 {
 	return c.outputIndex
 }
 
-func (c FakeTxShaCredit) Address() votingpool.WithdrawalAddress {
+func (c FakeTxShaCredit) Address() vp.WithdrawalAddress {
 	return c.addr
 }
 
@@ -63,38 +62,38 @@ func (c FakeTxShaCredit) OutPoint() *btcwire.OutPoint {
 
 // Compile time check that FakeTxShaCredit implements the
 // CreditInterface.
-var _ votingpool.CreditInterface = (*FakeTxShaCredit)(nil)
+var _ vp.CreditInterface = (*FakeTxShaCredit)(nil)
 
 // TestCreditInterfaceSort checks that the sorting algorithm correctly
 // sorts lexicographically by series, index, branch, txid,
 // outputindex.
 func TestCreditInterfaceSort(t *testing.T) {
-	teardown, _, vp := setUp(t)
+	teardown, _, pool := vp.TstSetUp(t)
 	defer teardown()
 
 	// Create the series 0 and 1 as they are needed for creaing the
 	// fake credits.
-	series := []seriesDef{
+	series := []vp.TstSeriesDef{
 		{2, []string{pubKey1, pubKey2, pubKey3}, 0},
 		{2, []string{pubKey3, pubKey4, pubKey5}, 1},
 	}
-	createSeries(t, vp, series)
+	vp.TstCreateSeries(t, pool, series)
 
-	c0 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x00, 0x00}, 0)
-	c1 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x00, 0x00}, 1)
-	c2 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x00, 0x01}, 0)
-	c3 := newFakeTxShaCredit(t, vp, 0, 0, 0, []byte{0x01, 0x00}, 0)
-	c4 := newFakeTxShaCredit(t, vp, 0, 0, 1, []byte{0x00, 0x00}, 0)
-	c5 := newFakeTxShaCredit(t, vp, 0, 1, 0, []byte{0x00, 0x00}, 0)
-	c6 := newFakeTxShaCredit(t, vp, 1, 0, 0, []byte{0x00, 0x00}, 0)
+	c0 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x00, 0x00}, 0)
+	c1 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x00, 0x00}, 1)
+	c2 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x00, 0x01}, 0)
+	c3 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x01, 0x00}, 0)
+	c4 := newFakeTxShaCredit(t, pool, 0, 0, 1, []byte{0x00, 0x00}, 0)
+	c5 := newFakeTxShaCredit(t, pool, 0, 1, 0, []byte{0x00, 0x00}, 0)
+	c6 := newFakeTxShaCredit(t, pool, 1, 0, 0, []byte{0x00, 0x00}, 0)
 
-	randomCredits := []votingpool.Credits{
-		votingpool.Credits{c6, c5, c4, c3, c2, c1, c0},
-		votingpool.Credits{c2, c1, c0, c6, c5, c4, c3},
-		votingpool.Credits{c6, c4, c5, c2, c3, c0, c1},
+	randomCredits := []vp.Credits{
+		vp.Credits{c6, c5, c4, c3, c2, c1, c0},
+		vp.Credits{c2, c1, c0, c6, c5, c4, c3},
+		vp.Credits{c6, c4, c5, c2, c3, c0, c1},
 	}
 
-	want := votingpool.Credits{c0, c1, c2, c3, c4, c5, c6}
+	want := vp.Credits{c0, c1, c2, c3, c4, c5, c6}
 
 	for _, random := range randomCredits {
 		sort.Sort(random)
@@ -114,11 +113,11 @@ func TestCreditInterfaceSort(t *testing.T) {
 	}
 }
 
-func checkUniqueness(t *testing.T, credits votingpool.Credits) {
+func checkUniqueness(t *testing.T, credits vp.Credits) {
 	type uniq struct {
 		series      uint32
-		branch      votingpool.Branch
-		index       votingpool.Index
+		branch      vp.Branch
+		index       vp.Index
 		hash        btcwire.ShaHash
 		outputIndex uint32
 	}
@@ -140,7 +139,7 @@ func checkUniqueness(t *testing.T, credits votingpool.Credits) {
 	}
 }
 
-func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.Pool, ranges []votingpool.AddressRange) [][]byte {
+func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *vp.Pool, ranges []vp.AddressRange) [][]byte {
 	var scripts [][]byte
 	for _, r := range ranges {
 		// create expNoAddrs number of scripts.
@@ -148,7 +147,7 @@ func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.Pool, r
 		if err != nil {
 			t.Fatal("Calculating the range failed")
 		}
-		newScripts := createPkScripts(t, mgr, pool, r)
+		newScripts := vp.TstCreatePkScripts(t, mgr, pool, r)
 		if uint64(len(newScripts)) != expNoAddrs {
 			t.Fatalf("Wrong number of scripts generated. Got: %d, want: %d",
 				len(scripts), expNoAddrs)
@@ -159,13 +158,13 @@ func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *votingpool.Pool, r
 }
 
 func TestGetEligibleInputs(t *testing.T) {
-	teardown, mgr, pool := setUp(t)
-	store, storeTearDown := createTxStore(t)
+	teardown, mgr, pool := vp.TstSetUp(t)
+	store, storeTearDown := vp.TstCreateTxStore(t)
 	defer teardown()
 	defer storeTearDown()
 
 	// create some eligible inputs in a specified range.
-	aRanges := []votingpool.AddressRange{
+	aRanges := []vp.AddressRange{
 		{
 			SeriesID:    0,
 			StartBranch: 0,
@@ -182,7 +181,7 @@ func TestGetEligibleInputs(t *testing.T) {
 		},
 	}
 	// define two series.
-	series := []seriesDef{
+	series := []vp.TstSeriesDef{
 		{2, []string{pubKey1, pubKey2, pubKey3}, aRanges[0].SeriesID},
 		{2, []string{pubKey3, pubKey4, pubKey5}, aRanges[1].SeriesID},
 	}
@@ -190,7 +189,7 @@ func TestGetEligibleInputs(t *testing.T) {
 	chainHeight := oldChainHeight + minConf + 10
 
 	// create the series.
-	createSeries(t, pool, series)
+	vp.TstCreateSeries(t, pool, series)
 
 	// create all the scripts.
 	scripts := createScripts(t, mgr, pool, aRanges)
@@ -201,7 +200,7 @@ func TestGetEligibleInputs(t *testing.T) {
 	var inputs []txstore.Credit
 	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
-		created := createInputsOnBlock(t, store, blockIndex, oldChainHeight,
+		created := vp.TstCreateInputsOnBlock(t, store, blockIndex, oldChainHeight,
 			scripts[i], eligibleAmounts)
 		inputs = append(inputs, created...)
 	}
@@ -229,10 +228,10 @@ func TestGetEligibleInputs(t *testing.T) {
 }
 
 func TestGetEligibleInputsFromSeries(t *testing.T) {
-	teardown, mgr, pool := setUp(t)
+	teardown, mgr, pool := vp.TstSetUp(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
-	aRange := votingpool.AddressRange{
+	aRange := vp.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  2,
@@ -245,20 +244,20 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 	eligibleAmounts := []int64{int64(dustThreshold + 1), int64(dustThreshold + 1)}
 
 	// define a series.
-	series := []seriesDef{
+	series := []vp.TstSeriesDef{
 		{2, []string{pubKey1, pubKey2, pubKey3}, aRange.SeriesID},
 	}
-	createSeries(t, pool, series)
+	vp.TstCreateSeries(t, pool, series)
 
 	// create all the scripts.
-	scripts := createScripts(t, mgr, pool, []votingpool.AddressRange{aRange})
+	scripts := createScripts(t, mgr, pool, []vp.AddressRange{aRange})
 
 	// Let's create two eligible inputs for each of the scripts.
 	expNumberOfEligibleInputs := 2 * len(scripts)
 	var inputs []txstore.Credit
 	for i := 0; i < len(scripts); i++ {
 		blockIndex := int(i) + 1
-		created := createInputsOnBlock(t, store, blockIndex, blockHeight,
+		created := vp.TstCreateInputsOnBlock(t, store, blockIndex, blockHeight,
 			scripts[i], eligibleAmounts)
 		inputs = append(inputs, created...)
 	}
@@ -286,24 +285,24 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 }
 
 func TestEligibleInputsAreEligible(t *testing.T) {
-	teardown, mgr, pool := setUp(t)
-	store, storeTearDown := createTxStore(t)
+	teardown, mgr, pool := vp.TstSetUp(t)
+	store, storeTearDown := vp.TstCreateTxStore(t)
 	defer teardown()
 	defer storeTearDown()
 	var seriesID uint32 = 0
-	var branch votingpool.Branch = 0
-	var index votingpool.Index = 0
+	var branch vp.Branch = 0
+	var index vp.Index = 0
 
 	// create the series
-	series := []seriesDef{
+	series := []vp.TstSeriesDef{
 		{3, []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}, seriesID},
 	}
-	createSeries(t, pool, series)
+	vp.TstCreateSeries(t, pool, series)
 
 	// Create the input.
-	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, index)
+	pkScript := vp.TstCreatePkScript(t, mgr, pool, seriesID, branch, index)
 	var chainHeight int32 = 1000
-	c := createInputs(t, store, pkScript, []int64{int64(dustThreshold)})[0]
+	c := vp.TstCreateInputs(t, store, pkScript, []int64{int64(dustThreshold)})[0]
 
 	// Make sure credits is old enough to pass the minConf check.
 	c.BlockHeight = int32(100)
@@ -314,34 +313,34 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 }
 
 func TestNonEligibleInputsAreNotEligible(t *testing.T) {
-	teardown, mgr, pool := setUp(t)
-	store1, storeTearDown1 := createTxStore(t)
-	store2, storeTearDown2 := createTxStore(t)
+	teardown, mgr, pool := vp.TstSetUp(t)
+	store1, storeTearDown1 := vp.TstCreateTxStore(t)
+	store2, storeTearDown2 := vp.TstCreateTxStore(t)
 	defer teardown()
 	defer storeTearDown1()
 	defer storeTearDown2()
 	var seriesID uint32 = 0
-	var branch votingpool.Branch = 0
-	var index votingpool.Index = 0
+	var branch vp.Branch = 0
+	var index vp.Index = 0
 
 	// create the series
-	series := []seriesDef{
+	series := []vp.TstSeriesDef{
 		{3, []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}, seriesID},
 	}
-	createSeries(t, pool, series)
+	vp.TstCreateSeries(t, pool, series)
 
-	pkScript := createVotingPoolPkScript(t, mgr, pool, seriesID, branch, index)
+	pkScript := vp.TstCreatePkScript(t, mgr, pool, seriesID, branch, index)
 	var chainHeight int32 = 1000
 
 	// Check that credit below dustThreshold is rejected.
-	c1 := createInputs(t, store1, pkScript, []int64{int64(dustThreshold - 1)})[0]
+	c1 := vp.TstCreateInputs(t, store1, pkScript, []int64{int64(dustThreshold - 1)})[0]
 	c1.BlockHeight = int32(100) // make sure it has enough confirmations.
 	if pool.TstIsCreditEligible(c1, minConf, chainHeight, dustThreshold) {
 		t.Errorf("Input is eligible and it should not be.")
 	}
 
 	// Check that a credit with not enough confirmations is rejected.
-	c2 := createInputs(t, store2, pkScript, []int64{int64(dustThreshold)})[0]
+	c2 := vp.TstCreateInputs(t, store2, pkScript, []int64{int64(dustThreshold)})[0]
 	// the calculation of if it has been confirmed does this:
 	// chainheigt - bh + 1 >= target, which is quite weird, but the
 	// reason why I need to put 902 as *that* makes 1000 - 902 +1 = 99 >=
@@ -354,21 +353,21 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 }
 
 func TestAddressRange(t *testing.T) {
-	one := votingpool.AddressRange{
+	one := vp.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  0,
 		StartIndex:  0,
 		StopIndex:   0,
 	}
-	two := votingpool.AddressRange{
+	two := vp.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  0,
 		StartIndex:  0,
 		StopIndex:   1,
 	}
-	four := votingpool.AddressRange{
+	four := vp.AddressRange{
 		SeriesID:    0,
 		StartBranch: 0,
 		StopBranch:  1,
@@ -376,12 +375,12 @@ func TestAddressRange(t *testing.T) {
 		StopIndex:   1,
 	}
 
-	invalidBranch := votingpool.AddressRange{
+	invalidBranch := vp.AddressRange{
 		StartBranch: 1,
 		StopBranch:  0,
 	}
 
-	invalidIndex := votingpool.AddressRange{
+	invalidIndex := vp.AddressRange{
 		StartIndex: 1,
 		StopIndex:  0,
 	}

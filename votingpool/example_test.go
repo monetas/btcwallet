@@ -17,6 +17,7 @@
 package votingpool_test
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -56,8 +57,11 @@ func Example_basic() {
 	}
 
 	// Create the address manager
-	mgr, err := waddrmgr.Create(mgrNamespace, seed, pubPassphrase, privPassphrase,
-		&btcnet.MainNetParams, nil)
+	pubPassphrase := []byte("pubPassphrase")
+	privPassphrase := []byte("privPassphrase")
+	seed := bytes.Repeat([]byte{0x2a, 0x64, 0xdf, 0x08}, 8)
+	mgr, err := waddrmgr.Create(
+		mgrNamespace, seed, pubPassphrase, privPassphrase, &btcnet.MainNetParams, nil)
 	if err != nil {
 		fmt.Printf("Failed to create addr manager: %v\n", err)
 		return
@@ -79,7 +83,6 @@ func Example_basic() {
 	}
 
 	// Create a 2-of-3 series.
-	apiVersion := uint32(1)
 	seriesID := uint32(1)
 	requiredSignatures := uint32(2)
 	pubKeys := []string{
@@ -87,7 +90,7 @@ func Example_basic() {
 		"xpub661MyMwAqRbcGsxyD8hTmJFtpmwoZhy4NBBVxzvFU8tDXD2ME49A6JjQCYgbpSUpHGP1q4S2S1Pxv2EqTjwfERS5pc9Q2yeLkPFzSgRpjs9",
 		"xpub661MyMwAqRbcEbc4uYVXvQQpH9L3YuZLZ1gxCmj59yAhNy33vXxbXadmRpx5YZEupNSqWRrR7PqU6duS2FiVCGEiugBEa5zuEAjsyLJjKCh",
 	}
-	err = pool.CreateSeries(apiVersion, seriesID, requiredSignatures, pubKeys)
+	err = pool.CreateSeries(votingpool.CurrentVersion, seriesID, requiredSignatures, pubKeys)
 	if err != nil {
 		fmt.Printf("Cannot create series: %v\n", err)
 		return
@@ -114,7 +117,7 @@ func Example_basic() {
 		"xpub661MyMwAqRbcG13FtwvZVaA15pTerP4JdAGvytPykqDr2fKXePqw3wLhCALPAixsE176jFkc2ac9K3tnF4KwaTRKUqFF5apWD6XL9LHCu7E",
 	}
 	requiredSignatures = 3
-	err = pool.ReplaceSeries(apiVersion, seriesID, requiredSignatures, pubKeys)
+	err = pool.ReplaceSeries(votingpool.CurrentVersion, seriesID, requiredSignatures, pubKeys)
 	if err != nil {
 		fmt.Printf("Cannot replace series: %v\n", err)
 		return
