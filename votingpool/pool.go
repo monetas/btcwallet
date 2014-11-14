@@ -178,6 +178,11 @@ func (vp *Pool) GetSeries(seriesID uint32) *SeriesData {
 	return series
 }
 
+// Manager returns the waddrmgr.Manager used by this Pool.
+func (p *Pool) Manager() *waddrmgr.Manager {
+	return p.manager
+}
+
 // saveSeriesToDisk stores the given series ID and data in the database,
 // first encrypting the public/private extended keys.
 //

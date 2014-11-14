@@ -56,6 +56,10 @@ func (c FakeTxShaCredit) Amount() btcutil.Amount {
 	return btcutil.Amount(0)
 }
 
+func (c FakeTxShaCredit) TxOut() *btcwire.TxOut {
+	return nil
+}
+
 func (c FakeTxShaCredit) OutPoint() *btcwire.OutPoint {
 	return &btcwire.OutPoint{Hash: *c.txid, Index: c.outputIndex}
 }
@@ -147,7 +151,7 @@ func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *vp.Pool, ranges []
 		if err != nil {
 			t.Fatal("Calculating the range failed")
 		}
-		newScripts := vp.TstCreatePkScripts(t, mgr, pool, r)
+		newScripts := vp.TstCreatePkScripts(t, pool, r)
 		if uint64(len(newScripts)) != expNoAddrs {
 			t.Fatalf("Wrong number of scripts generated. Got: %d, want: %d",
 				len(scripts), expNoAddrs)
@@ -285,7 +289,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 }
 
 func TestEligibleInputsAreEligible(t *testing.T) {
-	teardown, mgr, pool := vp.TstSetUp(t)
+	teardown, _, pool := vp.TstSetUp(t)
 	store, storeTearDown := vp.TstCreateTxStore(t)
 	defer teardown()
 	defer storeTearDown()
@@ -300,7 +304,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 	vp.TstCreateSeries(t, pool, series)
 
 	// Create the input.
-	pkScript := vp.TstCreatePkScript(t, mgr, pool, seriesID, branch, index)
+	pkScript := vp.TstCreatePkScript(t, pool, seriesID, branch, index)
 	var chainHeight int32 = 1000
 	c := vp.TstCreateInputs(t, store, pkScript, []int64{int64(dustThreshold)})[0]
 
@@ -313,7 +317,7 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 }
 
 func TestNonEligibleInputsAreNotEligible(t *testing.T) {
-	teardown, mgr, pool := vp.TstSetUp(t)
+	teardown, _, pool := vp.TstSetUp(t)
 	store1, storeTearDown1 := vp.TstCreateTxStore(t)
 	store2, storeTearDown2 := vp.TstCreateTxStore(t)
 	defer teardown()
@@ -329,7 +333,7 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 	}
 	vp.TstCreateSeries(t, pool, series)
 
-	pkScript := vp.TstCreatePkScript(t, mgr, pool, seriesID, branch, index)
+	pkScript := vp.TstCreatePkScript(t, pool, seriesID, branch, index)
 	var chainHeight int32 = 1000
 
 	// Check that credit below dustThreshold is rejected.

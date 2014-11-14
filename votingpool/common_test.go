@@ -27,6 +27,7 @@ import (
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
+	"github.com/conformal/btcutil/hdkeychain"
 	"github.com/conformal/btcwallet/txstore"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwallet/walletdb"
@@ -45,15 +46,14 @@ func TstCreateInputs(t *testing.T, store *txstore.Store, pkScript []byte, amount
 	return TstCreateInputsOnBlock(t, store, blockTxIndex, blockHeight, pkScript, amounts)
 }
 
-// createInputOnBlock creates a number of inputs by creating a
+// TstCreateInputsOnBlock creates a number of inputs by creating a
 // transaction with a number of outputs corresponding to the elements
 // of the amounts slice.
 //
 // The transaction is added to a block and the index and and
 // blockheight must be specified.
 func TstCreateInputsOnBlock(t *testing.T, s *txstore.Store,
-	blockTxIndex, blockHeight int,
-	pkScript []byte, amounts []int64) []txstore.Credit {
+	blockTxIndex, blockHeight int, pkScript []byte, amounts []int64) []txstore.Credit {
 	msgTx := createMsgTx(pkScript, amounts)
 	block := &txstore.Block{
 		Height: int32(blockHeight),
@@ -100,15 +100,15 @@ func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
 	return msgtx
 }
 
-func TstCreatePkScript(t *testing.T, mgr *waddrmgr.Manager, pool *Pool, series uint32, branch Branch, index Index) []byte {
+func TstCreatePkScript(t *testing.T, pool *Pool, series uint32, branch Branch, index Index) []byte {
 	script, err := pool.DepositScript(series, branch, index)
 	if err != nil {
 		t.Fatalf("Failed to create depositscript for series %d, branch %d, index %d: %v", series, branch, index, err)
 	}
 
-	if err = mgr.Unlock(privPassphrase); err != nil {
-		t.Fatalf("Failed to unlock the address manager: %v", err)
-	}
+	mgr := pool.Manager()
+	TstUnlockManager(t, mgr)
+	defer mgr.Lock()
 	// We need to pass the bsHeight, but currently if we just pass
 	// anything > 0, then the ImportScript will be happy. It doesn't
 	// save the value, but only uses it to check if it needs to update
@@ -150,14 +150,12 @@ func TstCreateSeries(t *testing.T, pool *Pool, definitions []TstSeriesDef) {
 	}
 }
 
-func TstCreatePkScripts(t *testing.T, mgr *waddrmgr.Manager,
-	pool *Pool, aRange AddressRange) [][]byte {
-
+func TstCreatePkScripts(t *testing.T, pool *Pool, aRange AddressRange) [][]byte {
 	var pkScripts [][]byte
 	for index := aRange.StartIndex; index <= aRange.StopIndex; index++ {
 		for branch := aRange.StartBranch; branch <= aRange.StopBranch; branch++ {
 
-			pkScript := TstCreatePkScript(t, mgr, pool, aRange.SeriesID, branch, index)
+			pkScript := TstCreatePkScript(t, pool, aRange.SeriesID, branch, index)
 			pkScripts = append(pkScripts, pkScript)
 		}
 	}
@@ -181,6 +179,7 @@ func TstCheckError(t *testing.T, testName string, gotErr error, wantErrCode Erro
 // TstSetUp creates and returns a waddrmgr.Manager and a votingpool.Pool, each with their
 // own walletdb namespace. It also returns a teardown function that closes the Manager and
 // removes the directory created here to store the database.
+// XXX: This should be renamed to TstCreatePool or something like that.
 func TstSetUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *Pool) {
 	t.Parallel()
 
@@ -225,6 +224,67 @@ func TstUnlockManager(t *testing.T, mgr *waddrmgr.Manager) {
 	if err := mgr.Unlock(privPassphrase); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func createMasterKey(t *testing.T, seed []byte) *hdkeychain.ExtendedKey {
+	key, err := hdkeychain.NewMaster(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
+func createEmpoweredSeries(t *testing.T, pool *Pool) uint32 {
+	// Create 3 master extended keys, as if we had 3 voting pool members.
+	masters := []*hdkeychain.ExtendedKey{
+		createMasterKey(t, bytes.Repeat([]byte{0x00, 0x01}, 16)),
+		createMasterKey(t, bytes.Repeat([]byte{0x02, 0x01}, 16)),
+		createMasterKey(t, bytes.Repeat([]byte{0x03, 0x01}, 16)),
+	}
+	rawPubKeys := make([]string, 3)
+	rawPrivKeys := make([]string, 3)
+	for i, key := range masters {
+		rawPrivKeys[i] = key.String()
+		pubkey, _ := key.Neuter()
+		rawPubKeys[i] = pubkey.String()
+	}
+
+	// Create a series with the master pubkeys of our voting pool members, also empowering
+	// it with all corresponding private keys.
+	reqSigs := uint32(2)
+	seriesID := uint32(0)
+	if err := pool.CreateSeries(1, seriesID, reqSigs, rawPubKeys); err != nil {
+		t.Fatalf("Cannot creates series: %v", err)
+	}
+	TstUnlockManager(t, pool.Manager())
+	defer pool.Manager().Lock()
+	for _, key := range rawPrivKeys {
+		if err := pool.EmpowerSeries(seriesID, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return seriesID
+}
+
+// XXX: This needs a better name.
+func TstCreateCredits(
+	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) []CreditInterface {
+	seriesID := createEmpoweredSeries(t, pool)
+
+	// Finally create the Credit instances, locked to the voting pool's deposit
+	// address with branch==1, index==0.
+	branch := Branch(1)
+	idx := Index(0)
+	pkScript := TstCreatePkScript(t, pool, seriesID, branch, idx)
+	eligible := make([]CreditInterface, len(amounts))
+	for i, credit := range TstCreateInputs(t, store, pkScript, amounts) {
+		addr, err := pool.WithdrawalAddress(seriesID, branch, idx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		eligible[i] = NewCredit(credit, *addr)
+	}
+	return eligible
 }
 
 var (
