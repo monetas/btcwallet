@@ -19,6 +19,7 @@ type CreditInterface interface {
 	Address() WithdrawalAddress
 	Amount() btcutil.Amount
 	OutPoint() *btcwire.OutPoint
+	TxOut() *btcwire.TxOut
 }
 
 // Credit implements the CreditInterface.
