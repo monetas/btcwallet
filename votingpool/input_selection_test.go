@@ -19,55 +19,6 @@ var (
 	dustThreshold btcutil.Amount = 1e4
 )
 
-// A test version of credit implementing the CreditInterface.
-type FakeTxShaCredit struct {
-	addr        vp.WithdrawalAddress
-	txid        *btcwire.ShaHash
-	outputIndex uint32
-}
-
-func newFakeTxShaCredit(t *testing.T, pool *vp.Pool, series, index vp.Index, branch vp.Branch, txid []byte, outputIdx int) FakeTxShaCredit {
-	var hash btcwire.ShaHash
-	copy(hash[:], txid)
-	addr, err := pool.WithdrawalAddress(uint32(series), branch, index)
-	if err != nil {
-		t.Fatalf("WithdrawalAddress failed: %v", err)
-	}
-	return FakeTxShaCredit{
-		addr:        *addr,
-		txid:        &hash,
-		outputIndex: uint32(outputIdx),
-	}
-}
-
-func (c FakeTxShaCredit) TxSha() *btcwire.ShaHash {
-	return c.txid
-}
-
-func (c FakeTxShaCredit) OutputIndex() uint32 {
-	return c.outputIndex
-}
-
-func (c FakeTxShaCredit) Address() vp.WithdrawalAddress {
-	return c.addr
-}
-
-func (c FakeTxShaCredit) Amount() btcutil.Amount {
-	return btcutil.Amount(0)
-}
-
-func (c FakeTxShaCredit) TxOut() *btcwire.TxOut {
-	return nil
-}
-
-func (c FakeTxShaCredit) OutPoint() *btcwire.OutPoint {
-	return &btcwire.OutPoint{Hash: *c.txid, Index: c.outputIndex}
-}
-
-// Compile time check that FakeTxShaCredit implements the
-// CreditInterface.
-var _ vp.CreditInterface = (*FakeTxShaCredit)(nil)
-
 // TestCreditInterfaceSort checks that the sorting algorithm correctly
 // sorts lexicographically by series, index, branch, txid,
 // outputindex.
@@ -83,13 +34,13 @@ func TestCreditInterfaceSort(t *testing.T) {
 	}
 	vp.TstCreateSeries(t, pool, series)
 
-	c0 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x00, 0x00}, 0)
-	c1 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x00, 0x00}, 1)
-	c2 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x00, 0x01}, 0)
-	c3 := newFakeTxShaCredit(t, pool, 0, 0, 0, []byte{0x01, 0x00}, 0)
-	c4 := newFakeTxShaCredit(t, pool, 0, 0, 1, []byte{0x00, 0x00}, 0)
-	c5 := newFakeTxShaCredit(t, pool, 0, 1, 0, []byte{0x00, 0x00}, 0)
-	c6 := newFakeTxShaCredit(t, pool, 1, 0, 0, []byte{0x00, 0x00}, 0)
+	c0 := vp.TstNewFakeCredit(t, pool, 0, 0, 0, []byte{0x00, 0x00}, 0)
+	c1 := vp.TstNewFakeCredit(t, pool, 0, 0, 0, []byte{0x00, 0x00}, 1)
+	c2 := vp.TstNewFakeCredit(t, pool, 0, 0, 0, []byte{0x00, 0x01}, 0)
+	c3 := vp.TstNewFakeCredit(t, pool, 0, 0, 0, []byte{0x01, 0x00}, 0)
+	c4 := vp.TstNewFakeCredit(t, pool, 0, 0, 1, []byte{0x00, 0x00}, 0)
+	c5 := vp.TstNewFakeCredit(t, pool, 0, 1, 0, []byte{0x00, 0x00}, 0)
+	c6 := vp.TstNewFakeCredit(t, pool, 1, 0, 0, []byte{0x00, 0x00}, 0)
 
 	randomCredits := []vp.Credits{
 		vp.Credits{c6, c5, c4, c3, c2, c1, c0},

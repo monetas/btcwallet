@@ -293,3 +293,53 @@ var (
 	pubPassphrase  = []byte("_DJr{fL4H0O}*-0\n:V1izc)(6BomK")
 	privPassphrase = []byte("81lUHXnOMZ@?XXd7O9xyDIWIbXX-lj")
 )
+
+// TstFakeCredit is a structure implementing the CreditInterface used
+// for testing purposes.
+type TstFakeCredit struct {
+	addr        WithdrawalAddress
+	txid        *btcwire.ShaHash
+	outputIndex uint32
+}
+
+func (c TstFakeCredit) TxSha() *btcwire.ShaHash {
+	return c.txid
+}
+
+func (c TstFakeCredit) OutputIndex() uint32 {
+	return c.outputIndex
+}
+
+func (c TstFakeCredit) Address() WithdrawalAddress {
+	return c.addr
+}
+
+func (c TstFakeCredit) Amount() btcutil.Amount {
+	return btcutil.Amount(0)
+}
+
+func (c TstFakeCredit) TxOut() *btcwire.TxOut {
+	return nil
+}
+
+func (c TstFakeCredit) OutPoint() *btcwire.OutPoint {
+	return &btcwire.OutPoint{Hash: *c.txid, Index: c.outputIndex}
+}
+
+func TstNewFakeCredit(t *testing.T, pool *Pool, series, index Index, branch Branch, txid []byte, outputIdx int) TstFakeCredit {
+	var hash btcwire.ShaHash
+	copy(hash[:], txid)
+	addr, err := pool.WithdrawalAddress(uint32(series), branch, index)
+	if err != nil {
+		t.Fatalf("WithdrawalAddress failed: %v", err)
+	}
+	return TstFakeCredit{
+		addr:        *addr,
+		txid:        &hash,
+		outputIndex: uint32(outputIdx),
+	}
+}
+
+// Compile time check that TstFakeCredit implements the
+// CreditInterface.
+var _ CreditInterface = (*TstFakeCredit)(nil)
