@@ -165,6 +165,14 @@ func (s *WithdrawalStatus) Outputs() []*WithdrawalOutput {
 	return s.outputs
 }
 
+// byAmount defines the methods needed to satisify sort.Interface to
+// sort a slice of OutputRequests by their amount.
+type byAmount []*OutputRequest
+
+func (u byAmount) Len() int           { return len(u) }
+func (u byAmount) Less(i, j int) bool { return u[i].amount < u[j].amount }
+func (u byAmount) Swap(i, j int)      { u[i], u[j] = u[j], u[i] }
+
 // OutputRequest represents one of the outputs (address/amount) requested by a
 // withdrawal, and includes information about the user's outbailment request.
 type OutputRequest struct {
@@ -180,6 +188,11 @@ type OutputRequest struct {
 	// cachedHash is used to cache the hash of the outBailmentID so it
 	// only has to be calculated once.
 	cachedHash []byte
+}
+
+// String makes OutputRequest satisfy the Stringer interface.
+func (o *OutputRequest) String() string {
+	return fmt.Sprintf("OutputRequest to send %v to %s", o.amount, o.address)
 }
 
 // outBailmentIDHash returns a byte slice which is used when sorting
@@ -311,6 +324,20 @@ func (c *currentTx) isTooBig() bool {
 	return estimateSize(c.tx) > 1000
 }
 
+func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInterface,
+	changeStart *ChangeAddress, net *btcnet.Params) *withdrawal {
+	return &withdrawal{
+		roundID:        roundID,
+		current:        &currentTx{tx: btcwire.NewMsgTx()},
+		pendingOutputs: outputs,
+		usedInputs:     make(map[string][]CreditInterface),
+		eligibleInputs: inputs,
+		status:         &WithdrawalStatus{},
+		changeStart:    changeStart,
+		net:            net,
+	}
+}
+
 // XXX: This should actually get the input start/stop addresses and pass them on to
 // getEligibleInputs().
 func (vp *Pool) Withdrawal(
@@ -320,17 +347,8 @@ func (vp *Pool) Withdrawal(
 	changeStart *ChangeAddress,
 	txStore *txstore.Store,
 ) (*WithdrawalStatus, map[string]TxSigs, error) {
-	w := &withdrawal{
-		roundID:        roundID,
-		current:        &currentTx{tx: btcwire.NewMsgTx()},
-		pendingOutputs: outputs,
-		usedInputs:     make(map[string][]CreditInterface),
-		eligibleInputs: inputs,
-		status:         &WithdrawalStatus{},
-		changeStart:    changeStart,
-		net:            vp.manager.Net(),
-	}
-	if err := w.fulfilOutputs(txStore); err != nil {
+	w := newWithdrawal(roundID, outputs, inputs, changeStart, vp.manager.Net())
+	if err := w.fulfilOutputs(); err != nil {
 		return nil, nil, err
 	}
 	sigs, err := getRawSigs(w.transactions, w.usedInputs)
@@ -446,11 +464,35 @@ func (w *withdrawal) finalizeCurrentTx() error {
 	return nil
 }
 
-func (w *withdrawal) fulfilOutputs(store *txstore.Store) error {
-	// TODO: Drop outputs (in descending amount order) if the input total is smaller than output total
+// maybeDropOutputs will check the total amount we have in eligible inputs and drop
+// requested outputs (in descending amount order) if we don't have enough to fulfil them
+// all. For every dropped output request we add an entry to w.status.outputs with the
+// status string set to "partial-".
+func (w *withdrawal) maybeDropOutputs() {
+	inputAmount := btcutil.Amount(0)
+	for _, input := range w.eligibleInputs {
+		inputAmount += input.Amount()
+	}
+	outputAmount := btcutil.Amount(0)
+	for _, output := range w.pendingOutputs {
+		outputAmount += output.amount
+	}
+	sort.Sort(sort.Reverse(byAmount(w.pendingOutputs)))
+	for inputAmount < outputAmount {
+		output := w.pendingOutputs[0]
+		log.Infof("Not fulfilling request to send %v to %v; not enough credits.",
+			output.amount, output.address)
+		w.pendingOutputs = w.pendingOutputs[1:]
+		outputAmount -= output.amount
+		w.status.outputs = append(
+			w.status.outputs, &WithdrawalOutput{request: output, status: "partial-"})
+	}
+}
 
+func (w *withdrawal) fulfilOutputs() error {
+	w.maybeDropOutputs()
 	if len(w.pendingOutputs) == 0 {
-		return errors.New("We don't seem to have inputs to cover any of the requested outputs")
+		return nil
 	}
 
 	// Sort outputs by outBailmentID (hash(server ID, tx #))
