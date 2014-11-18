@@ -17,6 +17,7 @@
 package votingpool
 
 import (
+	"bytes"
 	"sort"
 	"testing"
 
@@ -24,9 +25,88 @@ import (
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
+	"github.com/conformal/btcwallet/txstore"
 	"github.com/conformal/btcwallet/waddrmgr"
 	"github.com/conformal/btcwire"
 )
+
+func TestStoreTransactionsWithoutChangeOutput(t *testing.T) {
+	tearDown, _, pool := TstSetUp(t)
+	store, storeTearDown := TstCreateTxStore(t)
+	defer tearDown()
+	defer storeTearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6})
+	if err := storeTransactions(store, []*decoratedTx{tx}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Since the tx we created above has no change output, there should be no unspent
+	// outputs (credits) in the txstore.
+	credits, err := store.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(credits) != 0 {
+		t.Fatalf("Unexpected number of credits in txstore; got %d, want 0", len(credits))
+	}
+}
+
+func TestStoreTransactionsWithChangeOutput(t *testing.T) {
+	tearDown, _, pool := TstSetUp(t)
+	store, storeTearDown := TstCreateTxStore(t)
+	defer tearDown()
+	defer storeTearDown()
+
+	// This will create a transaction with two outputs spending the whole amount from the
+	// single input.
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6, 1e6})
+
+	// storeTransactions() will store the tx created above, with the second output as a
+	// change output.
+	tx.hasChange = true
+	if err := storeTransactions(store, []*decoratedTx{tx}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the tx was stored in the txstore.
+	sha, err := tx.msgtx.TxSha()
+	if err != nil {
+		t.Fatal(err)
+	}
+	storedTx := lookupStoredTx(store, &sha)
+	if storedTx == nil {
+		t.Fatal("The new tx doesn't seem to have been stored")
+	}
+	ignoreChange := true
+	gotAmount := storedTx.OutputAmount(ignoreChange)
+	if gotAmount != btcutil.Amount(3e6) {
+		t.Fatal("Unexpected output amount; got %v, want %v", gotAmount, btcutil.Amount(3e6))
+	}
+	debits, _ := storedTx.Debits()
+	if debits.InputAmount() != btcutil.Amount(4e6) {
+		t.Fatal("Unexpected input amount; got %v, want %v", debits.InputAmount(),
+			btcutil.Amount(4e6))
+	}
+
+	// There should be one unspent output (credit) in the txstore, corresponding to the
+	// change output in the tx we created above.
+	credits, err := store.UnspentOutputs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(credits) != 1 {
+		t.Fatalf("Unexpected number of credits in txstore; got %d, want 1", len(credits))
+	}
+	credit := credits[0]
+	if !credit.Change() {
+		t.Fatalf("Credit doesn't come from a change output as we expected")
+	}
+	changeOut := tx.msgtx.TxOut[1]
+	if credit.TxOut() != changeOut {
+		t.Fatalf("Credit's txOut (%s) doesn't match changeOut (%s)", credit.TxOut(), changeOut)
+	}
+}
 
 func TestTxInSigning(t *testing.T) {
 	tearDown, mgr, pool := TstSetUp(t)
@@ -43,7 +123,8 @@ func TestTxInSigning(t *testing.T) {
 	ntxid := Ntxid(tx)
 
 	// Get the raw signatures for each of the inputs in our transaction.
-	sigs, err := getRawSigs([]*btcwire.MsgTx{tx}, map[string][]CreditInterface{ntxid: credits})
+	transactions := []*decoratedTx{&decoratedTx{msgtx: tx, inputs: credits}}
+	sigs, err := getRawSigs(transactions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +162,7 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 		t.Fatalf("Unexpected number of transactions; got %d, want 1", len(w.transactions))
 	}
 
-	tx := w.transactions[0]
+	tx := w.transactions[0].msgtx
 	// The created tx should include both eligible credits, so we expect it to have
 	// an input amount of 2e6+4e6 satoshis.
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
@@ -151,7 +232,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := w.transactions[0]
+	tx := w.transactions[0].msgtx
 	// The created tx should spend both eligible credits, so we expect it to have
 	// an input amount of 2e6+4e6 satoshis.
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
@@ -174,10 +255,6 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 				wOutput.status)
 		}
 	}
-}
-
-func TestWithdrawalOutputsNoChange(t *testing.T) {
-	// TODO:
 }
 
 func TestSignMultiSigUTXOInvalidPkScript(t *testing.T) {
@@ -276,4 +353,33 @@ func checkTxOutputs(t *testing.T, tx *btcwire.MsgTx, expectedOutputs []*OutputRe
 				"Unexpected amount for output %d; got %v, want %v", i, gotAmount, output.amount)
 		}
 	}
+}
+
+// createDecoratedTx creates a decoratedTx with the given input and output amounts.
+func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmounts []int64,
+	outputAmounts []int64) *decoratedTx {
+	tx := &decoratedTx{msgtx: &btcwire.MsgTx{}}
+	credits := TstCreateCredits(t, pool, inputAmounts, store)
+	for _, c := range credits {
+		tx.addTxIn(c)
+	}
+	net := pool.Manager().Net()
+	for i, amount := range outputAmounts {
+		request := NewOutputRequest(
+			"server", uint32(i), "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(amount))
+		pkScript, _ := request.pkScript(net)
+		tx.addTxOut(&WithdrawalOutput{request: request}, pkScript)
+	}
+	return tx
+}
+
+// lookupStoredTx returns the TxRecord from the given store whose SHA matches the
+// given ShaHash.
+func lookupStoredTx(store *txstore.Store, sha *btcwire.ShaHash) *txstore.TxRecord {
+	for _, r := range store.Records() {
+		if bytes.Equal(r.Tx().Sha()[:], sha[:]) {
+			return r
+		}
+	}
+	return nil
 }
