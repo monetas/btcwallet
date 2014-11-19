@@ -162,14 +162,14 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 		t.Fatalf("Unexpected number of transactions; got %d, want 1", len(w.transactions))
 	}
 
-	tx := w.transactions[0].msgtx
+	tx := w.transactions[0]
 	// The created tx should include both eligible credits, so we expect it to have
 	// an input amount of 2e6+4e6 satoshis.
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
-	change := inputAmount - (outputs[0].amount + outputs[1].amount + calculateFee(tx))
+	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
 	expectedOutputs := append(
 		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
-	checkTxOutputs(t, tx, expectedOutputs, mgr.Net())
+	checkTxOutputs(t, tx.msgtx, expectedOutputs, mgr.Net())
 }
 
 // Check that withdrawal.status correctly states that no outputs were fulfilled when we
@@ -232,18 +232,18 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tx := w.transactions[0].msgtx
+	tx := w.transactions[0]
 	// The created tx should spend both eligible credits, so we expect it to have
 	// an input amount of 2e6+4e6 satoshis.
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
 	// We expect it to include outputs for requests 1 and 2, plus a change output, but
 	// output request #3 should not be there because we don't have enough credits.
-	change := inputAmount - (out1.amount + out2.amount + calculateFee(tx))
+	change := inputAmount - (out1.amount + out2.amount + tx.calculateFee())
 	expectedOutputs := []*OutputRequest{out1, out2}
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
 		expectedOutputs, NewOutputRequest("foo", 4, changeStart.Addr().String(), change))
-	checkTxOutputs(t, tx, expectedOutputs, mgr.Net())
+	checkTxOutputs(t, tx.msgtx, expectedOutputs, mgr.Net())
 
 	// withdrawal.status should state that outputs 1 and 2 were successfully fulfilled,
 	// and that output 3 was not.
@@ -254,6 +254,53 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 			t.Fatalf("Unexpected status for %v; got '%s', want 'partial-'", wOutput.request,
 				wOutput.status)
 		}
+	}
+}
+
+func TestAddChange(t *testing.T) {
+	teardown, _, pool := TstSetUp(t)
+	store, storeTearDown := TstCreateTxStore(t)
+	defer teardown()
+	defer storeTearDown()
+
+	input, output, fee := int64(4e6), int64(3e6), int64(10)
+	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
+	tx.calculateFee = func() btcutil.Amount {
+		return btcutil.Amount(fee)
+	}
+
+	if !tx.addChange([]byte{}) {
+		t.Fatal("tx.addChange() returned false, meaning it did not add a change output")
+	}
+	if len(tx.msgtx.TxOut) != 2 {
+		t.Fatalf("Unexpected number of txouts; got %d, want 2", len(tx.msgtx.TxOut))
+	}
+	gotChange := tx.msgtx.TxOut[1].Value
+	wantChange := input - output - fee
+	if gotChange != wantChange {
+		t.Fatalf("Unexpected change amount; got %v, want %v", gotChange, wantChange)
+	}
+}
+
+// TestAddChangeNoChange checks that decoratedTx.addChange() does not add a
+// change output when there's no satoshis left after paying all outputs+fees.
+func TestAddChangeNoChange(t *testing.T) {
+	teardown, _, pool := TstSetUp(t)
+	store, storeTearDown := TstCreateTxStore(t)
+	defer teardown()
+	defer storeTearDown()
+
+	input, output, fee := int64(4e6), int64(4e6), int64(0)
+	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
+	tx.calculateFee = func() btcutil.Amount {
+		return btcutil.Amount(fee)
+	}
+
+	if tx.addChange([]byte{}) {
+		t.Fatal("tx.addChange() returned true, meaning it added a change output")
+	}
+	if len(tx.msgtx.TxOut) != 1 {
+		t.Fatalf("Unexpected number of txouts; got %d, want 1", len(tx.msgtx.TxOut))
 	}
 }
 
@@ -358,7 +405,7 @@ func checkTxOutputs(t *testing.T, tx *btcwire.MsgTx, expectedOutputs []*OutputRe
 // createDecoratedTx creates a decoratedTx with the given input and output amounts.
 func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmounts []int64,
 	outputAmounts []int64) *decoratedTx {
-	tx := &decoratedTx{msgtx: &btcwire.MsgTx{}}
+	tx := newDecoratedTx()
 	credits := TstCreateCredits(t, pool, inputAmounts, store)
 	for _, c := range credits {
 		tx.addTxIn(c)

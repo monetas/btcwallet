@@ -203,6 +203,7 @@ func (o *OutputRequest) outBailmentIDHash() []byte {
 	}
 	str := fmt.Sprintf("%s%d", o.server, o.transaction)
 	hasher := fastsha256.New()
+	// hasher.Write() always returns nil as the error, so it's safe to ignore it here.
 	hasher.Write([]byte(str))
 	id := hasher.Sum(nil)
 	o.cachedHash = id
@@ -297,9 +298,22 @@ type decoratedTx struct {
 	inputTotal  btcutil.Amount
 	outputTotal btcutil.Amount
 	fee         btcutil.Amount
-	// Whether or not this tx includes a change output. If it does, it will always be the
-	// last item in msgtx.TxOut.
+	// hasChange indicates whether or not this tx includes a change output. If
+	// it does, it will be the last item in msgtx.TxOut.
 	hasChange bool
+	// calculateFee calculates the expected network fees for this transaction.
+	// We use a func() field instead of a method so that it can be replaced in
+	// tests.
+	calculateFee func() btcutil.Amount
+}
+
+func newDecoratedTx() *decoratedTx {
+	tx := &decoratedTx{msgtx: btcwire.NewMsgTx()}
+	tx.calculateFee = func() btcutil.Amount {
+		// TODO:
+		return btcutil.Amount(1)
+	}
+	return tx
 }
 
 func (d *decoratedTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32 {
@@ -324,7 +338,7 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 // it's called. Also, callsites must make sure adding a change output won't cause the tx
 // to exceed the size limit.
 func (d *decoratedTx) addChange(pkScript []byte) bool {
-	d.fee = calculateFee(d.msgtx)
+	d.fee = d.calculateFee()
 	change := d.inputTotal - d.outputTotal - d.fee
 	if change > 0 {
 		d.msgtx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
@@ -348,7 +362,7 @@ func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInte
 	changeStart *ChangeAddress, net *btcnet.Params) *withdrawal {
 	return &withdrawal{
 		roundID:        roundID,
-		current:        &decoratedTx{msgtx: btcwire.NewMsgTx()},
+		current:        newDecoratedTx(),
 		pendingOutputs: outputs,
 		eligibleInputs: inputs,
 		status:         &WithdrawalStatus{},
@@ -382,10 +396,11 @@ func (vp *Pool) Withdrawal(
 	return w.status, sigs, nil
 }
 
-// storeTransactions adds the given transactions to the txStore and writes it to disk. The
-// credits used in each transaction are removed from the store's unspent list, and change
-// outputs are added to the store as credits.
-// TODO: Wrap the errors we catch here in a custom votingpool.Error before returning.
+// storeTransactions adds the given transactions to the txStore and writes it to
+// disk. The credits used in each transaction are removed from the store's
+// unspent list, and change outputs are added to the store as credits.
+// TODO: Wrap the errors we catch here in a custom votingpool.Error before
+// returning.
 func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) error {
 	for _, tx := range transactions {
 		txr, err := txStore.InsertTx(btcutil.NewTx(tx.msgtx), nil)
@@ -432,7 +447,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		panic("Oversize TX not yet implemented")
 	}
 
-	fee := calculateFee(w.current.msgtx)
+	fee := w.current.calculateFee()
 	for w.current.inputTotal < w.current.outputTotal+fee {
 		if len(w.eligibleInputs) == 0 {
 			// TODO: Implement Split Output procedure
@@ -441,7 +456,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
 		w.current.addTxIn(input)
-		fee = calculateFee(w.current.msgtx)
+		fee = w.current.calculateFee()
 
 		if w.current.isTooBig() {
 			// TODO: Roll back last added output plus all inputs added to support it.
@@ -484,7 +499,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
-	w.current = &decoratedTx{msgtx: btcwire.NewMsgTx()}
+	w.current = newDecoratedTx()
 	return nil
 }
 
@@ -698,9 +713,4 @@ func estimateSize(tx *btcwire.MsgTx) uint32 {
 	// to estimateTxSize() (in createtx.go), or it could copy the tx, add a stub change
 	// output, fill the SignatureScript for every input and serialize it.
 	return 0
-}
-
-func calculateFee(tx *btcwire.MsgTx) btcutil.Amount {
-	// TODO
-	return btcutil.Amount(1)
 }
