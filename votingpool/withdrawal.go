@@ -204,7 +204,7 @@ func (o *OutputRequest) outBailmentIDHash() []byte {
 	str := fmt.Sprintf("%s%d", o.server, o.transaction)
 	hasher := fastsha256.New()
 	// hasher.Write() always returns nil as the error, so it's safe to ignore it here.
-	hasher.Write([]byte(str))
+	_, _ = hasher.Write([]byte(str))
 	id := hasher.Sum(nil)
 	o.cachedHash = id
 	return id
@@ -314,6 +314,10 @@ func newDecoratedTx() *decoratedTx {
 		return btcutil.Amount(1)
 	}
 	return tx
+}
+
+func (tx *decoratedTx) Ntxid() string {
+	return Ntxid(tx.msgtx)
 }
 
 func (d *decoratedTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32 {
@@ -443,7 +447,8 @@ func (vp *Pool) Withdrawal(
 
 // storeTransactions adds the given transactions to the txStore and writes it to
 // disk. The credits used in each transaction are removed from the store's
-// unspent list, and change outputs are added to the store as credits.
+// unspent list, and if a transaction includes a change output, it is added to
+// the store as a credit.
 // TODO: Wrap the errors we catch here in a custom votingpool.Error before
 // returning.
 func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) error {
@@ -661,13 +666,11 @@ func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 				if privKey != nil {
 					childKey, err := privKey.Child(uint32(creditAddr.Index()))
 					if err != nil {
-						return nil, newError(
-							ErrWithdrawalProcessing, "Failed to derive key", err)
+						return nil, newError(ErrKeyChain, "Failed to derive private key", err)
 					}
 					ecPrivKey, err := childKey.ECPrivKey()
 					if err != nil {
-						return nil, newError(
-							ErrWithdrawalProcessing, "Failed to derive key", err)
+						return nil, newError(ErrKeyChain, "Failed to obtain ECPrivKey", err)
 					}
 					log.Infof("Signing input %d of tx %s with privkey of %s",
 						inputIdx, ntxid, pubKey.String())
@@ -675,7 +678,7 @@ func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 						tx.msgtx, inputIdx, redeemScript, btcscript.SigHashAll, ecPrivKey)
 					if err != nil {
 						return nil, newError(
-							ErrWithdrawalProcessing, "Failed to generate raw signature", err)
+							ErrRawSigning, "Failed to generate raw signature", err)
 					}
 				} else {
 					log.Infof(
@@ -735,7 +738,7 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScrip
 	return nil
 }
 
-// XXX: This should be private.
+// XXX: This should be private, and possibly called from SignMultiSigUTXO()
 // ValidateSigScripts executes the signature script of every input in the given transaction
 // and returns an error if any of them fail.
 func ValidateSigScripts(msgtx *btcwire.MsgTx, pkScripts [][]byte) error {

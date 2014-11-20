@@ -469,7 +469,8 @@ func branchOrder(pks []*hdkeychain.ExtendedKey, branch Branch) ([]*hdkeychain.Ex
 	}
 
 	if branch > Branch(len(pks)) {
-		return nil, newError(ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
+		return nil, newError(
+			ErrInvalidBranch, "branch number is bigger than number of public keys", nil)
 	}
 
 	if branch == 0 {

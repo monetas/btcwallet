@@ -109,30 +109,80 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	}
 }
 
-func TestTxInSigning(t *testing.T) {
-	tearDown, mgr, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
+func TestGetRawSigs(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
-	defer storeTearDown()
 
-	// Create two Credits and add them as inputs to a new transaction.
-	tx := &btcwire.MsgTx{}
-	credits := TstCreateCredits(t, pool, []int64{5e6, 4e6}, store)
-	for _, c := range credits {
-		tx.AddTxIn(btcwire.NewTxIn(c.OutPoint(), nil))
-	}
-	ntxid := Ntxid(tx)
+	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
 
-	// Get the raw signatures for each of the inputs in our transaction.
-	transactions := []*decoratedTx{&decoratedTx{msgtx: tx, inputs: credits}}
-	sigs, err := getRawSigs(transactions)
+	sigs, err := getRawSigs([]*decoratedTx{tx})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	checkRawSigs(t, sigs[ntxid], credits)
+	txSigs := sigs[tx.Ntxid()]
+	if len(txSigs) != len(tx.inputs) {
+		t.Fatalf("Unexpected number of sig lists; got %d, want %d", len(txSigs), len(tx.inputs))
+	}
 
-	signTxAndValidate(t, mgr, tx, sigs[ntxid], credits)
+	checkNonEmptySigsForPrivKeys(t, txSigs, tx.inputs[0].Address().Series().privateKeys)
+
+	// Since we have all the necessary signatures (m-of-n), we construct the
+	// sigsnature scripts and execute them to make sure the raw signatures are
+	// valid.
+	signTxAndValidate(t, pool.Manager(), tx.msgtx, txSigs, tx.inputs)
+}
+
+func TestGetRawSigsOnlyOnePrivKeyAvailable(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	// Remove all private keys but the first one from the credit's series.
+	series := tx.inputs[0].Address().Series()
+	for i := range series.privateKeys[1:] {
+		series.privateKeys[i] = nil
+	}
+
+	sigs, err := getRawSigs([]*decoratedTx{tx})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	txSigs := sigs[tx.Ntxid()]
+	if len(txSigs) != len(tx.inputs) {
+		t.Fatalf("Unexpected number of sig lists; got %d, want %d", len(txSigs), len(tx.inputs))
+	}
+
+	checkNonEmptySigsForPrivKeys(t, txSigs, series.privateKeys)
+}
+
+func TestGetRawSigsUnparseableRedeemScript(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	// Change the redeem script for one of our tx inputs, to force an error in
+	// getRawSigs().
+	tx.inputs[0].Address().script = []byte{0x01}
+
+	_, err := getRawSigs([]*decoratedTx{tx})
+
+	TstCheckError(t, "", err, ErrRawSigning)
+}
+
+func TestGetRawSigsInvalidAddrBranch(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	// Change the branch of our input's address to an invalid value, to force
+	// an error in getRawSigs().
+	tx.inputs[0].Address().branch = Branch(999)
+
+	_, err := getRawSigs([]*decoratedTx{tx})
+
+	TstCheckError(t, "", err, ErrInvalidBranch)
 }
 
 // Check that all outputs requested in a withdrawal match the outputs of the generated
@@ -341,31 +391,26 @@ func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, t
 	}
 }
 
-// checkRawSigs checks that every signature list in txSigs has one signature for every
-// private key loaded in our series.
-func checkRawSigs(t *testing.T, txSigs TxSigs, credits []CreditInterface) {
-	if len(txSigs) != len(credits) {
-		t.Fatalf("Unexpected number of sig lists; got %d, want %d", len(txSigs), len(credits))
-	}
-
-	for i, txInSigs := range txSigs {
-		series := credits[i].Address().Series()
-		keysCount := countNonNil(series.privateKeys)
-		if len(txInSigs) != keysCount {
-			t.Fatalf("Unexpected number of sigs for input %d; got %d, want %d",
-				i, len(txInSigs), keysCount)
+// checkNonEmptySigsForPrivKeys checks that every signature list in txSigs has
+// one non-empty signature for every non-nil private key in the given list. This
+// is to make sure every signature list matches the specification at
+// http://opentransactions.org/wiki/index.php/Siglist.
+func checkNonEmptySigsForPrivKeys(t *testing.T, txSigs TxSigs, privKeys []*hdkeychain.ExtendedKey) {
+	for _, txInSigs := range txSigs {
+		if len(txInSigs) != len(privKeys) {
+			t.Fatalf("Number of items in sig list (%d) does not match number of privkeys (%d)",
+				len(txInSigs), len(privKeys))
+		}
+		for sigIdx, sig := range txInSigs {
+			key := privKeys[sigIdx]
+			if bytes.Equal(sig, []byte{}) && key != nil {
+				t.Fatalf("Empty signature (idx=%d) but key (%s) is available",
+					sigIdx, key.String())
+			} else if !bytes.Equal(sig, []byte{}) && key == nil {
+				t.Fatalf("Signature not empty (idx=%d) but key is not available", sigIdx)
+			}
 		}
 	}
-}
-
-func countNonNil(keys []*hdkeychain.ExtendedKey) int {
-	count := 0
-	for _, key := range keys {
-		if key != nil {
-			count++
-		}
-	}
-	return count
 }
 
 // pkScriptAddr parses the given pkScript and returns the address associated with it.
@@ -694,4 +739,16 @@ func checkDecoratedTxOutputs(t *testing.T, tx *decoratedTx, outputs []*Withdrawa
 				txOut.Value, outputs[i])
 		}
 	}
+}
+
+// createTxWithInputAmounts returns a new decoratedTx containing just inputs
+// with the given amounts.
+func createTxWithInputAmounts(
+	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) *decoratedTx {
+	tx := newDecoratedTx()
+	credits := TstCreateCredits(t, pool, amounts, store)
+	for _, c := range credits {
+		tx.addTxIn(c)
+	}
+	return tx
 }

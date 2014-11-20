@@ -117,6 +117,10 @@ const (
 	// or deriving a secret key from a password.
 	ErrCrypto
 
+	// ErrRawSigning indicates an error in the process of generating raw
+	// signatures for a transaction input.
+	ErrRawSigning
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -141,15 +145,17 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrKeysPrivatePublicMismatch: "ErrKeysPrivatePublicMismatch",
 	ErrKeyDuplicate:              "ErrKeyDuplicate",
 	ErrTooFewPublicKeys:          "ErrTooFewPublicKeys",
-	ErrVotingPoolAlreadyExists:   "ErrVotingPoolAlreadyExists",
-	ErrVotingPoolNotExists:       "ErrVotingPoolNotExists",
-	ErrScriptCreation:            "ErrScriptCreation",
-	ErrTooManyReqSignatures:      "ErrTooManyReqSignatures",
-	ErrInvalidBranch:             "ErrInvalidBranch",
-	ErrInvalidValue:              "ErrInvalidValue",
-	ErrDatabase:                  "ErrDatabase",
-	ErrKeyChain:                  "ErrKeyChain",
-	ErrCrypto:                    "ErrCrypto",
+	// XXX: Rename those two errors to get rid of the Voting infix.
+	ErrVotingPoolAlreadyExists: "ErrVotingPoolAlreadyExists",
+	ErrVotingPoolNotExists:     "ErrVotingPoolNotExists",
+	ErrScriptCreation:          "ErrScriptCreation",
+	ErrTooManyReqSignatures:    "ErrTooManyReqSignatures",
+	ErrInvalidBranch:           "ErrInvalidBranch",
+	ErrInvalidValue:            "ErrInvalidValue",
+	ErrDatabase:                "ErrDatabase",
+	ErrKeyChain:                "ErrKeyChain",
+	ErrCrypto:                  "ErrCrypto",
+	ErrRawSigning:              "ErrRawSigning",
 }
 
 // String returns the ErrorCode as a human-readable name.

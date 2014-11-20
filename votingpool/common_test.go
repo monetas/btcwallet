@@ -167,12 +167,12 @@ func TstCreatePkScripts(t *testing.T, pool *Pool, aRange AddressRange) [][]byte 
 func TstCheckError(t *testing.T, testName string, gotErr error, wantErrCode ErrorCode) {
 	vpErr, ok := gotErr.(Error)
 	if !ok {
-		t.Errorf("%s: unexpected error type - got %T, want %T",
-			testName, gotErr, Error{})
+		t.Errorf("%s: unexpected error type - got %T (%s), want %T",
+			testName, gotErr, gotErr, Error{})
 	}
 	if vpErr.ErrorCode != wantErrCode {
-		t.Errorf("%s: unexpected error code - got %s, want %s",
-			testName, vpErr.ErrorCode, wantErrCode)
+		t.Errorf("%s: unexpected error code - got %s (%s), want %s",
+			testName, vpErr.ErrorCode, vpErr, wantErrCode)
 	}
 }
 
@@ -218,6 +218,16 @@ func TstSetUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *P
 		os.RemoveAll(dir)
 	}
 	return tearDownFunc, mgr, pool
+}
+
+func TstCreatePoolAndTxStore(t *testing.T) (tearDown func(), pool *Pool, store *txstore.Store) {
+	mgrTearDown, _, pool := TstSetUp(t)
+	store, storeTearDown := TstCreateTxStore(t)
+	tearDown = func() {
+		mgrTearDown()
+		storeTearDown()
+	}
+	return tearDown, pool, store
 }
 
 func TstUnlockManager(t *testing.T, mgr *waddrmgr.Manager) {
