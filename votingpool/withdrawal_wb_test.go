@@ -18,7 +18,6 @@ package votingpool
 
 import (
 	"bytes"
-	"fmt"
 	"sort"
 	"testing"
 
@@ -371,166 +370,6 @@ func TestSignMultiSigUTXONotEnoughSigs(t *testing.T) {
 	// TODO:
 }
 
-// signTxAndValidate will construct the signature script for each input of the given
-// transaction (using the given raw signatures and the pkScripts from credits) and execute
-// those scripts to validate them.
-func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, txSigs TxSigs, credits []CreditInterface) {
-	TstUnlockManager(t, mgr)
-	defer mgr.Lock()
-	pkScripts := make([][]byte, len(tx.TxIn))
-	for i := range tx.TxIn {
-		pkScript := credits[i].TxOut().PkScript
-		err := SignMultiSigUTXO(mgr, tx, i, pkScript, txSigs[i], mgr.Net())
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	if err := ValidateSigScripts(tx, pkScripts); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// checkNonEmptySigsForPrivKeys checks that every signature list in txSigs has
-// one non-empty signature for every non-nil private key in the given list. This
-// is to make sure every signature list matches the specification at
-// http://opentransactions.org/wiki/index.php/Siglist.
-func checkNonEmptySigsForPrivKeys(t *testing.T, txSigs TxSigs, privKeys []*hdkeychain.ExtendedKey) {
-	for _, txInSigs := range txSigs {
-		if len(txInSigs) != len(privKeys) {
-			t.Fatalf("Number of items in sig list (%d) does not match number of privkeys (%d)",
-				len(txInSigs), len(privKeys))
-		}
-		for sigIdx, sig := range txInSigs {
-			key := privKeys[sigIdx]
-			if bytes.Equal(sig, []byte{}) && key != nil {
-				t.Fatalf("Empty signature (idx=%d) but key (%s) is available",
-					sigIdx, key.String())
-			} else if !bytes.Equal(sig, []byte{}) && key == nil {
-				t.Fatalf("Signature not empty (idx=%d) but key is not available", sigIdx)
-			}
-		}
-	}
-}
-
-// pkScriptAddr parses the given pkScript and returns the address associated with it.
-func pkScriptAddr(t *testing.T, pkScript []byte, net *btcnet.Params) string {
-	_, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, net)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(addresses) != 1 {
-		t.Fatalf("Unexpected number of addresses in pkScript; got %d, want 1", len(addresses))
-	}
-	return addresses[0].String()
-}
-
-// checkTxOutputs checks that the address and amount of every output in the given tx match the
-// address and amount of every item in the slice of OutputRequests.
-func checkTxOutputs(t *testing.T, tx *btcwire.MsgTx, expectedOutputs []*OutputRequest, net *btcnet.Params) {
-	nOutputs := len(expectedOutputs)
-	if len(tx.TxOut) != nOutputs {
-		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), nOutputs)
-	}
-
-	for i, output := range expectedOutputs {
-		txOut := tx.TxOut[i]
-		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
-		if gotAddr != output.address {
-			t.Fatalf(
-				"Unexpected address for output %d; got %s, want %s", i, gotAddr, output.address)
-		}
-		gotAmount := btcutil.Amount(txOut.Value)
-		if gotAmount != output.amount {
-			t.Fatalf(
-				"Unexpected amount for output %d; got %v, want %v", i, gotAmount, output.amount)
-		}
-	}
-}
-
-// createDecoratedTx creates a decoratedTx with the given input and output amounts.
-func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmounts []int64,
-	outputAmounts []int64) *decoratedTx {
-	tx := newDecoratedTx()
-	credits := TstCreateCredits(t, pool, inputAmounts, store)
-	for _, c := range credits {
-		tx.addTxIn(c)
-	}
-	net := pool.Manager().Net()
-	for i, amount := range outputAmounts {
-		request := NewOutputRequest(
-			"server", uint32(i), "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(amount))
-		pkScript, _ := request.pkScript(net)
-		tx.addTxOut(&WithdrawalOutput{request: request}, pkScript)
-	}
-	return tx
-}
-
-// lookupStoredTx returns the TxRecord from the given store whose SHA matches the
-// given ShaHash.
-func lookupStoredTx(store *txstore.Store, sha *btcwire.ShaHash) *txstore.TxRecord {
-	for _, r := range store.Records() {
-		if bytes.Equal(r.Tx().Sha()[:], sha[:]) {
-			return r
-		}
-	}
-	return nil
-}
-
-func createWithdrawalOutputs(outputs []btcutil.Amount) []*WithdrawalOutput {
-	withdrawalOutputs := make([]*WithdrawalOutput, len(outputs))
-	for i, amount := range outputs {
-		withdrawalOutputs[i] = &WithdrawalOutput{
-			request: &OutputRequest{
-				amount: amount,
-			},
-		}
-	}
-	return withdrawalOutputs
-}
-
-// createFakeCredits creates a credit with the amount specified and a
-// txid that is deterministically derived from the amount.
-func createFakeCredits(inputs []btcutil.Amount) []TstFakeCredit {
-	credits := make([]TstFakeCredit, len(inputs))
-	for i, amount := range inputs {
-		var hash [32]byte
-		hashString := []byte(fmt.Sprintf("%d", amount))
-		copy(hash[:], hashString)
-		shaHash := btcwire.ShaHash(hash)
-		credits[i] = TstFakeCredit{
-			amount: amount,
-			txid:   &shaHash,
-		}
-	}
-	return credits
-}
-
-// createFakeDecoratedTx creates a decorateTx structure, but note that the
-// pkScripts added for the outputs are not valid pkScripts.
-//
-// XXX(lars): The reason this function exists is that the
-// TstCreateCredits functions implicitly creates a series and thus can
-// only be called once within a test (otherwise it will err with a
-// series 0 already exists).
-//
-// I'd certainly be able to work around that by creating another
-// version of TstCreateCredits, but since I have no need for real
-// credits, I didn't think it would be worth it.
-func createFakeDecoratedTx(inputs []TstFakeCredit, outputs []*WithdrawalOutput) *decoratedTx {
-	c := &decoratedTx{
-		msgtx: &btcwire.MsgTx{},
-	}
-	for _, i := range inputs {
-		c.addTxIn(i)
-	}
-	for i, o := range outputs {
-		c.addTxOut(o, []byte{byte(i)})
-	}
-
-	return c
-}
-
 // TestRollbackLastOutput tests the case where we rollback one output
 // and one input, such that sum(in) >= sum(out) + fee.
 func TestRollbackLastOutput(t *testing.T) {
@@ -741,14 +580,90 @@ func checkDecoratedTxOutputs(t *testing.T, tx *decoratedTx, outputs []*Withdrawa
 	}
 }
 
-// createTxWithInputAmounts returns a new decoratedTx containing just inputs
-// with the given amounts.
-func createTxWithInputAmounts(
-	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) *decoratedTx {
-	tx := newDecoratedTx()
-	credits := TstCreateCredits(t, pool, amounts, store)
-	for _, c := range credits {
-		tx.addTxIn(c)
+// lookupStoredTx returns the TxRecord from the given store whose SHA matches the
+// given ShaHash.
+func lookupStoredTx(store *txstore.Store, sha *btcwire.ShaHash) *txstore.TxRecord {
+	for _, r := range store.Records() {
+		if bytes.Equal(r.Tx().Sha()[:], sha[:]) {
+			return r
+		}
 	}
-	return tx
+	return nil
+}
+
+// checkNonEmptySigsForPrivKeys checks that every signature list in txSigs has
+// one non-empty signature for every non-nil private key in the given list. This
+// is to make sure every signature list matches the specification at
+// http://opentransactions.org/wiki/index.php/Siglist.
+func checkNonEmptySigsForPrivKeys(t *testing.T, txSigs TxSigs, privKeys []*hdkeychain.ExtendedKey) {
+	for _, txInSigs := range txSigs {
+		if len(txInSigs) != len(privKeys) {
+			t.Fatalf("Number of items in sig list (%d) does not match number of privkeys (%d)",
+				len(txInSigs), len(privKeys))
+		}
+		for sigIdx, sig := range txInSigs {
+			key := privKeys[sigIdx]
+			if bytes.Equal(sig, []byte{}) && key != nil {
+				t.Fatalf("Empty signature (idx=%d) but key (%s) is available",
+					sigIdx, key.String())
+			} else if !bytes.Equal(sig, []byte{}) && key == nil {
+				t.Fatalf("Signature not empty (idx=%d) but key is not available", sigIdx)
+			}
+		}
+	}
+}
+
+// pkScriptAddr parses the given pkScript and returns the address associated with it.
+func pkScriptAddr(t *testing.T, pkScript []byte, net *btcnet.Params) string {
+	_, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, net)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(addresses) != 1 {
+		t.Fatalf("Unexpected number of addresses in pkScript; got %d, want 1", len(addresses))
+	}
+	return addresses[0].String()
+}
+
+// checkTxOutputs checks that the address and amount of every output in the given tx match the
+// address and amount of every item in the slice of OutputRequests.
+func checkTxOutputs(t *testing.T, tx *btcwire.MsgTx, expectedOutputs []*OutputRequest, net *btcnet.Params) {
+	nOutputs := len(expectedOutputs)
+	if len(tx.TxOut) != nOutputs {
+		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), nOutputs)
+	}
+
+	for i, output := range expectedOutputs {
+		txOut := tx.TxOut[i]
+		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
+		if gotAddr != output.address {
+			t.Fatalf(
+				"Unexpected address for output %d; got %s, want %s", i, gotAddr, output.address)
+		}
+		gotAmount := btcutil.Amount(txOut.Value)
+		if gotAmount != output.amount {
+			t.Fatalf(
+				"Unexpected amount for output %d; got %v, want %v", i, gotAmount, output.amount)
+		}
+	}
+}
+
+// signTxAndValidate will construct the signature script for each input of the given
+// transaction (using the given raw signatures and the pkScripts from credits) and execute
+// those scripts to validate them.
+func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, txSigs TxSigs, credits []CreditInterface) {
+	TstUnlockManager(t, mgr)
+	defer mgr.Lock()
+	pkScripts := make([][]byte, len(tx.TxIn))
+	for i := range tx.TxIn {
+		pkScript := credits[i].TxOut().PkScript
+		err := SignMultiSigUTXO(mgr, tx, i, pkScript, txSigs[i], mgr.Net())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := ValidateSigScripts(tx, pkScripts); err != nil {
+		t.Fatal(err)
+	}
 }
