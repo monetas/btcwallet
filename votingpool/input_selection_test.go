@@ -23,7 +23,7 @@ var (
 // sorts lexicographically by series, index, branch, txid,
 // outputindex.
 func TestCreditInterfaceSort(t *testing.T) {
-	teardown, _, pool := vp.TstSetUp(t)
+	teardown, _, pool := vp.TstCreatePool(t)
 	defer teardown()
 
 	// Create the series 0 and 1 as they are needed for creaing the
@@ -113,10 +113,8 @@ func createScripts(t *testing.T, mgr *waddrmgr.Manager, pool *vp.Pool, ranges []
 }
 
 func TestGetEligibleInputs(t *testing.T) {
-	teardown, mgr, pool := vp.TstSetUp(t)
-	store, storeTearDown := vp.TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := vp.TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	// create some eligible inputs in a specified range.
 	aRanges := []vp.AddressRange{
@@ -147,7 +145,7 @@ func TestGetEligibleInputs(t *testing.T) {
 	vp.TstCreateSeries(t, pool, series)
 
 	// create all the scripts.
-	scripts := createScripts(t, mgr, pool, aRanges)
+	scripts := createScripts(t, pool.Manager(), pool, aRanges)
 
 	// let's make two eligible inputs pr. script/address.
 	expNoEligibleInputs := 2 * len(scripts)
@@ -183,7 +181,7 @@ func TestGetEligibleInputs(t *testing.T) {
 }
 
 func TestGetEligibleInputsFromSeries(t *testing.T) {
-	teardown, mgr, pool := vp.TstSetUp(t)
+	teardown, mgr, pool := vp.TstCreatePool(t)
 	defer teardown()
 	// create some eligible inputs in a specified range.
 	aRange := vp.AddressRange{
@@ -240,10 +238,8 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 }
 
 func TestEligibleInputsAreEligible(t *testing.T) {
-	teardown, _, pool := vp.TstSetUp(t)
-	store, storeTearDown := vp.TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := vp.TstCreatePoolAndTxStore(t)
+	defer tearDown()
 	var seriesID uint32 = 0
 	var branch vp.Branch = 0
 	var index vp.Index = 0
@@ -268,11 +264,9 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 }
 
 func TestNonEligibleInputsAreNotEligible(t *testing.T) {
-	teardown, _, pool := vp.TstSetUp(t)
-	store1, storeTearDown1 := vp.TstCreateTxStore(t)
+	tearDown, pool, store1 := vp.TstCreatePoolAndTxStore(t)
 	store2, storeTearDown2 := vp.TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown1()
+	defer tearDown()
 	defer storeTearDown2()
 	var seriesID uint32 = 0
 	var branch vp.Branch = 0

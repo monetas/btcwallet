@@ -28,10 +28,8 @@ import (
 // trivial endeavour. Or maybe it should be turned into an example and all the checks here
 // moved into separate, whitebox tests.
 func TestWithdrawal(t *testing.T) {
-	teardown, mgr, pool := vp.TstSetUp(t)
-	store, storeTearDown := vp.TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := vp.TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	eligible := vp.TstCreateCredits(t, pool, []int64{5e6, 4e6}, store)
@@ -65,6 +63,7 @@ func TestWithdrawal(t *testing.T) {
 	// signatures).
 	// Must unlock the manager first as signing involves looking up the redeem script,
 	// which is stored encrypted.
+	mgr := pool.Manager()
 	vp.TstUnlockManager(t, mgr)
 	sha, _ := btcwire.NewShaHashFromStr(ntxid)
 	tx := store.UnminedTx(sha).MsgTx()

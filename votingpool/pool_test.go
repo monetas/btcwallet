@@ -31,7 +31,7 @@ import (
 )
 
 func TestLoadVotingPoolAndDepositScript(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 	// setup
 	poolID := "test"
@@ -57,7 +57,7 @@ func TestLoadVotingPoolAndDepositScript(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	poolID := "test"
@@ -79,7 +79,7 @@ func TestLoadVotingPoolAndCreateSeries(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	// setup
@@ -98,7 +98,7 @@ func TestLoadVotingPoolAndReplaceSeries(t *testing.T) {
 }
 
 func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	// setup
@@ -119,7 +119,7 @@ func TestLoadVotingPoolAndEmpowerSeries(t *testing.T) {
 }
 
 func TestDepositScriptAddress(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -164,7 +164,7 @@ func TestDepositScriptAddress(t *testing.T) {
 }
 
 func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	_, err := pool.DepositScriptAddress(0, 0, 0)
@@ -173,7 +173,7 @@ func TestDepositScriptAddressForNonExistentSeries(t *testing.T) {
 }
 
 func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 	if err := pool.CreateSeries(1, 0, 2, []string{pubKey0, pubKey1, pubKey2}); err != nil {
 		t.Fatalf("Cannot creates series")
@@ -187,7 +187,7 @@ func TestDepositScriptAddressForHardenedPubKey(t *testing.T) {
 }
 
 func TestLoadVotingPool(t *testing.T) {
-	tearDown, mgr, pool := vp.TstSetUp(t)
+	tearDown, mgr, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	pool2, err := vp.Load(pool.TstNamespace(), mgr, pool.ID)
@@ -200,7 +200,7 @@ func TestLoadVotingPool(t *testing.T) {
 }
 
 func TestCreateVotingPool(t *testing.T) {
-	tearDown, mgr, pool := vp.TstSetUp(t)
+	tearDown, mgr, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	pool2, err := vp.Create(pool.TstNamespace(), mgr, []byte{0x02})
@@ -213,7 +213,7 @@ func TestCreateVotingPool(t *testing.T) {
 }
 
 func TestCreateVotingPoolWhenAlreadyExists(t *testing.T) {
-	tearDown, mgr, pool := vp.TstSetUp(t)
+	tearDown, mgr, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	_, err := vp.Create(pool.TstNamespace(), mgr, pool.ID)
@@ -222,7 +222,7 @@ func TestCreateVotingPoolWhenAlreadyExists(t *testing.T) {
 }
 
 func TestCreateSeries(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -275,7 +275,7 @@ func TestCreateSeries(t *testing.T) {
 }
 
 func TestCreateSeriesWhenAlreadyExists(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
 	if err := pool.CreateSeries(1, 0, 1, pubKeys); err != nil {
@@ -288,7 +288,7 @@ func TestCreateSeriesWhenAlreadyExists(t *testing.T) {
 }
 
 func TestPutSeriesErrors(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -333,7 +333,7 @@ func TestPutSeriesErrors(t *testing.T) {
 }
 
 func TestValidateAndDecryptKeys(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	rawPubKeys, err := encryptKeys([]string{pubKey0, pubKey1}, manager, waddrmgr.CKTPublic)
@@ -381,7 +381,7 @@ func TestValidateAndDecryptKeys(t *testing.T) {
 }
 
 func TestValidateAndDecryptKeysErrors(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	encryptedPubKeys, err := encryptKeys([]string{pubKey0}, manager, waddrmgr.CKTPublic)
@@ -453,7 +453,7 @@ func encryptKeys(keys []string, mgr *waddrmgr.Manager, keyType waddrmgr.CryptoKe
 }
 
 func TestCannotReplaceEmpoweredSeries(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	var seriesID uint32 = 1
@@ -475,7 +475,7 @@ func TestCannotReplaceEmpoweredSeries(t *testing.T) {
 }
 
 func TestReplaceNonExistingSeries(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	pubKeys := []string{pubKey0, pubKey1, pubKey2}
@@ -544,7 +544,7 @@ var replaceSeriesTestData = []replaceSeriesTestEntry{
 }
 
 func TestReplaceExistingSeries(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	for _, data := range replaceSeriesTestData {
@@ -595,7 +595,7 @@ func validateReplaceSeries(t *testing.T, pool *vp.Pool, testID int, replacedWith
 }
 
 func TestEmpowerSeries(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -613,7 +613,7 @@ func TestEmpowerSeries(t *testing.T) {
 }
 
 func TestEmpowerSeriesErrors(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -663,7 +663,7 @@ func TestEmpowerSeriesErrors(t *testing.T) {
 }
 
 func TestGetSeries(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 	expectedPubKeys := vp.CanonicalKeyOrder([]string{pubKey0, pubKey1, pubKey2})
 	if err := pool.CreateSeries(1, 0, 2, expectedPubKeys); err != nil {
@@ -760,7 +760,7 @@ func setUpLoadAllSeries(t *testing.T, namespace walletdb.Namespace, mgr *waddrmg
 }
 
 func TestLoadAllSeries(t *testing.T) {
-	tearDown, manager, pool := vp.TstSetUp(t)
+	tearDown, manager, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	// We need to unlock the manager in order to load all series.
@@ -964,7 +964,7 @@ func TestReverse(t *testing.T) {
 }
 
 func TestEmpowerSeriesNeuterFailed(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	seriesID := uint32(0)
@@ -983,7 +983,7 @@ func TestEmpowerSeriesNeuterFailed(t *testing.T) {
 }
 
 func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
-	tearDown, mgr, pool := vp.TstSetUp(t)
+	tearDown, mgr, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	// the plaintext not being base58 encoded triggers the error
@@ -998,7 +998,7 @@ func TestDecryptExtendedKeyCannotCreateResultKey(t *testing.T) {
 }
 
 func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
-	tearDown, _, pool := vp.TstSetUp(t)
+	tearDown, _, pool := vp.TstCreatePool(t)
 	defer tearDown()
 
 	_, err := pool.TstDecryptExtendedKey(waddrmgr.CKTPublic, []byte{})
@@ -1007,7 +1007,7 @@ func TestDecryptExtendedKeyCannotDecrypt(t *testing.T) {
 }
 
 func TestSerializationErrors(t *testing.T) {
-	tearDown, mgr, _ := vp.TstSetUp(t)
+	tearDown, mgr, _ := vp.TstCreatePool(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -1064,7 +1064,7 @@ func TestSerializationErrors(t *testing.T) {
 }
 
 func TestSerialization(t *testing.T) {
-	tearDown, mgr, _ := vp.TstSetUp(t)
+	tearDown, mgr, _ := vp.TstCreatePool(t)
 	defer tearDown()
 
 	tests := []struct {
@@ -1175,7 +1175,7 @@ func TestSerialization(t *testing.T) {
 }
 
 func TestDeserializationErrors(t *testing.T) {
-	tearDown, _, _ := vp.TstSetUp(t)
+	tearDown, _, _ := vp.TstCreatePool(t)
 	defer tearDown()
 
 	tests := []struct {

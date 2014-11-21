@@ -252,7 +252,7 @@ func createEmpoweredSeries(t *testing.T, pool *Pool) uint32 {
 }
 
 func TstCreatePoolAndTxStore(t *testing.T) (tearDown func(), pool *Pool, store *txstore.Store) {
-	mgrTearDown, _, pool := TstSetUp(t)
+	mgrTearDown, _, pool := TstCreatePool(t)
 	store, storeTearDown := TstCreateTxStore(t)
 	tearDown = func() {
 		mgrTearDown()
@@ -322,11 +322,13 @@ func TstCreateInputsOnBlock(t *testing.T, s *txstore.Store,
 	return credits
 }
 
-// TstSetUp creates and returns a waddrmgr.Manager and a votingpool.Pool, each with their
-// own walletdb namespace. It also returns a teardown function that closes the Manager and
-// removes the directory created here to store the database.
-// XXX: This should be renamed to TstCreatePool or something like that.
-func TstSetUp(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *Pool) {
+// TstCreatePool creates a Pool on a fresh walletdb and returns it. It also
+// returns the pool's waddrmgr.Manager (which uses the same walletdb, but with a
+// different namespace) as a convenience, and a teardown function that closes
+// the Manager and removes the directory used to store the database.
+func TstCreatePool(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, pool *Pool) {
+	// XXX: This should be moved somewhere else eventually as not all of our
+	// tests call this function, but they should all run in parallel.
 	t.Parallel()
 
 	// Create a new wallet DB and addr manager.

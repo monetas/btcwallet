@@ -31,10 +31,8 @@ import (
 )
 
 func TestStoreTransactionsWithoutChangeOutput(t *testing.T) {
-	tearDown, _, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
-	defer storeTearDown()
 
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6})
 	if err := storeTransactions(store, []*decoratedTx{tx}); err != nil {
@@ -53,10 +51,8 @@ func TestStoreTransactionsWithoutChangeOutput(t *testing.T) {
 }
 
 func TestStoreTransactionsWithChangeOutput(t *testing.T) {
-	tearDown, _, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
-	defer storeTearDown()
 
 	// This will create a transaction with two outputs spending the whole amount from the
 	// single input.
@@ -187,10 +183,8 @@ func TestGetRawSigsInvalidAddrBranch(t *testing.T) {
 // Check that all outputs requested in a withdrawal match the outputs of the generated
 // transaction(s).
 func TestWithdrawalTxOutputs(t *testing.T) {
-	teardown, mgr, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
@@ -203,7 +197,7 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := newWithdrawal(0, outputs, eligible, changeStart, mgr.Net())
+	w := newWithdrawal(0, outputs, eligible, changeStart, pool.Manager().Net())
 	if err := w.fulfilOutputs(); err != nil {
 		t.Fatal(err)
 	}
@@ -219,16 +213,14 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
 	expectedOutputs := append(
 		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
-	checkTxOutputs(t, tx.msgtx, expectedOutputs, mgr.Net())
+	checkTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
 }
 
 // Check that withdrawal.status correctly states that no outputs were fulfilled when we
 // don't have enough eligible credits for any of them.
 func TestFulfilOutputsNoSatisfiableOutputs(t *testing.T) {
-	teardown, mgr, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	eligible := TstCreateCredits(t, pool, []int64{1e6}, store)
 	outputs := []*OutputRequest{
@@ -238,7 +230,7 @@ func TestFulfilOutputsNoSatisfiableOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := newWithdrawal(0, outputs, eligible, changeStart, mgr.Net())
+	w := newWithdrawal(0, outputs, eligible, changeStart, pool.Manager().Net())
 	if err := w.fulfilOutputs(); err != nil {
 		t.Fatal(err)
 	}
@@ -261,10 +253,8 @@ func TestFulfilOutputsNoSatisfiableOutputs(t *testing.T) {
 // Check that some requested outputs are not fulfilled when we don't have credits for all
 // of them.
 func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
-	teardown, mgr, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
@@ -277,7 +267,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := newWithdrawal(0, outputs, eligible, changeStart, mgr.Net())
+	w := newWithdrawal(0, outputs, eligible, changeStart, pool.Manager().Net())
 	if err := w.fulfilOutputs(); err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +283,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
 		expectedOutputs, NewOutputRequest("foo", 4, changeStart.Addr().String(), change))
-	checkTxOutputs(t, tx.msgtx, expectedOutputs, mgr.Net())
+	checkTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
 
 	// withdrawal.status should state that outputs 1 and 2 were successfully fulfilled,
 	// and that output 3 was not.
@@ -308,10 +298,8 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 }
 
 func TestAddChange(t *testing.T) {
-	teardown, _, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	input, output, fee := int64(4e6), int64(3e6), int64(10)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
@@ -335,10 +323,8 @@ func TestAddChange(t *testing.T) {
 // TestAddChangeNoChange checks that decoratedTx.addChange() does not add a
 // change output when there's no satoshis left after paying all outputs+fees.
 func TestAddChangeNoChange(t *testing.T) {
-	teardown, _, pool := TstSetUp(t)
-	store, storeTearDown := TstCreateTxStore(t)
-	defer teardown()
-	defer storeTearDown()
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
 	input, output, fee := int64(4e6), int64(4e6), int64(0)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
