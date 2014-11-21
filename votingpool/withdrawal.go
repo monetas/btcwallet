@@ -492,9 +492,9 @@ func (w *withdrawal) fulfilNextOutput() error {
 	outputIndex := w.current.addTxOut(output, pkScript)
 
 	if w.current.isTooBig() {
-		// TODO: Roll back last added output, finalize w.currentTx and assign a new
-		// tx to currentTx.
-		panic("Oversize TX not yet implemented")
+		if err := w.handleOversizeTx(); err != nil {
+			return err
+		}
 	}
 
 	fee := w.current.calculateFee()
@@ -509,14 +509,9 @@ func (w *withdrawal) fulfilNextOutput() error {
 		fee = w.current.calculateFee()
 
 		if w.current.isTooBig() {
-			// TODO: Roll back last added output plus all inputs added to support it.
-			if len(w.current.msgtx.TxOut) > 1 {
-				w.finalizeCurrentTx()
-				// TODO: Finalize w.currentTx and assign a new tx to currentTx.
-			} else if len(w.current.msgtx.TxOut) == 1 {
-				// TODO: Split last output in two, and continue the loop.
+			if err := w.handleOversizeTx(); err != nil {
+				return err
 			}
-			panic("Oversize TX not yet implemented")
 		}
 	}
 
@@ -526,6 +521,29 @@ func (w *withdrawal) fulfilNextOutput() error {
 	return nil
 }
 
+// handleOversizeTx handles the case when a transaction has become too
+// big by either rolling back an output or splitting it.
+func (w *withdrawal) handleOversizeTx() error {
+	if len(w.current.msgtx.TxOut) > 1 {
+		inputs, output, err := w.current.rollBackLastOutput()
+		if err != nil {
+			return newError(ErrWithdrawalProcessing,
+				"failed to rollback last output", err)
+			return err
+		}
+		w.eligibleInputs = append(w.eligibleInputs, inputs...)
+		w.pendingOutputs = append(w.pendingOutputs, output.request)
+		w.finalizeCurrentTx()
+	} else if len(w.current.msgtx.TxOut) == 1 {
+		// TODO: Split last output in two, and continue the loop.
+		panic("Oversize TX ouput split not yet implemented")
+	}
+	return nil
+}
+
+// finalizeCurrentTx finalizes the transaction in w.current, moves it to the
+// list of finalized transactions and replaces w.current with a new empty
+// transaction.
 func (w *withdrawal) finalizeCurrentTx() error {
 	tx := w.current
 	if len(tx.msgtx.TxOut) == 0 {
