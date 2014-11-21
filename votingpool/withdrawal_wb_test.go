@@ -549,7 +549,7 @@ func checkDecoratedTxOutputs(t *testing.T, tx *decoratedTx, outputs []*Withdrawa
 	for i, output := range tx.outputs {
 		if output.Amount() != outputs[i].Amount() {
 			t.Fatalf("Output has wrong amount; got %d, want %d",
-				output.Amount(), outputs[i])
+				output.Amount(), outputs[i].Amount())
 		}
 	}
 
