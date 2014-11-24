@@ -73,7 +73,7 @@ func (s *SeriesData) getPrivKeyFor(pubKey *hdkeychain.ExtendedKey) (*hdkeychain.
 		}
 	}
 	return nil, newError(
-		ErrUnknownPubKey, fmt.Sprintf("Unknown public key '%s'", pubKey.String()), nil)
+		ErrUnknownPubKey, fmt.Sprintf("unknown public key '%s'", pubKey.String()), nil)
 }
 
 func (vp *Pool) ChangeAddress(seriesID uint32, index Index) (*ChangeAddress, error) {
@@ -535,14 +535,14 @@ func (w *withdrawal) finalizeCurrentTx() error {
 	pkScript, err := btcscript.PayToAddrScript(w.changeStart.addr)
 	if err != nil {
 		return newError(
-			ErrWithdrawalProcessing, "Failed to generate pkScript for change address", err)
+			ErrWithdrawalProcessing, "failed to generate pkScript for change address", err)
 	}
 	if tx.addChange(pkScript) {
 		var err error
 		w.changeStart, err = w.changeStart.Next()
 		if err != nil {
 			return newError(
-				ErrWithdrawalProcessing, "Failed to get next change address", err)
+				ErrWithdrawalProcessing, "failed to get next change address", err)
 		}
 	}
 	w.transactions = append(w.transactions, tx)
@@ -666,11 +666,11 @@ func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 				if privKey != nil {
 					childKey, err := privKey.Child(uint32(creditAddr.Index()))
 					if err != nil {
-						return nil, newError(ErrKeyChain, "Failed to derive private key", err)
+						return nil, newError(ErrKeyChain, "failed to derive private key", err)
 					}
 					ecPrivKey, err := childKey.ECPrivKey()
 					if err != nil {
-						return nil, newError(ErrKeyChain, "Failed to obtain ECPrivKey", err)
+						return nil, newError(ErrKeyChain, "failed to obtain ECPrivKey", err)
 					}
 					log.Infof("Signing input %d of tx %s with privkey of %s",
 						inputIdx, ntxid, pubKey.String())
@@ -678,7 +678,7 @@ func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 						tx.msgtx, inputIdx, redeemScript, btcscript.SigHashAll, ecPrivKey)
 					if err != nil {
 						return nil, newError(
-							ErrRawSigning, "Failed to generate raw signature", err)
+							ErrRawSigning, "failed to generate raw signature", err)
 					}
 				} else {
 					log.Infof(
