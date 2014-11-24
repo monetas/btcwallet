@@ -383,7 +383,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 		// Precondition: At least two outputs are required in the
 		// transaction.
 		str := fmt.Sprintf("at least two outputs expected; got %d", len(d.outputs))
-		return nil, nil, newError(ErrWithdrawalProcessing, str, nil)
+		return nil, nil, newError(ErrPreconditionNotMet, str, nil)
 	}
 
 	removedOutput := d.popOutput()

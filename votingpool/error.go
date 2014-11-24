@@ -121,6 +121,10 @@ const (
 	// signatures for a transaction input.
 	ErrRawSigning
 
+	// ErrPreconditionNotMet indicates a programming error since a
+	// preconditon has not been met.
+	ErrPreconditionNotMet
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -156,6 +160,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrKeyChain:                "ErrKeyChain",
 	ErrCrypto:                  "ErrCrypto",
 	ErrRawSigning:              "ErrRawSigning",
+	ErrPreconditionNotMet:      "ErrPreconditionNotMet",
 }
 
 // String returns the ErrorCode as a human-readable name.

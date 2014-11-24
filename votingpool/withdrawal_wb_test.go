@@ -493,11 +493,11 @@ func TestPopInput(t *testing.T) {
 func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
 	wZeroOutputs := createFakeDecoratedTx(nil, nil)
 	_, _, err := wZeroOutputs.rollBackLastOutput()
-	TstCheckError(t, "", err, ErrWithdrawalProcessing)
+	TstCheckError(t, "", err, ErrPreconditionNotMet)
 
 	wOneOutput := createFakeDecoratedTx(nil, createWithdrawalOutputs([]btcutil.Amount{3}))
 	_, _, err = wOneOutput.rollBackLastOutput()
-	TstCheckError(t, "", err, ErrWithdrawalProcessing)
+	TstCheckError(t, "", err, ErrPreconditionNotMet)
 }
 
 func checkAmountsMatch(t *testing.T, gotEligibles []CreditInterface, eligibles []TstFakeCredit) {
