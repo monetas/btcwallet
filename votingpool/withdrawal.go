@@ -287,6 +287,7 @@ type withdrawal struct {
 	pendingOutputs []*OutputRequest
 	eligibleInputs []CreditInterface
 	current        *decoratedTx
+	isTxTooBig     func(*decoratedTx) bool
 }
 
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
@@ -403,7 +404,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 	return removedInputs, removedOutput, nil
 }
 
-func (d *decoratedTx) isTooBig() bool {
+func isTxTooBig(d *decoratedTx) bool {
 	// TODO: Implement me!
 	return estimateSize(d.msgtx) > 1000
 }
@@ -418,6 +419,7 @@ func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInte
 		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
 		net:            net,
+		isTxTooBig:     isTxTooBig,
 	}
 }
 
@@ -492,7 +494,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 	}
 	outputIndex := w.current.addTxOut(output, pkScript)
 
-	if w.current.isTooBig() {
+	if w.isTxTooBig(w.current) {
 		if err := w.handleOversizeTx(); err != nil {
 			return err
 		}
@@ -509,7 +511,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		w.current.addTxIn(input)
 		fee = w.current.calculateFee()
 
-		if w.current.isTooBig() {
+		if w.isTxTooBig(w.current) {
 			if err := w.handleOversizeTx(); err != nil {
 				return err
 			}
