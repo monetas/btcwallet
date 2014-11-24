@@ -17,9 +17,11 @@
 package votingpool_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/conformal/btcutil"
+	"github.com/conformal/btcutil/hdkeychain"
 	vp "github.com/conformal/btcwallet/votingpool"
 	"github.com/conformal/btcwire"
 )
@@ -31,15 +33,21 @@ func TestWithdrawal(t *testing.T) {
 	tearDown, pool, store := vp.TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
+	masters := []*hdkeychain.ExtendedKey{
+		vp.TstCreateMasterKey(t, bytes.Repeat([]byte{0x00, 0x01}, 16)),
+		vp.TstCreateMasterKey(t, bytes.Repeat([]byte{0x02, 0x01}, 16)),
+		vp.TstCreateMasterKey(t, bytes.Repeat([]byte{0x03, 0x01}, 16))}
+	def := vp.TstCreateSeriesDef(t, 2, masters)
+	vp.TstCreateSeries(t, pool, []vp.TstSeriesDef{def})
 	// Create eligible inputs and the list of outputs we need to fulfil.
-	eligible := vp.TstCreateCredits(t, pool, []int64{5e6, 4e6}, store)
+	eligible := vp.TstCreateCreditsOnSeries(t, pool, def.SeriesID, []int64{5e6, 4e6}, store)
 	address1 := "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6"
 	address2 := "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG"
 	outputs := []*vp.OutputRequest{
 		vp.NewOutputRequest("foo", 1, address1, btcutil.Amount(4e6)),
 		vp.NewOutputRequest("foo", 2, address2, btcutil.Amount(1e6)),
 	}
-	changeStart, err := pool.ChangeAddress(0, 0)
+	changeStart, err := pool.ChangeAddress(def.SeriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
