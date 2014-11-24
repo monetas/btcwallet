@@ -210,7 +210,7 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	// The created tx should include both eligible credits, so we expect it to have
 	// an input amount of 2e6+4e6 satoshis.
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
-	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
+	change := inputAmount - (outputs[0].amount + outputs[1].amount + w.calculateFee(tx))
 	expectedOutputs := append(
 		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
 	checkTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
@@ -278,7 +278,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
 	// We expect it to include outputs for requests 1 and 2, plus a change output, but
 	// output request #3 should not be there because we don't have enough credits.
-	change := inputAmount - (out1.amount + out2.amount + tx.calculateFee())
+	change := inputAmount - (out1.amount + out2.amount + w.calculateFee(tx))
 	expectedOutputs := []*OutputRequest{out1, out2}
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
@@ -303,11 +303,7 @@ func TestAddChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(3e6), int64(10)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(fee)
-	}
-
-	if !tx.addChange([]byte{}) {
+	if !tx.addChange([]byte{}, btcutil.Amount(fee)) {
 		t.Fatal("tx.addChange() returned false, meaning it did not add a change output")
 	}
 	if len(tx.msgtx.TxOut) != 2 {
@@ -328,11 +324,7 @@ func TestAddChangeNoChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(4e6), int64(0)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(fee)
-	}
-
-	if tx.addChange([]byte{}) {
+	if tx.addChange([]byte{}, btcutil.Amount(fee)) {
 		t.Fatal("tx.addChange() returned true, meaning it added a change output")
 	}
 	if len(tx.msgtx.TxOut) != 1 {
@@ -365,10 +357,10 @@ func TestRollbackLastOutput(t *testing.T) {
 	tx := createFakeDecoratedTx(initalInputs, wOutputs)
 	w := withdrawal{current: tx}
 
-	tx.calculateFee = func() btcutil.Amount {
+	w.calculateFee = func(tx *decoratedTx) btcutil.Amount {
 		return btcutil.Amount(1)
 	}
-	removedInputs, removedOutput, err := tx.rollBackLastOutput()
+	removedInputs, removedOutput, err := w.rollBackLastOutput()
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
 	}
@@ -398,10 +390,10 @@ func TestRollbackLastOutputEdgeCase(t *testing.T) {
 	tx := createFakeDecoratedTx(initalInputs, wOutputs)
 	w := withdrawal{current: tx}
 
-	tx.calculateFee = func() btcutil.Amount {
+	w.calculateFee = func(tx *decoratedTx) btcutil.Amount {
 		return btcutil.Amount(1)
 	}
-	removedInputs, removedOutput, err := tx.rollBackLastOutput()
+	removedInputs, removedOutput, err := w.rollBackLastOutput()
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
 	}
@@ -491,11 +483,13 @@ func TestPopInput(t *testing.T) {
 // rollBackLastOutput returns an error if there are less than two
 // outputs in the transaction.
 func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
-	wZeroOutputs := createFakeDecoratedTx(nil, nil)
+	txZeroOutputs := createFakeDecoratedTx(nil, nil)
+	wZeroOutputs := withdrawal{current: txZeroOutputs}
 	_, _, err := wZeroOutputs.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 
-	wOneOutput := createFakeDecoratedTx(nil, createWithdrawalOutputs([]btcutil.Amount{3}))
+	txOneOutput := createFakeDecoratedTx(nil, createWithdrawalOutputs([]btcutil.Amount{3}))
+	wOneOutput := withdrawal{current: txOneOutput}
 	_, _, err = wOneOutput.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 }

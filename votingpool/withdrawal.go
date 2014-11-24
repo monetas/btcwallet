@@ -288,6 +288,11 @@ type withdrawal struct {
 	eligibleInputs []CreditInterface
 	current        *decoratedTx
 	isTxTooBig     func(*decoratedTx) bool
+
+	// calculateFee calculates the expected network fees for this transaction.
+	// We use a func() field instead of a method so that it can be replaced in
+	// tests.
+	calculateFee func(*decoratedTx) btcutil.Amount
 }
 
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
@@ -302,18 +307,10 @@ type decoratedTx struct {
 	// hasChange indicates whether or not this tx includes a change output. If
 	// it does, it will be the last item in msgtx.TxOut.
 	hasChange bool
-	// calculateFee calculates the expected network fees for this transaction.
-	// We use a func() field instead of a method so that it can be replaced in
-	// tests.
-	calculateFee func() btcutil.Amount
 }
 
 func newDecoratedTx() *decoratedTx {
 	tx := &decoratedTx{msgtx: btcwire.NewMsgTx()}
-	tx.calculateFee = func() btcutil.Amount {
-		// TODO:
-		return btcutil.Amount(1)
-	}
 	return tx
 }
 
@@ -364,8 +361,8 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 // This method must be called only once, and no extra inputs/outputs should be added after
 // it's called. Also, callsites must make sure adding a change output won't cause the tx
 // to exceed the size limit.
-func (d *decoratedTx) addChange(pkScript []byte) bool {
-	d.fee = d.calculateFee()
+func (d *decoratedTx) addChange(pkScript []byte, fee btcutil.Amount) bool {
+	d.fee = fee
 	change := d.inputTotal - d.outputTotal - d.fee
 	if change > 0 {
 		d.msgtx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
@@ -375,32 +372,35 @@ func (d *decoratedTx) addChange(pkScript []byte) bool {
 	return d.hasChange
 }
 
-// rollBackLastOutput will roll back the last added output and possibly remove
-// inputs that are no longer needed to cover the remaining outputs. The method
-// returns the removed output and the removed inputs, if any.
+// rollBackLastOutput will, for the current transaction, roll back the last
+// added output and possibly remove inputs that are no longer needed to cover
+// the remaining outputs. The method returns the removed output and the removed
+// inputs, if any.
 //
-// The decorated tx needs to have two or more outputs. The case with only one
-// output must be handled separately (by the split output procedure).
-func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput, error) {
+// The current transaction needs to have two or more outputs. The case with only
+// one output must be handled separately (by the split output procedure).
+func (w *withdrawal) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput, error) {
 	// Check precondition: At least two outputs are required in the transaction.
-	if len(d.outputs) < 2 {
-		str := fmt.Sprintf("at least two outputs expected; got %d", len(d.outputs))
+	if len(w.current.outputs) < 2 {
+		str := fmt.Sprintf("at least two outputs expected; got %d", len(w.current.outputs))
 		return nil, nil, newError(ErrPreconditionNotMet, str, nil)
 	}
 
-	removedOutput := d.popOutput()
+	removedOutput := w.current.popOutput()
+	log.Infof("Rolled back output with amount %v", removedOutput.Amount())
 
 	var removedInputs []CreditInterface
 	// Continue until sum(in) < sum(out) + fee
-	for d.inputTotal >= d.outputTotal+d.calculateFee() {
-		removed := d.popInput()
+	for w.current.inputTotal >= w.current.outputTotal+w.calculateFee(w.current) {
+		removed := w.current.popInput()
+		log.Infof("Rolled back input with amount %v", removed.Amount())
 		removedInputs = append(removedInputs, removed)
 	}
 
 	// Re-add the last one
 	inputTop := removedInputs[len(removedInputs)-1]
 	removedInputs = removedInputs[:len(removedInputs)-1]
-	d.addTxIn(inputTop)
+	w.current.addTxIn(inputTop)
 	return removedInputs, removedOutput, nil
 }
 
@@ -420,6 +420,10 @@ func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInte
 		changeStart:    changeStart,
 		net:            net,
 		isTxTooBig:     isTxTooBig,
+		calculateFee: func(tx *decoratedTx) btcutil.Amount {
+			// TODO:
+			return btcutil.Amount(1)
+		},
 	}
 }
 
@@ -500,7 +504,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		}
 	}
 
-	fee := w.current.calculateFee()
+	fee := w.calculateFee(w.current)
 	for w.current.inputTotal < w.current.outputTotal+fee {
 		if len(w.eligibleInputs) == 0 {
 			// TODO: Implement Split Output procedure
@@ -509,7 +513,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
 		w.current.addTxIn(input)
-		fee = w.current.calculateFee()
+		fee = w.calculateFee(w.current)
 
 		if w.isTxTooBig(w.current) {
 			if err := w.handleOversizeTx(); err != nil {
@@ -528,7 +532,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 // big by either rolling back an output or splitting it.
 func (w *withdrawal) handleOversizeTx() error {
 	if len(w.current.msgtx.TxOut) > 1 {
-		inputs, output, err := w.current.rollBackLastOutput()
+		inputs, output, err := w.rollBackLastOutput()
 		if err != nil {
 			return newError(ErrWithdrawalProcessing,
 				"failed to rollback last output", err)
@@ -558,7 +562,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 		return newError(
 			ErrWithdrawalProcessing, "failed to generate pkScript for change address", err)
 	}
-	if tx.addChange(pkScript) {
+	if tx.addChange(pkScript, w.calculateFee(tx)) {
 		var err error
 		w.changeStart, err = w.changeStart.Next()
 		if err != nil {
