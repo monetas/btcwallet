@@ -374,14 +374,15 @@ func (d *decoratedTx) addChange(pkScript []byte) bool {
 	return d.hasChange
 }
 
-// rollBackLastOutput will roll back the last added output and
-// possibly remove inputs that are no longer needed to cover the
-// remaining outputs. The method returns the removed output and the
-// removed inputs, if any.
+// rollBackLastOutput will roll back the last added output and possibly remove
+// inputs that are no longer needed to cover the remaining outputs. The method
+// returns the removed output and the removed inputs, if any.
+//
+// The decorated tx needs to have two or more outputs. The case with only one
+// output must be handled separately (by the split output procedure).
 func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput, error) {
+	// Check precondition: At least two outputs are required in the transaction.
 	if len(d.outputs) < 2 {
-		// Precondition: At least two outputs are required in the
-		// transaction.
 		str := fmt.Sprintf("at least two outputs expected; got %d", len(d.outputs))
 		return nil, nil, newError(ErrPreconditionNotMet, str, nil)
 	}
