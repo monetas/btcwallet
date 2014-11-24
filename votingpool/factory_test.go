@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/conformal/btcnet"
@@ -41,13 +42,18 @@ var (
 	seed           = bytes.Repeat([]byte{0x2a, 0x64, 0xdf, 0x08}, 8)
 	pubPassphrase  = []byte("_DJr{fL4H0O}*-0\n:V1izc)(6BomK")
 	privPassphrase = []byte("81lUHXnOMZ@?XXd7O9xyDIWIbXX-lj")
+	uniqueCounter  = uint32(0)
 )
+
+func getUniqueID() uint32 {
+	return atomic.AddUint32(&uniqueCounter, 1)
+}
 
 // createDecoratedTx creates a decoratedTx with the given input and output amounts.
 func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmounts []int64,
 	outputAmounts []int64) *decoratedTx {
 	tx := newDecoratedTx()
-	credits := TstCreateCredits(t, pool, inputAmounts, store)
+	_, credits := TstCreateCredits(t, pool, inputAmounts, store)
 	for _, c := range credits {
 		tx.addTxIn(c)
 	}
@@ -120,7 +126,7 @@ func createFakeDecoratedTx(inputs []TstFakeCredit, outputs []*WithdrawalOutput) 
 func createTxWithInputAmounts(
 	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) *decoratedTx {
 	tx := newDecoratedTx()
-	credits := TstCreateCredits(t, pool, amounts, store)
+	_, credits := TstCreateCredits(t, pool, amounts, store)
 	for _, c := range credits {
 		tx.addTxIn(c)
 	}
@@ -165,12 +171,12 @@ func TstCreatePkScript(t *testing.T, pool *Pool, series uint32, branch Branch, i
 	var bsHeight int32 = 1
 	addr, err := mgr.ImportScript(script, &waddrmgr.BlockStamp{Height: bsHeight})
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	pkScript, err := btcscript.PayToAddrScript(addr.Address())
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	return pkScript
 }
@@ -187,14 +193,27 @@ func TstCreateTxStore(t *testing.T) (store *txstore.Store, tearDown func()) {
 type TstSeriesDef struct {
 	ReqSigs  uint32
 	PubKeys  []string
+	PrivKeys []string
 	SeriesID uint32
 }
 
+// TstCreateSeries creates a new Series for every definition in the given slice
+// of TstSeriesDef. If the definition includes any private keys, the Series is
+// empowered with them.
 func TstCreateSeries(t *testing.T, pool *Pool, definitions []TstSeriesDef) {
+	// Unlock the manager in case we have any private keys to load.
+	TstUnlockManager(t, pool.Manager())
+	defer pool.Manager().Lock()
+
 	for _, def := range definitions {
 		err := pool.CreateSeries(CurrentVersion, def.SeriesID, def.ReqSigs, def.PubKeys)
 		if err != nil {
 			t.Fatalf("Cannot creates series %d: %v", def.SeriesID, err)
+		}
+		for _, key := range def.PrivKeys {
+			if err := pool.EmpowerSeries(def.SeriesID, key); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }
@@ -211,7 +230,7 @@ func TstCreatePkScripts(t *testing.T, pool *Pool, aRange AddressRange) [][]byte 
 	return pkScripts
 }
 
-func createMasterKey(t *testing.T, seed []byte) *hdkeychain.ExtendedKey {
+func TstCreateMasterKey(t *testing.T, seed []byte) *hdkeychain.ExtendedKey {
 	key, err := hdkeychain.NewMaster(seed)
 	if err != nil {
 		t.Fatal(err)
@@ -219,36 +238,28 @@ func createMasterKey(t *testing.T, seed []byte) *hdkeychain.ExtendedKey {
 	return key
 }
 
-func createEmpoweredSeries(t *testing.T, pool *Pool) uint32 {
-	// Create 3 master extended keys, as if we had 3 voting pool members.
-	masters := []*hdkeychain.ExtendedKey{
-		createMasterKey(t, bytes.Repeat([]byte{0x00, 0x01}, 16)),
-		createMasterKey(t, bytes.Repeat([]byte{0x02, 0x01}, 16)),
-		createMasterKey(t, bytes.Repeat([]byte{0x03, 0x01}, 16)),
+// createMasterKeys creates count master ExtendedKeys with unique seeds.
+func createMasterKeys(t *testing.T, count int) []*hdkeychain.ExtendedKey {
+	keys := make([]*hdkeychain.ExtendedKey, count)
+	for i := range keys {
+		keys[i] = TstCreateMasterKey(t, bytes.Repeat(uint32ToBytes(getUniqueID()), 4))
 	}
-	rawPubKeys := make([]string, 3)
-	rawPrivKeys := make([]string, 3)
-	for i, key := range masters {
-		rawPrivKeys[i] = key.String()
-		pubkey, _ := key.Neuter()
-		rawPubKeys[i] = pubkey.String()
-	}
+	return keys
+}
 
-	// Create a series with the master pubkeys of our voting pool members, also empowering
-	// it with all corresponding private keys.
-	reqSigs := uint32(2)
-	seriesID := uint32(0)
-	if err := pool.CreateSeries(1, seriesID, reqSigs, rawPubKeys); err != nil {
-		t.Fatalf("Cannot creates series: %v", err)
+// TstCreateSeriesDef creates a TstSeriesDef with a unique SeriesID, the given
+// reqSigs and the raw public/private keys extracted from the list of private
+// keys. The new series will be empowered with all private keys.
+func TstCreateSeriesDef(t *testing.T, reqSigs uint32, keys []*hdkeychain.ExtendedKey) TstSeriesDef {
+	pubKeys := make([]string, len(keys))
+	privKeys := make([]string, len(keys))
+	for i, key := range keys {
+		privKeys[i] = key.String()
+		pubkey, _ := key.Neuter()
+		pubKeys[i] = pubkey.String()
 	}
-	TstUnlockManager(t, pool.Manager())
-	defer pool.Manager().Lock()
-	for _, key := range rawPrivKeys {
-		if err := pool.EmpowerSeries(seriesID, key); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return seriesID
+	return TstSeriesDef{
+		ReqSigs: reqSigs, SeriesID: getUniqueID(), PubKeys: pubKeys, PrivKeys: privKeys}
 }
 
 func TstCreatePoolAndTxStore(t *testing.T) (tearDown func(), pool *Pool, store *txstore.Store) {
@@ -261,13 +272,26 @@ func TstCreatePoolAndTxStore(t *testing.T) (tearDown func(), pool *Pool, store *
 	return tearDown, pool, store
 }
 
-// XXX: This needs a better name.
+// TstCreateCredits creates a new Series (with a unique ID) and a slice of
+// credits locked to the series' address with branch==1 and index==0. The new
+// Series will use a 2-of-3 configuration and will be empowered with all of its
+// private keys.
 func TstCreateCredits(
-	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) []CreditInterface {
-	seriesID := createEmpoweredSeries(t, pool)
+	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) (uint32, []CreditInterface) {
+	masters := []*hdkeychain.ExtendedKey{
+		TstCreateMasterKey(t, bytes.Repeat(uint32ToBytes(getUniqueID()), 4)),
+		TstCreateMasterKey(t, bytes.Repeat(uint32ToBytes(getUniqueID()), 4)),
+		TstCreateMasterKey(t, bytes.Repeat(uint32ToBytes(getUniqueID()), 4)),
+	}
+	def := TstCreateSeriesDef(t, 2, masters)
+	TstCreateSeries(t, pool, []TstSeriesDef{def})
+	return def.SeriesID, TstCreateCreditsOnSeries(t, pool, def.SeriesID, amounts, store)
+}
 
-	// Finally create the Credit instances, locked to the voting pool's deposit
-	// address with branch==1, index==0.
+// TstCreateCreditsOnSeries creates a slice of credits locked to the given
+// series' address with branch==1 and index==0.
+func TstCreateCreditsOnSeries(t *testing.T, pool *Pool, seriesID uint32, amounts []int64,
+	store *txstore.Store) []CreditInterface {
 	branch := Branch(1)
 	idx := Index(0)
 	pkScript := TstCreatePkScript(t, pool, seriesID, branch, idx)
@@ -290,12 +314,11 @@ func TstCreateInputs(t *testing.T, store *txstore.Store, pkScript []byte, amount
 	return TstCreateInputsOnBlock(t, store, blockTxIndex, blockHeight, pkScript, amounts)
 }
 
-// TstCreateInputsOnBlock creates a number of inputs by creating a
-// transaction with a number of outputs corresponding to the elements
-// of the amounts slice.
+// TstCreateInputsOnBlock creates a number of inputs by creating a transaction
+// with a number of outputs corresponding to the elements of the amounts slice.
 //
-// The transaction is added to a block and the index and and
-// blockheight must be specified.
+// The transaction is added to a block and the index and blockheight must be
+// specified.
 func TstCreateInputsOnBlock(t *testing.T, s *txstore.Store,
 	blockTxIndex, blockHeight int, pkScript []byte, amounts []int64) []txstore.Credit {
 	msgTx := createMsgTx(pkScript, amounts)

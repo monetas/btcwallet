@@ -29,8 +29,8 @@ func TestCreditInterfaceSort(t *testing.T) {
 	// Create the series 0 and 1 as they are needed for creaing the
 	// fake credits.
 	series := []vp.TstSeriesDef{
-		{2, []string{pubKey1, pubKey2, pubKey3}, 0},
-		{2, []string{pubKey3, pubKey4, pubKey5}, 1},
+		{ReqSigs: 2, PubKeys: []string{pubKey1, pubKey2, pubKey3}, SeriesID: 0},
+		{ReqSigs: 2, PubKeys: []string{pubKey3, pubKey4, pubKey5}, SeriesID: 1},
 	}
 	vp.TstCreateSeries(t, pool, series)
 
@@ -135,8 +135,8 @@ func TestGetEligibleInputs(t *testing.T) {
 	}
 	// define two series.
 	series := []vp.TstSeriesDef{
-		{2, []string{pubKey1, pubKey2, pubKey3}, aRanges[0].SeriesID},
-		{2, []string{pubKey3, pubKey4, pubKey5}, aRanges[1].SeriesID},
+		{ReqSigs: 2, PubKeys: []string{pubKey1, pubKey2, pubKey3}, SeriesID: aRanges[0].SeriesID},
+		{ReqSigs: 2, PubKeys: []string{pubKey3, pubKey4, pubKey5}, SeriesID: aRanges[1].SeriesID},
 	}
 	oldChainHeight := 11112
 	chainHeight := oldChainHeight + minConf + 10
@@ -198,7 +198,7 @@ func TestGetEligibleInputsFromSeries(t *testing.T) {
 
 	// define a series.
 	series := []vp.TstSeriesDef{
-		{2, []string{pubKey1, pubKey2, pubKey3}, aRange.SeriesID},
+		{ReqSigs: 2, PubKeys: []string{pubKey1, pubKey2, pubKey3}, SeriesID: aRange.SeriesID},
 	}
 	vp.TstCreateSeries(t, pool, series)
 
@@ -246,8 +246,8 @@ func TestEligibleInputsAreEligible(t *testing.T) {
 
 	// create the series
 	series := []vp.TstSeriesDef{
-		{3, []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}, seriesID},
-	}
+		{ReqSigs: 3, PubKeys: []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5},
+			SeriesID: seriesID}}
 	vp.TstCreateSeries(t, pool, series)
 
 	// Create the input.
@@ -274,8 +274,8 @@ func TestNonEligibleInputsAreNotEligible(t *testing.T) {
 
 	// create the series
 	series := []vp.TstSeriesDef{
-		{3, []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5}, seriesID},
-	}
+		{ReqSigs: 3, PubKeys: []string{pubKey1, pubKey2, pubKey3, pubKey4, pubKey5},
+			SeriesID: seriesID}}
 	vp.TstCreateSeries(t, pool, series)
 
 	pkScript := vp.TstCreatePkScript(t, pool, seriesID, branch, index)

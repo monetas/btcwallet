@@ -187,12 +187,12 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	defer tearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
-	eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
 	outputs := []*OutputRequest{
 		NewOutputRequest("foo", 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6)),
 		NewOutputRequest("foo", 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6)),
 	}
-	changeStart, err := pool.ChangeAddress(0, 0)
+	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,10 +222,10 @@ func TestFulfilOutputsNoSatisfiableOutputs(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	eligible := TstCreateCredits(t, pool, []int64{1e6}, store)
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{1e6}, store)
 	outputs := []*OutputRequest{
 		NewOutputRequest("foo", 1, "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe", btcutil.Amount(3e6))}
-	changeStart, err := pool.ChangeAddress(0, 0)
+	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,12 +257,12 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	defer tearDown()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
-	eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
 	out1 := NewOutputRequest("foo", 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6))
 	out2 := NewOutputRequest("foo", 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6))
 	out3 := NewOutputRequest("foo", 3, "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe", btcutil.Amount(5e6))
 	outputs := []*OutputRequest{out1, out2, out3}
-	changeStart, err := pool.ChangeAddress(0, 0)
+	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

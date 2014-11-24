@@ -1096,9 +1096,9 @@ func (s *Store) UnspentOutputs() ([]Credit, error) {
 	return s.unspentOutputs()
 }
 
-// XXX: Maybe return the PkScript directly as that's the only thing we need from the returned TxOut
-// UnconfirmedSpent returns the output with the given outpoint, spent by an unconfirmed
-// transaction.
+// UnconfirmedSpent returns the TxOut for the given OutPoint, spent by an
+// unconfirmed transaction.
+// TODO: Test this!
 func (s *Store) UnconfirmedSpent(outpoint btcwire.OutPoint) (*btcwire.TxOut, error) {
 	for op, key := range s.unconfirmed.spentBlockOutPointKeys {
 		if reflect.DeepEqual(outpoint, op) {
@@ -1109,7 +1109,8 @@ func (s *Store) UnconfirmedSpent(outpoint btcwire.OutPoint) (*btcwire.TxOut, err
 			return r.Tx().MsgTx().TxOut[outpoint.Index], nil
 		}
 	}
-	return nil, errors.New(fmt.Sprintf("Outpoint not found: %v", outpoint))
+	return nil, errors.New(
+		fmt.Sprintf("outpoint not found in unconfirmed transactions: %v", outpoint))
 }
 
 func (s *Store) unspentOutputs() ([]Credit, error) {
