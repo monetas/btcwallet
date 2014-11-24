@@ -379,11 +379,11 @@ func (d *decoratedTx) addChange(pkScript []byte) bool {
 // remaining outputs. The method returns the removed output and the
 // removed inputs, if any.
 func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput, error) {
-	if len(d.outputs) < 1 {
-		// Precondition: At least one withdrawal output is required in
-		// the transaction.
-		return nil, nil, newError(
-			ErrWithdrawalProcessing, "at least one output expected", nil)
+	if len(d.outputs) < 2 {
+		// Precondition: At least two outputs are required in the
+		// transaction.
+		str := fmt.Sprintf("at least two outputs expected; got %d", len(d.outputs))
+		return nil, nil, newError(ErrWithdrawalProcessing, str, nil)
 	}
 
 	removedOutput := d.popOutput()

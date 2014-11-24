@@ -389,11 +389,11 @@ func TestRollbackLastOutput(t *testing.T) {
 	checkDecoratedTxOutputs(t, w.current, wOutputs[:len(wOutputs)-1])
 }
 
-// TestRollbackLastOutputEdgeCase where we only roll back one output
-// but no inputs, such that sum(in) >= sum(out) + fee.
+// TestRollbackLastOutputEdgeCase where we roll back one output but no
+// inputs, such that sum(in) >= sum(out) + fee.
 func TestRollbackLastOutputEdgeCase(t *testing.T) {
 	initalInputs := createFakeCredits([]btcutil.Amount{4})
-	wOutputs := createWithdrawalOutputs([]btcutil.Amount{3})
+	wOutputs := createWithdrawalOutputs([]btcutil.Amount{2, 3})
 
 	tx := createFakeDecoratedTx(initalInputs, wOutputs)
 	w := withdrawal{current: tx}
@@ -487,9 +487,16 @@ func TestPopInput(t *testing.T) {
 	}
 }
 
-func TestRollBackLastOutputNoWithdrawalOutputs(t *testing.T) {
-	w := createFakeDecoratedTx(nil, nil)
-	_, _, err := w.rollBackLastOutput()
+// TestRollBackLastOutputInsufficientOutputs checks that
+// rollBackLastOutput returns an error if there are less than two
+// outputs in the transaction.
+func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
+	wZeroOutputs := createFakeDecoratedTx(nil, nil)
+	_, _, err := wZeroOutputs.rollBackLastOutput()
+	TstCheckError(t, "", err, ErrWithdrawalProcessing)
+
+	wOneOutput := createFakeDecoratedTx(nil, createWithdrawalOutputs([]btcutil.Amount{3}))
+	_, _, err = wOneOutput.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrWithdrawalProcessing)
 }
 
