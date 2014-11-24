@@ -118,6 +118,11 @@ func (p *Pool) newVotingPoolAddress(seriesID uint32, branch Branch, index Index)
 		nil
 }
 
+// String returns a string encoding of the underlying bitcoin payment address.
+func (a *votingPoolAddress) String() string {
+	return a.Addr().EncodeAddress()
+}
+
 func (a *votingPoolAddress) Addr() btcutil.Address {
 	return a.addr
 }
@@ -235,6 +240,10 @@ type WithdrawalOutput struct {
 	// The outpoints that fulfil the OutputRequest. There will be more than one in case we
 	// need to split the request across multiple transactions.
 	outpoints []OutBailmentOutpoint
+}
+
+func (o *WithdrawalOutput) String() string {
+	return fmt.Sprintf("WithdrawalOutput for %s", o.request)
 }
 
 func (o *WithdrawalOutput) addOutpoint(outpoint OutBailmentOutpoint) {

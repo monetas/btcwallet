@@ -213,7 +213,7 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
 	expectedOutputs := append(
 		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
-	checkTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
+	checkMsgTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
 }
 
 // Check that withdrawal.status correctly states that no outputs were fulfilled when we
@@ -283,7 +283,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
 		expectedOutputs, NewOutputRequest("foo", 4, changeStart.Addr().String(), change))
-	checkTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
+	checkMsgTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
 
 	// withdrawal.status should state that outputs 1 and 2 were successfully fulfilled,
 	// and that output 3 was not.
@@ -359,11 +359,12 @@ func TestSignMultiSigUTXONotEnoughSigs(t *testing.T) {
 // TestRollbackLastOutput tests the case where we rollback one output
 // and one input, such that sum(in) >= sum(out) + fee.
 func TestRollbackLastOutput(t *testing.T) {
-	initalInputs := createFakeCredits([]btcutil.Amount{3, 3, 2, 1, 3})
-	wOutputs := createWithdrawalOutputs([]btcutil.Amount{3, 3, 2, 2})
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
-	tx := createFakeDecoratedTx(initalInputs, wOutputs)
-	w := withdrawal{current: tx}
+	tx := createDecoratedTx(t, pool, store, []int64{3, 3, 2, 1, 3}, []int64{3, 3, 2, 2})
+	initialInputs := tx.inputs
+	initialOutputs := tx.outputs
 
 	tx.calculateFee = func() btcutil.Amount {
 		return btcutil.Amount(1)
@@ -375,28 +376,33 @@ func TestRollbackLastOutput(t *testing.T) {
 
 	// The above rollBackLastOutput() call should have removed the last output
 	// and the last input.
-	lastOutput := wOutputs[len(wOutputs)-1]
-	if removedOutput.Amount() != lastOutput.Amount() {
-		t.Fatalf("Wrong output; got %d want %d",
-			removedOutput.Amount(), lastOutput.Amount())
+	lastOutput := initialOutputs[len(initialOutputs)-1]
+	if removedOutput != lastOutput {
+		t.Fatalf("Wrong rolled back output; got %s want %s", removedOutput, lastOutput)
 	}
-	lastInputSlice := initalInputs[len(initalInputs)-1:]
-	checkAmountsMatch(t, removedInputs, lastInputSlice)
+	if len(removedInputs) != 1 {
+		t.Fatalf("Unexpected number of inputs removed; got %d, want 1", len(removedInputs))
+	}
+	lastInput := initialInputs[len(initialInputs)-1]
+	if removedInputs[0] != lastInput {
+		t.Fatalf("Wrong rolled back input; got %s want %s", removedInputs[0], lastInput)
+	}
 
 	// Now check that the inputs and outputs left in the tx match what we
 	// expect.
-	checkDecoratedTxInputs(t, w.current, initalInputs[:len(initalInputs)-1])
-	checkDecoratedTxOutputs(t, w.current, wOutputs[:len(wOutputs)-1])
+	checkTxOutputs(t, tx, initialOutputs[:len(initialOutputs)-1], pool.Manager().Net())
+	checkTxInputs(t, tx, initialInputs[:len(initialInputs)-1])
 }
 
 // TestRollbackLastOutputEdgeCase where we roll back one output but no
 // inputs, such that sum(in) >= sum(out) + fee.
-func TestRollbackLastOutputEdgeCase(t *testing.T) {
-	initalInputs := createFakeCredits([]btcutil.Amount{4})
-	wOutputs := createWithdrawalOutputs([]btcutil.Amount{2, 3})
+func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
-	tx := createFakeDecoratedTx(initalInputs, wOutputs)
-	w := withdrawal{current: tx}
+	tx := createDecoratedTx(t, pool, store, []int64{4}, []int64{2, 3})
+	initialInputs := tx.inputs
+	initialOutputs := tx.outputs
 
 	tx.calculateFee = func() btcutil.Amount {
 		return btcutil.Amount(1)
@@ -408,28 +414,31 @@ func TestRollbackLastOutputEdgeCase(t *testing.T) {
 
 	// The above rollBackLastOutput() call should have removed the
 	// last output but no inputs.
-	lastOutput := wOutputs[len(wOutputs)-1]
-	if removedOutput.Amount() != lastOutput.Amount() {
-		t.Fatalf("Wrong output; got %d want %d",
-			removedOutput.Amount(), lastOutput.Amount())
+	lastOutput := initialOutputs[len(initialOutputs)-1]
+	if removedOutput != lastOutput {
+		t.Fatalf("Wrong output; got %d want %d", removedOutput, lastOutput)
 	}
 	if len(removedInputs) != 0 {
-		t.Fatalf("Expected no removed inputs, but got %d inputs",
-			len(removedInputs))
+		t.Fatalf("Expected no removed inputs, but got %d inputs", len(removedInputs))
 	}
 
 	// Now check that the inputs and outputs left in the tx match what we
 	// expect.
-	checkDecoratedTxInputs(t, w.current, initalInputs[0:1])
-	checkDecoratedTxOutputs(t, w.current, wOutputs[:len(wOutputs)-1])
+	checkTxOutputs(t, tx, initialOutputs[:len(initialOutputs)-1], pool.Manager().Net())
+	checkTxInputs(t, tx, initialInputs)
 }
 
+// TODO: Check that tx.outputTotal is updated
 func TestPopOutput(t *testing.T) {
-	outputs := createWithdrawalOutputs([]btcutil.Amount{1, 2})
-	tx := createFakeDecoratedTx(nil, outputs)
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+	net := pool.Manager().Net()
+
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{1, 2})
+	outputs := tx.outputs
 	// Make sure we have created the transaction with the expected
 	// outputs.
-	checkDecoratedTxOutputs(t, tx, outputs)
+	checkTxOutputs(t, tx, outputs, net)
 	remainingTxOut := tx.msgtx.TxOut[0]
 	remainingWithdrawalOutput := tx.outputs[0]
 	wantPoppedWithdrawalOutput := tx.outputs[1]
@@ -443,12 +452,11 @@ func TestPopOutput(t *testing.T) {
 			gotPoppedWithdrawalOutput, wantPoppedWithdrawalOutput)
 	}
 	// And that the remaining output is correct.
-	checkDecoratedTxOutputs(t, tx, []*WithdrawalOutput{remainingWithdrawalOutput})
+	checkTxOutputs(t, tx, []*WithdrawalOutput{remainingWithdrawalOutput}, net)
 
 	// Make sure that the remaining output is really the right one.
 	if tx.msgtx.TxOut[0] != remainingTxOut {
-		t.Fatalf("Wrong TxOut: got %v, want %v",
-			tx.msgtx.TxOut[0], remainingTxOut)
+		t.Fatalf("Wrong TxOut: got %v, want %v", tx.msgtx.TxOut[0], remainingTxOut)
 	}
 	if tx.outputs[0] != remainingWithdrawalOutput {
 		t.Fatalf("Wrong WithdrawalOutput: got %v, want %v",
@@ -456,11 +464,15 @@ func TestPopOutput(t *testing.T) {
 	}
 }
 
+// TODO: Check that tx.inputTotal is updated
 func TestPopInput(t *testing.T) {
-	inputs := createFakeCredits([]btcutil.Amount{1, 2})
-	tx := createFakeDecoratedTx(inputs, nil)
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{1, 2}, []int64{})
+	inputs := tx.inputs
 	// Make sure we have created the transaction with the expected inputs
-	checkDecoratedTxInputs(t, tx, inputs)
+	checkTxInputs(t, tx, inputs)
 
 	remainingTxIn := tx.msgtx.TxIn[0]
 	remainingCreditInterface := tx.inputs[0]
@@ -474,16 +486,14 @@ func TestPopInput(t *testing.T) {
 		t.Fatalf("Popped input wrong; got %v, want %v",
 			gotPoppedCreditInterface, wantPoppedCreditInterface)
 	}
-	checkDecoratedTxInputs(t, tx, []TstFakeCredit{inputs[0]})
+	checkTxInputs(t, tx, inputs[0:1])
 
 	// Make sure that the remaining input is really the right one.
 	if tx.msgtx.TxIn[0] != remainingTxIn {
-		t.Fatalf("Wrong TxIn: got %v, want %v",
-			tx.msgtx.TxIn[0], remainingTxIn)
+		t.Fatalf("Wrong TxIn: got %v, want %v", tx.msgtx.TxIn[0], remainingTxIn)
 	}
 	if tx.inputs[0] != remainingCreditInterface {
-		t.Fatalf("Wrong input: got %v, want %v",
-			tx.inputs[0], remainingCreditInterface)
+		t.Fatalf("Wrong input: got %v, want %v", tx.inputs[0], remainingCreditInterface)
 	}
 }
 
@@ -491,86 +501,14 @@ func TestPopInput(t *testing.T) {
 // rollBackLastOutput returns an error if there are less than two
 // outputs in the transaction.
 func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
-	wZeroOutputs := createFakeDecoratedTx(nil, nil)
-	_, _, err := wZeroOutputs.rollBackLastOutput()
+	tx := newDecoratedTx()
+	_, _, err := tx.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 
-	wOneOutput := createFakeDecoratedTx(nil, createWithdrawalOutputs([]btcutil.Amount{3}))
-	_, _, err = wOneOutput.rollBackLastOutput()
+	output := &WithdrawalOutput{request: &OutputRequest{amount: btcutil.Amount(3)}}
+	tx.addTxOut(output, []byte{})
+	_, _, err = tx.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
-}
-
-func checkAmountsMatch(t *testing.T, gotEligibles []CreditInterface, eligibles []TstFakeCredit) {
-	if len(gotEligibles) != len(eligibles) {
-		t.Fatalf("Wrong number of eligible inputs; got %d, want %d",
-			len(gotEligibles), len(eligibles))
-	}
-
-	for i, e := range gotEligibles {
-		if e.Amount() != eligibles[i].Amount() {
-			t.Fatalf("Eligible input has wrong amount; got %d want %d",
-				e.Amount(), eligibles[i].Amount())
-		}
-	}
-}
-
-// checkDecoratedTxInputs tests that the inputs in the decoratedTx
-// match the amounts in the btcutil.Amount slice.
-func checkDecoratedTxInputs(t *testing.T, tx *decoratedTx, inputs []TstFakeCredit) {
-	// Check tx inputs
-	if len(tx.inputs) != len(inputs) {
-		t.Fatalf("Wrong number of inputs in tx; got %d, want %d",
-			len(tx.inputs), len(inputs))
-	}
-	for i, input := range tx.inputs {
-		if input.Amount() != inputs[i].Amount() {
-			t.Fatalf("Input has wrong amount; got %d, want %d",
-				input.Amount(), inputs[i].Amount())
-		}
-	}
-
-	// Check outpoint of tx.msgtx.TxIn matches.
-	if len(tx.msgtx.TxIn) != len(inputs) {
-		t.Fatalf("Wrong number of inputs in tx.msgtx.TxIn; got %d, want %d",
-			len(tx.msgtx.TxIn), len(inputs))
-	}
-	for i, input := range tx.msgtx.TxIn {
-		if input.PreviousOutPoint != *inputs[i].OutPoint() {
-			t.Fatalf("tx.msgtx.TxIn input has wrong outpoint; got %v, want %v",
-				input.PreviousOutPoint, *inputs[i].OutPoint())
-		}
-	}
-}
-
-// checkDecoratedTxOutputs tests that the outputs in the decoratedTx
-// match the amounts in the btcutil.Amount slice.
-//
-// XXX(lars): This and checkTxOutputs() should eventually be
-// refactored as they can probably share some code.
-func checkDecoratedTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput) {
-	// Check tx.outputs
-	if len(tx.outputs) != len(outputs) {
-		t.Fatalf("Wrong number of outputs in tx; got %d, want %d",
-			len(tx.outputs), len(outputs))
-	}
-	for i, output := range tx.outputs {
-		if output.Amount() != outputs[i].Amount() {
-			t.Fatalf("Output has wrong amount; got %d, want %d",
-				output.Amount(), outputs[i].Amount())
-		}
-	}
-
-	// Check tx.msgtx.TxOut
-	if len(tx.msgtx.TxOut) != len(outputs) {
-		t.Fatalf("Wrong number of tx.msgtx.TxOuts in tx; got %d, want %d",
-			len(tx.outputs), len(outputs))
-	}
-	for i, txOut := range tx.msgtx.TxOut {
-		if btcutil.Amount(txOut.Value) != outputs[i].Amount() {
-			t.Fatalf("tx.msgtx.TxOut has wrong amount; got %d, want %d",
-				txOut.Value, outputs[i])
-		}
-	}
 }
 
 // lookupStoredTx returns the TxRecord from the given store whose SHA matches the
@@ -618,16 +556,36 @@ func pkScriptAddr(t *testing.T, pkScript []byte, net *btcnet.Params) string {
 	return addresses[0].String()
 }
 
-// checkTxOutputs checks that the address and amount of every output in the given tx match the
-// address and amount of every item in the slice of OutputRequests.
-func checkTxOutputs(t *testing.T, tx *btcwire.MsgTx, expectedOutputs []*OutputRequest, net *btcnet.Params) {
-	nOutputs := len(expectedOutputs)
-	if len(tx.TxOut) != nOutputs {
-		t.Fatalf("Unexpected number of tx outputs; got %d, want %d", len(tx.TxOut), nOutputs)
+// checkTxOutputs ensures that tx.outputs match the given outputs and that the
+// address and amount of the items in tx.msgtx.TxOut match the address and
+// amount of the given outputs.
+func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, net *btcnet.Params) {
+	nOutputs := len(outputs)
+	if len(tx.outputs) != nOutputs {
+		t.Fatalf("Wrong number of outputs in tx; got %d, want %d", len(tx.outputs), nOutputs)
 	}
+	for i, output := range tx.outputs {
+		if output != outputs[i] {
+			t.Fatalf("Unexpected output; got %d, want %d", output, outputs[i])
+		}
+	}
+	outputRequests := make([]*OutputRequest, nOutputs)
+	for i, output := range outputs {
+		outputRequests[i] = output.request
+	}
+	checkMsgTxOutputs(t, tx.msgtx, outputRequests, net)
+}
 
-	for i, output := range expectedOutputs {
-		txOut := tx.TxOut[i]
+// checkMsgTxOutputs checks that the address and amount of every output in the
+// given msgtx match the address and amount of every item in the slice of
+// OutputRequests.
+func checkMsgTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, outputs []*OutputRequest, net *btcnet.Params) {
+	nOutputs := len(outputs)
+	if len(msgtx.TxOut) != nOutputs {
+		t.Fatalf("Unexpected number of TxOuts; got %d, want %d", len(msgtx.TxOut), nOutputs)
+	}
+	for i, output := range outputs {
+		txOut := msgtx.TxOut[i]
 		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
 		if gotAddr != output.address {
 			t.Fatalf(
@@ -637,6 +595,31 @@ func checkTxOutputs(t *testing.T, tx *btcwire.MsgTx, expectedOutputs []*OutputRe
 		if gotAmount != output.amount {
 			t.Fatalf(
 				"Unexpected amount for output %d; got %v, want %v", i, gotAmount, output.amount)
+		}
+	}
+}
+
+// checkTxInputs ensures that tx.inputs match the given inputs and that the
+// outpoints of the items in tx.msgtx.TxIn match the outpoints of the given
+// inputs.
+func checkTxInputs(t *testing.T, tx *decoratedTx, inputs []CreditInterface) {
+	if len(tx.inputs) != len(inputs) {
+		t.Fatalf("Wrong number of inputs in tx; got %d, want %d", len(tx.inputs), len(inputs))
+	}
+	for i, input := range tx.inputs {
+		if input != inputs[i] {
+			t.Fatalf("Unexpected input; got %s, want %s", input, inputs[i])
+		}
+	}
+
+	if len(tx.msgtx.TxIn) != len(inputs) {
+		t.Fatalf("Wrong number of inputs in msgtx.TxIn; got %d, want %d",
+			len(tx.msgtx.TxIn), len(inputs))
+	}
+	for i, input := range tx.msgtx.TxIn {
+		if input.PreviousOutPoint != *inputs[i].OutPoint() {
+			t.Fatalf("Unexpected TxIn outpoint; got %v, want %v",
+				input.PreviousOutPoint, *inputs[i].OutPoint())
 		}
 	}
 }

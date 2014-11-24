@@ -3,6 +3,7 @@ package votingpool
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/conformal/btcnet"
@@ -14,6 +15,7 @@ import (
 // CreditInterface is an abstraction over credits used in a voting
 // pool.
 type CreditInterface interface {
+	fmt.Stringer
 	TxSha() *btcwire.ShaHash
 	OutputIndex() uint32
 	Address() WithdrawalAddress
@@ -30,6 +32,10 @@ type Credit struct {
 
 func NewCredit(credit txstore.Credit, addr WithdrawalAddress) Credit {
 	return Credit{Credit: credit, addr: addr}
+}
+
+func (c Credit) String() string {
+	return fmt.Sprintf("Credit of %v to %v", c.Amount(), c.Address())
 }
 
 // TxSha returns the sha hash of the underlying transaction.

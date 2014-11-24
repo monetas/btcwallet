@@ -62,6 +62,10 @@ type TstFakeCredit struct {
 	amount      btcutil.Amount
 }
 
+func (c TstFakeCredit) String() string {
+	return ""
+}
+
 func (c TstFakeCredit) TxSha() *btcwire.ShaHash {
 	return c.txid
 }

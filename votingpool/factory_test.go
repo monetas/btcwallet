@@ -20,7 +20,6 @@ package votingpool
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -65,60 +64,6 @@ func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmou
 		tx.addTxOut(&WithdrawalOutput{request: request}, pkScript)
 	}
 	return tx
-}
-
-func createWithdrawalOutputs(outputs []btcutil.Amount) []*WithdrawalOutput {
-	withdrawalOutputs := make([]*WithdrawalOutput, len(outputs))
-	for i, amount := range outputs {
-		withdrawalOutputs[i] = &WithdrawalOutput{
-			request: &OutputRequest{
-				amount: amount,
-			},
-		}
-	}
-	return withdrawalOutputs
-}
-
-// createFakeCredits creates a credit with the amount specified and a
-// txid that is deterministically derived from the amount.
-func createFakeCredits(inputs []btcutil.Amount) []TstFakeCredit {
-	credits := make([]TstFakeCredit, len(inputs))
-	for i, amount := range inputs {
-		var hash [32]byte
-		hashString := []byte(fmt.Sprintf("%d", amount))
-		copy(hash[:], hashString)
-		shaHash := btcwire.ShaHash(hash)
-		credits[i] = TstFakeCredit{
-			amount: amount,
-			txid:   &shaHash,
-		}
-	}
-	return credits
-}
-
-// createFakeDecoratedTx creates a decorateTx structure, but note that the
-// pkScripts added for the outputs are not valid pkScripts.
-//
-// XXX(lars): The reason this function exists is that the
-// TstCreateCredits functions implicitly creates a series and thus can
-// only be called once within a test (otherwise it will err with a
-// series 0 already exists).
-//
-// I'd certainly be able to work around that by creating another
-// version of TstCreateCredits, but since I have no need for real
-// credits, I didn't think it would be worth it.
-func createFakeDecoratedTx(inputs []TstFakeCredit, outputs []*WithdrawalOutput) *decoratedTx {
-	c := &decoratedTx{
-		msgtx: &btcwire.MsgTx{},
-	}
-	for _, i := range inputs {
-		c.addTxIn(i)
-	}
-	for i, o := range outputs {
-		c.addTxOut(o, []byte{byte(i)})
-	}
-
-	return c
 }
 
 // createTxWithInputAmounts returns a new decoratedTx containing just inputs
