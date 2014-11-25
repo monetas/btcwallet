@@ -67,29 +67,14 @@ func TestWithdrawal(t *testing.T) {
 	ntxid := "dce3f6bca2288fc5f797c5b40b19cc57a064201f4074e424954a84648caf0ef0"
 	txSigs := sigs[ntxid]
 
-	// Finally we use SignMultiSigUTXO() to construct the SignatureScripts (using the raw
-	// signatures).
-	// Must unlock the manager first as signing involves looking up the redeem script,
-	// which is stored encrypted.
+	// Finally we use SignTx() to construct the SignatureScripts (using the raw
+	// signatures).  Must unlock the manager first as signing involves looking
+	// up the redeem script, which is stored encrypted.
 	mgr := pool.Manager()
 	vp.TstUnlockManager(t, mgr)
 	sha, _ := btcwire.NewShaHashFromStr(ntxid)
 	tx := store.UnminedTx(sha).MsgTx()
-	pkScripts := make([][]byte, len(tx.TxIn))
-	for i, txIn := range tx.TxIn {
-		txOut, err := store.UnconfirmedSpent(txIn.PreviousOutPoint)
-		if err != nil {
-			t.Fatal(err)
-		}
-		pkScripts[i] = txOut.PkScript
-		err = vp.SignMultiSigUTXO(mgr, tx, i, txOut.PkScript, txSigs[i], mgr.Net())
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Before we broadcast this transaction, let's make sure it's properly signed.
-	if err = vp.ValidateSigScripts(tx, pkScripts); err != nil {
+	if err = vp.SignTx(tx, txSigs, mgr, store); err != nil {
 		t.Fatal(err)
 	}
 }

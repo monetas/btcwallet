@@ -125,6 +125,9 @@ const (
 	// preconditon has not been met.
 	ErrPreconditionNotMet
 
+	// ErrTxSigning indicates an error when signing a transaction.
+	ErrTxSigning
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -161,6 +164,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrCrypto:                  "ErrCrypto",
 	ErrRawSigning:              "ErrRawSigning",
 	ErrPreconditionNotMet:      "ErrPreconditionNotMet",
+	ErrTxSigning:               "ErrTxSigning",
 }
 
 // String returns the ErrorCode as a human-readable name.

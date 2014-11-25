@@ -66,18 +66,6 @@ func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmou
 	return tx
 }
 
-// createTxWithInputAmounts returns a new decoratedTx containing just inputs
-// with the given amounts.
-func createTxWithInputAmounts(
-	t *testing.T, pool *Pool, amounts []int64, store *txstore.Store) *decoratedTx {
-	tx := newDecoratedTx()
-	_, credits := TstCreateCredits(t, pool, amounts, store)
-	for _, c := range credits {
-		tx.addTxIn(c)
-	}
-	return tx
-}
-
 func createMsgTx(pkScript []byte, amts []int64) *btcwire.MsgTx {
 	msgtx := &btcwire.MsgTx{
 		Version: 1,

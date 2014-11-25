@@ -17,7 +17,6 @@
 package votingpool
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -550,7 +549,6 @@ func (w *withdrawal) handleOversizeTx() error {
 		if err != nil {
 			return newError(ErrWithdrawalProcessing,
 				"failed to rollback last output", err)
-			return err
 		}
 		w.eligibleInputs = append(w.eligibleInputs, inputs...)
 		w.pendingOutputs = append(w.pendingOutputs, output.request)
@@ -648,20 +646,6 @@ func (w *withdrawal) updateStatusFor(tx *decoratedTx) {
 	// TODO
 }
 
-// XXX: This assumes that the voting pool deposit script was imported into waddrmgr
-// This function must be called with the manager unlocked.
-func getRedeemScript(mgr *waddrmgr.Manager, addr *btcutil.AddressScriptHash) ([]byte, error) {
-	address, err := mgr.Address(addr)
-	if err != nil {
-		return nil, err
-	}
-	sa, ok := address.(waddrmgr.ManagedScriptAddress)
-	if !ok {
-		return nil, errors.New("address is not a script address")
-	}
-	return sa.Script()
-}
-
 // Ntxid returns a unique ID for the given transaction.
 func Ntxid(tx *btcwire.MsgTx) string {
 	// According to https://blockchain.info/q, the ntxid is the "hash of the serialized
@@ -734,34 +718,69 @@ func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 	return sigs, nil
 }
 
-// SignMultiSigUTXO signs the P2SH UTXO with the given index by constructing a
+// XXX: This assumes that the voting pool deposit script was imported into
+// waddrmgr, which is currently not done automatically when we generate a new
+// deposit script/address.
+// SignTx signs every input of the given MsgTx by looking up (on the addr
+// manager) the redeem script for each of them and constructing the signature
+// script using that and the given raw signatures.
+// This function must be called with the manager unlocked.
+func SignTx(msgtx *btcwire.MsgTx, sigs TxSigs, mgr *waddrmgr.Manager, store *txstore.Store) error {
+	for i, txIn := range msgtx.TxIn {
+		txOut, err := store.UnconfirmedSpent(txIn.PreviousOutPoint)
+		if err != nil {
+			errStr := fmt.Sprintf("unable to find previous outpoint of tx input #%d", i)
+			return newError(ErrTxSigning, errStr, err)
+		}
+		if err = signMultiSigUTXO(mgr, msgtx, i, txOut.PkScript, sigs[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// getRedeemScript returns the redeem script for the given P2SH address. It must
+// be called with the manager unlocked.
+func getRedeemScript(mgr *waddrmgr.Manager, addr *btcutil.AddressScriptHash) ([]byte, error) {
+	address, err := mgr.Address(addr)
+	if err != nil {
+		return nil, err
+	}
+	return address.(waddrmgr.ManagedScriptAddress).Script()
+}
+
+// signMultiSigUTXO signs the P2SH UTXO with the given index by constructing a
 // script containing all given signatures plus the redeem (multi-sig) script. The
 // redeem script is obtained by looking up the address of the given P2SH pkScript
 // on the address manager.
 // The order of the signatures must match that of the public keys in the multi-sig
 // script as OP_CHECKMULTISIG expects that.
-func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScript []byte, sigs []RawSig, net *btcnet.Params) error {
-	class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, net)
+// This function must be called with the manager unlocked.
+func signMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScript []byte, sigs []RawSig) error {
+	class, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, mgr.Net())
 	if err != nil {
-		panic(err) // XXX: Again, no idea what's the correct thing to do here.
+		return newError(ErrTxSigning, "unparseable pkScript", err)
 	}
 	if class != btcscript.ScriptHashTy {
-		return errors.New(fmt.Sprintf("Unexpected pkScript class: %v", class))
+		return newError(ErrTxSigning, fmt.Sprintf("pkScript is not P2SH: %s", class), nil)
 	}
 	redeemScript, err := getRedeemScript(mgr, addresses[0].(*btcutil.AddressScriptHash))
 	if err != nil {
-		panic(err) // XXX: Again, no idea what's the correct thing to do here.
+		return newError(ErrTxSigning, "unable to retrieve redeem script", err)
 	}
 
-	class, _, nRequired, err := btcscript.ExtractPkScriptAddrs(redeemScript, net)
+	class, _, nRequired, err := btcscript.ExtractPkScriptAddrs(redeemScript, mgr.Net())
 	if err != nil {
-		panic(err) // XXX: Again, no idea what's the correct thing to do here.
+		return newError(ErrTxSigning, "unparseable redeem script", err)
 	}
 	if class != btcscript.MultiSigTy {
-		return errors.New(fmt.Sprintf("Unexpected redeemScript class: %v", class))
+		return newError(
+			ErrTxSigning, fmt.Sprintf("redeem script is not multi-sig: %v", class), nil)
 	}
 	if len(sigs) < nRequired {
-		return errors.New("Not enough signatures")
+		errStr := fmt.Sprintf(
+			"not enough signatures; need %d but got only %d", nRequired, len(sigs))
+		return newError(ErrTxSigning, errStr, nil)
 	}
 
 	// Construct the unlocking script.
@@ -774,22 +793,24 @@ func SignMultiSigUTXO(mgr *waddrmgr.Manager, tx *btcwire.MsgTx, idx int, pkScrip
 	// Combine the redeem script and the unlocking script to get the actual signature script.
 	sigScript := unlockingScript.AddData(redeemScript)
 	tx.TxIn[idx].SignatureScript = sigScript.Script()
+
+	if err := validateSigScript(tx, idx, pkScript); err != nil {
+		return err
+	}
 	return nil
 }
 
-// XXX: This should be private, and possibly called from SignMultiSigUTXO()
-// ValidateSigScripts executes the signature script of every input in the given transaction
-// and returns an error if any of them fail.
-func ValidateSigScripts(msgtx *btcwire.MsgTx, pkScripts [][]byte) error {
+// validateSigScripts executes the signature script of the tx input with the
+// given index, returning an error if it fails.
+func validateSigScript(msgtx *btcwire.MsgTx, idx int, pkScript []byte) error {
 	flags := btcscript.ScriptCanonicalSignatures | btcscript.ScriptStrictMultiSig | btcscript.ScriptBip16
-	for i, txin := range msgtx.TxIn {
-		engine, err := btcscript.NewScript(txin.SignatureScript, pkScripts[i], i, msgtx, flags)
-		if err != nil {
-			return fmt.Errorf("cannot create script engine: %s", err)
-		}
-		if err = engine.Execute(); err != nil {
-			return fmt.Errorf("cannot validate transaction: %s", err)
-		}
+	txIn := msgtx.TxIn[idx]
+	engine, err := btcscript.NewScript(txIn.SignatureScript, pkScript, idx, msgtx, flags)
+	if err != nil {
+		return newError(ErrTxSigning, "cannot create script engine", err)
+	}
+	if err = engine.Execute(); err != nil {
+		return newError(ErrTxSigning, "cannot validate tx signature", err)
 	}
 	return nil
 }

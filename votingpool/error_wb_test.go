@@ -55,6 +55,7 @@ func TestErrorCodeStringer(t *testing.T) {
 		{ErrCrypto, "ErrCrypto"},
 		{ErrRawSigning, "ErrRawSigning"},
 		{ErrPreconditionNotMet, "ErrPreconditionNotMet"},
+		{ErrTxSigning, "ErrTxSigning"},
 	}
 
 	if int(lastErr) != len(tests) {

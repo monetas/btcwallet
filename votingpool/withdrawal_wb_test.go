@@ -100,7 +100,7 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	}
 	changeOut := tx.msgtx.TxOut[1]
 	if credit.TxOut() != changeOut {
-		t.Fatalf("Credit's txOut (%s) doesn't match changeOut (%s)", credit.TxOut(), changeOut)
+		t.Fatalf("Credit's txOut (%v) doesn't match changeOut (%v)", credit.TxOut(), changeOut)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestGetRawSigs(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	tx := createDecoratedTx(t, pool, store, []int64{5e6, 4e6}, []int64{})
 
 	sigs, err := getRawSigs([]*decoratedTx{tx})
 	if err != nil {
@@ -132,7 +132,7 @@ func TestGetRawSigsOnlyOnePrivKeyAvailable(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	tx := createDecoratedTx(t, pool, store, []int64{5e6, 4e6}, []int64{})
 	// Remove all private keys but the first one from the credit's series.
 	series := tx.inputs[0].Address().Series()
 	for i := range series.privateKeys[1:] {
@@ -156,7 +156,7 @@ func TestGetRawSigsUnparseableRedeemScript(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	tx := createDecoratedTx(t, pool, store, []int64{5e6, 4e6}, []int64{})
 	// Change the redeem script for one of our tx inputs, to force an error in
 	// getRawSigs().
 	tx.inputs[0].Address().script = []byte{0x01}
@@ -170,7 +170,7 @@ func TestGetRawSigsInvalidAddrBranch(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	tx := createTxWithInputAmounts(t, pool, []int64{5e6, 4e6}, store)
+	tx := createDecoratedTx(t, pool, store, []int64{5e6, 4e6}, []int64{})
 	// Change the branch of our input's address to an invalid value, to force
 	// an error in getRawSigs().
 	tx.inputs[0].Address().branch = Branch(999)
@@ -340,19 +340,97 @@ func TestAddChangeNoChange(t *testing.T) {
 	}
 }
 
-func TestSignMultiSigUTXOInvalidPkScript(t *testing.T) {
-	// TODO:
+func TestSignMultiSigUTXO(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	// Create a new tx with a single input that we're going to sign.
+	mgr := pool.Manager()
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{4e6})
+	sigs, err := getRawSigs([]*decoratedTx{tx})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSigs := sigs[tx.Ntxid()]
+	TstUnlockManager(t, mgr)
+
+	idx := 0 // The index of the tx input we're going to sign.
+	pkScript := tx.inputs[idx].TxOut().PkScript
+	if err = signMultiSigUTXO(mgr, tx.msgtx, idx, pkScript, txSigs[idx]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSignMultiSigUTXOUnparseablePkScript(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	mgr := pool.Manager()
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
+
+	unparseablePkScript := []byte{0x01}
+	err := signMultiSigUTXO(mgr, tx.msgtx, 0, unparseablePkScript, []RawSig{RawSig{}})
+
+	TstCheckError(t, "", err, ErrTxSigning)
+}
+
+func TestSignMultiSigUTXOPkScriptNotP2SH(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	mgr := pool.Manager()
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
+	addr, _ := btcutil.DecodeAddress("1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX", mgr.Net())
+	pubKeyHashPkScript, _ := btcscript.PayToAddrScript(addr.(*btcutil.AddressPubKeyHash))
+
+	err := signMultiSigUTXO(mgr, tx.msgtx, 0, pubKeyHashPkScript, []RawSig{RawSig{}})
+
+	TstCheckError(t, "", err, ErrTxSigning)
 }
 
 func TestSignMultiSigUTXORedeemScriptNotFound(t *testing.T) {
-	// TODO:
-}
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
 
-func TestSignMultiSigUTXORedeemScriptNotMultiSig(t *testing.T) {
-	// TODO:
+	mgr := pool.Manager()
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
+	// This is a P2SH address for which the addr manager doesn't have the redeem
+	// script.
+	addr, _ := btcutil.DecodeAddress("3Hb4xcebcKg4DiETJfwjh8sF4uDw9rqtVC", mgr.Net())
+	if _, err := mgr.Address(addr); err == nil {
+		t.Fatalf("Address %s found in manager when it shouldn't", addr)
+	}
+
+	pkScript, _ := btcscript.PayToAddrScript(addr.(*btcutil.AddressScriptHash))
+	err := signMultiSigUTXO(mgr, tx.msgtx, 0, pkScript, []RawSig{RawSig{}})
+
+	TstCheckError(t, "", err, ErrTxSigning)
 }
 
 func TestSignMultiSigUTXONotEnoughSigs(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	mgr := pool.Manager()
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
+	sigs, err := getRawSigs([]*decoratedTx{tx})
+	if err != nil {
+		t.Fatal(err)
+	}
+	txSigs := sigs[tx.Ntxid()]
+	TstUnlockManager(t, mgr)
+
+	idx := 0 // The index of the tx input we're going to sign.
+	// Here we provide reqSigs-1 signatures to SignMultiSigUTXO()
+	reqSigs := tx.inputs[idx].Address().Series().TstGetReqSigs()
+	txInSigs := txSigs[idx][:reqSigs-1]
+	pkScript := tx.inputs[idx].TxOut().PkScript
+	err = signMultiSigUTXO(mgr, tx.msgtx, idx, pkScript, txInSigs)
+
+	TstCheckError(t, "", err, ErrTxSigning)
+}
+
+func TestSignMultiSigUTXORedeemScriptNotMultiSig(t *testing.T) {
 	// TODO:
 }
 
@@ -416,7 +494,7 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 	// last output but no inputs.
 	lastOutput := initialOutputs[len(initialOutputs)-1]
 	if removedOutput != lastOutput {
-		t.Fatalf("Wrong output; got %d want %d", removedOutput, lastOutput)
+		t.Fatalf("Wrong output; got %s want %s", removedOutput, lastOutput)
 	}
 	if len(removedInputs) != 0 {
 		t.Fatalf("Expected no removed inputs, but got %d inputs", len(removedInputs))
@@ -566,7 +644,7 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, 
 	}
 	for i, output := range tx.outputs {
 		if output != outputs[i] {
-			t.Fatalf("Unexpected output; got %d, want %d", output, outputs[i])
+			t.Fatalf("Unexpected output; got %v, want %v", output, outputs[i])
 		}
 	}
 	outputRequests := make([]*OutputRequest, nOutputs)
@@ -630,16 +708,10 @@ func checkTxInputs(t *testing.T, tx *decoratedTx, inputs []CreditInterface) {
 func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, txSigs TxSigs, credits []CreditInterface) {
 	TstUnlockManager(t, mgr)
 	defer mgr.Lock()
-	pkScripts := make([][]byte, len(tx.TxIn))
 	for i := range tx.TxIn {
 		pkScript := credits[i].TxOut().PkScript
-		err := SignMultiSigUTXO(mgr, tx, i, pkScript, txSigs[i], mgr.Net())
-		if err != nil {
+		if err := signMultiSigUTXO(mgr, tx, i, pkScript, txSigs[i]); err != nil {
 			t.Fatal(err)
 		}
-	}
-
-	if err := ValidateSigScripts(tx, pkScripts); err != nil {
-		t.Fatal(err)
 	}
 }
