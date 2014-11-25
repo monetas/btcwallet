@@ -20,9 +20,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwallet/waddrmgr"
-	"github.com/conformal/btcwire"
 )
 
 func init() {
@@ -48,67 +46,3 @@ func TstUnlockManager(t *testing.T, mgr *waddrmgr.Manager) {
 		t.Fatal(err)
 	}
 }
-
-// TstFakeCredit is a structure implementing the CreditInterface used
-// for testing purposes.
-//
-// XXX(lars): we should maybe change all the value receivers to
-// pointer receivers so we do not mix. That would mean we'd have to
-// change the CreditInterface and implementations as well.
-type TstFakeCredit struct {
-	addr        WithdrawalAddress
-	txid        *btcwire.ShaHash
-	outputIndex uint32
-	amount      btcutil.Amount
-}
-
-func (c TstFakeCredit) String() string {
-	return ""
-}
-
-func (c TstFakeCredit) TxSha() *btcwire.ShaHash {
-	return c.txid
-}
-
-func (c TstFakeCredit) OutputIndex() uint32 {
-	return c.outputIndex
-}
-
-func (c TstFakeCredit) Address() WithdrawalAddress {
-	return c.addr
-}
-
-func (c TstFakeCredit) Amount() btcutil.Amount {
-	return c.amount
-}
-
-func (c TstFakeCredit) TxOut() *btcwire.TxOut {
-	return nil
-}
-
-func (c TstFakeCredit) OutPoint() *btcwire.OutPoint {
-	return &btcwire.OutPoint{Hash: *c.txid, Index: c.outputIndex}
-}
-
-func (c *TstFakeCredit) SetAmount(amount btcutil.Amount) *TstFakeCredit {
-	c.amount = amount
-	return c
-}
-
-func TstNewFakeCredit(t *testing.T, pool *Pool, series, index Index, branch Branch, txid []byte, outputIdx int) TstFakeCredit {
-	var hash btcwire.ShaHash
-	copy(hash[:], txid)
-	addr, err := pool.WithdrawalAddress(uint32(series), branch, index)
-	if err != nil {
-		t.Fatalf("WithdrawalAddress failed: %v", err)
-	}
-	return TstFakeCredit{
-		addr:        *addr,
-		txid:        &hash,
-		outputIndex: uint32(outputIdx),
-	}
-}
-
-// Compile time check that TstFakeCredit implements the
-// CreditInterface.
-var _ CreditInterface = (*TstFakeCredit)(nil)
