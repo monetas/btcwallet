@@ -381,6 +381,7 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 func (d *decoratedTx) addChange(pkScript []byte) bool {
 	d.fee = d.calculateFee()
 	change := d.inputTotal - d.outputTotal - d.fee
+	log.Debugf("addChange: input total %d, output total %d, fee %d", d.inputTotal, d.outputTotal, d.fee)
 	if change > 0 {
 		d.changeOutput = btcwire.NewTxOut(int64(change), pkScript)
 		log.Infof("Added change output with amount %v", change)
@@ -573,6 +574,7 @@ func (w *withdrawal) handleOversizeTx() error {
 // list of finalized transactions and replaces w.current with a new empty
 // transaction.
 func (w *withdrawal) finalizeCurrentTx() error {
+	log.Infof("Finalizing current transaction")
 	tx := w.current
 	if len(tx.outputs) == 0 {
 		return nil

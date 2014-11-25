@@ -18,6 +18,7 @@ package votingpool
 
 import (
 	"bytes"
+	"reflect"
 	"sort"
 	"testing"
 
@@ -601,6 +602,85 @@ func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 }
 
+// TestTriggerFirstTxTooBigAndRollback changes isTooBig to return true if a
+// transaction contains more than one output and sets the fee to zero. This
+// means that we will add both outputs and then the isTooBig check will trigger
+// a rollback as there is more than one output and sufficient inputs.
+//
+// This test triggers the first isTooBig check in the fulfilNextOutput method.
+func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	net := pool.Manager().Net()
+	// Create eligible inputs and the list of outputs we need to fulfil.
+	series, eligible := TstCreateCredits(t, pool, []int64{5, 5}, store)
+	outputs := []*OutputRequest{
+		// This is ordered by bailment ID
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(1), net),
+		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2), net),
+	}
+	changeStart, err := pool.ChangeAddress(series, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := newWithdrawal(0, outputs, eligible, changeStart)
+	w.newDecoratedTx = func() *decoratedTx {
+		d := newDecoratedTx()
+		// Make a transaction too big if it contains more than one output.
+		d.isTooBig = func() bool {
+			return len(d.outputs) > 1
+		}
+		// A fee of zero makes things simpler.
+		d.calculateFee = func() btcutil.Amount {
+			return btcutil.Amount(0)
+		}
+		return d
+	}
+	w.current = w.newDecoratedTx()
+
+	if err := w.fulfilOutputs(); err != nil {
+		t.Fatal("Unexpected error:", err)
+	}
+
+	// At this point we should have two finalized transactions.
+	if len(w.transactions) != 2 {
+		t.Fatalf("Wrong number of finalized transactions; got %d, want 2", len(w.transactions))
+	}
+
+	// First tx should have one output with 1 and one change output with 4
+	// satoshis.
+	firstTx := w.transactions[0]
+	if len(firstTx.outputs) != 1 {
+		t.Fatalf("Wrong number of outputs; got %d, want %d", len(firstTx.outputs), 1)
+	}
+	txOutput := firstTx.outputs[0]
+	if txOutput.request != outputs[0] {
+		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[0])
+	}
+
+	checkTxChangeAmount(t, firstTx, btcutil.Amount(4))
+
+	// Second tx should have one output with 2 and one changeoutput with 3 satoshis.
+	secondTx := w.transactions[1]
+	if len(secondTx.outputs) != 1 {
+		t.Fatalf("Wrong number of outputs; got %d, want %d", len(secondTx.outputs), 1)
+	}
+
+	txOutput = secondTx.outputs[0]
+	if txOutput.request != outputs[1] {
+		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[1])
+	}
+
+	checkTxChangeAmount(t, secondTx, btcutil.Amount(3))
+}
+
+// TestTriggerSecondTxTooBigAndRollback
+func TestTriggerSecondTxTooBigAndRollback(t *testing.T) {
+	// TODO
+}
+
 // lookupStoredTx returns the TxRecord from the given store whose SHA matches the
 // given ShaHash.
 func lookupStoredTx(store *txstore.Store, sha *btcwire.ShaHash) *txstore.TxRecord {
@@ -641,7 +721,7 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput) 
 		t.Fatalf("Wrong number of outputs in tx; got %d, want %d", len(tx.outputs), nOutputs)
 	}
 	for i, output := range tx.outputs {
-		if output != outputs[i] {
+		if !reflect.DeepEqual(*output, *outputs[i]) {
 			t.Fatalf("Unexpected output; got %v, want %v", output, outputs[i])
 		}
 	}
@@ -791,5 +871,15 @@ func compareMsgTxAndDecoratedTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, tx *d
 		if msgTxChange != tx.changeOutput {
 			t.Fatalf("wrong TxOut in msgtx; got %v, want %v", msgTxChange, tx.changeOutput)
 		}
+	}
+}
+
+func checkTxChangeAmount(t *testing.T, tx *decoratedTx, amount btcutil.Amount) {
+	if !tx.hasChange() {
+		t.Fatalf("Transaction has no change.")
+	}
+	if tx.changeOutput.Value != int64(amount) {
+		t.Fatalf("Wrong change output amount; got %d, want %d",
+			tx.changeOutput.Value, int64(amount))
 	}
 }
