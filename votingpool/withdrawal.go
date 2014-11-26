@@ -300,6 +300,11 @@ type withdrawal struct {
 	newDecoratedTx func() *decoratedTx
 }
 
+type changeOutput struct {
+	pkScript []byte
+	amount   btcutil.Amount
+}
+
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
 // withdrawal process.
 type decoratedTx struct {
@@ -309,9 +314,7 @@ type decoratedTx struct {
 	inputTotal  btcutil.Amount
 	outputTotal btcutil.Amount
 	fee         btcutil.Amount
-	// hasChange indicates whether or not this tx includes a change output. If
-	// it does, it will be the last item in msgtx.TxOut.
-	hasChange bool
+
 	// calculateFee calculates the expected network fees for this transaction.
 	// We use a func() field instead of a method so that it can be replaced in
 	// tests.
@@ -320,6 +323,12 @@ type decoratedTx struct {
 	// isTooBig is a member of the structure so it can be replaced for testing
 	// purposes.
 	isTooBig func() bool
+
+	changeOutput *changeOutput
+}
+
+func (d *decoratedTx) hasChange() bool {
+	return d.changeOutput != nil
 }
 
 func newDecoratedTx() *decoratedTx {
@@ -386,10 +395,13 @@ func (d *decoratedTx) addChange(pkScript []byte) bool {
 	change := d.inputTotal - d.outputTotal - d.fee
 	if change > 0 {
 		d.msgtx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
-		d.hasChange = true
+		d.changeOutput = &changeOutput{
+			pkScript: pkScript,
+			amount:   change,
+		}
 		log.Infof("Added change output with amount %v", change)
 	}
-	return d.hasChange
+	return d.hasChange()
 }
 
 // rollBackLastOutput will roll back the last added output and possibly remove
@@ -480,7 +492,7 @@ func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) erro
 		if _, err = txr.AddDebits(); err != nil {
 			return err
 		}
-		if tx.hasChange {
+		if tx.hasChange() {
 			if _, err = txr.AddCredit(uint32(len(tx.msgtx.TxOut)-1), true); err != nil {
 				return err
 			}
