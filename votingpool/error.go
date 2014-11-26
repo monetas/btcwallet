@@ -128,6 +128,10 @@ const (
 	// ErrTxSigning indicates an error when signing a transaction.
 	ErrTxSigning
 
+	// ErrTxOutNotFound indicates that an transaction output was not found or is
+	// missing.
+	ErrTxOutNotFound
+
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
 	// translations in errorCodeStrings.
@@ -165,6 +169,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrRawSigning:              "ErrRawSigning",
 	ErrPreconditionNotMet:      "ErrPreconditionNotMet",
 	ErrTxSigning:               "ErrTxSigning",
+	ErrTxOutNotFound:           "ErrTxOutNotFound",
 }
 
 // String returns the ErrorCode as a human-readable name.
