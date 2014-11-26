@@ -313,7 +313,7 @@ type decoratedTx struct {
 	// calculateFee calculates the expected network fees for this transaction.
 	// We use a func() field instead of a method so that it can be replaced in
 	// tests.
-	calculateFee func() btcutil.Amount
+	calculateFee func(*decoratedTx) btcutil.Amount
 
 	// isTooBig decides if the passed transaction is oversized.
 	isTooBig func(*decoratedTx) bool
@@ -321,7 +321,7 @@ type decoratedTx struct {
 
 func newDecoratedTx() *decoratedTx {
 	tx := &decoratedTx{msgtx: btcwire.NewMsgTx()}
-	tx.calculateFee = func() btcutil.Amount {
+	tx.calculateFee = func(*decoratedTx) btcutil.Amount {
 		// TODO:
 		return btcutil.Amount(1)
 	}
@@ -377,7 +377,7 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 // it's called. Also, callsites must make sure adding a change output won't cause the tx
 // to exceed the size limit.
 func (d *decoratedTx) addChange(pkScript []byte) bool {
-	d.fee = d.calculateFee()
+	d.fee = d.calculateFee(d)
 	change := d.inputTotal - d.outputTotal - d.fee
 	if change > 0 {
 		d.msgtx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
@@ -404,7 +404,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 
 	var removedInputs []CreditInterface
 	// Continue until sum(in) < sum(out) + fee
-	for d.inputTotal >= d.outputTotal+d.calculateFee() {
+	for d.inputTotal >= d.outputTotal+d.calculateFee(d) {
 		removed := d.popInput()
 		removedInputs = append(removedInputs, removed)
 	}
@@ -511,7 +511,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		}
 	}
 
-	fee := w.current.calculateFee()
+	fee := w.current.calculateFee(w.current)
 	for w.current.inputTotal < w.current.outputTotal+fee {
 		if len(w.eligibleInputs) == 0 {
 			// TODO: Implement Split Output procedure
@@ -520,7 +520,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
 		w.current.addTxIn(input)
-		fee = w.current.calculateFee()
+		fee = w.current.calculateFee(w.current)
 
 		if w.current.isTooBig(w.current) {
 			if err := w.handleOversizeTx(); err != nil {

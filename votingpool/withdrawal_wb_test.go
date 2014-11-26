@@ -210,7 +210,7 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	// The created tx should include both eligible credits, so we expect it to have
 	// an input amount of 2e6+4e6 satoshis.
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
-	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
+	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee(tx))
 	expectedOutputs := append(
 		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
 	checkMsgTxOutputs(t, tx.msgtx, expectedOutputs, pool.Manager().Net())
@@ -278,7 +278,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
 	// We expect it to include outputs for requests 1 and 2, plus a change output, but
 	// output request #3 should not be there because we don't have enough credits.
-	change := inputAmount - (out1.amount + out2.amount + tx.calculateFee())
+	change := inputAmount - (out1.amount + out2.amount + tx.calculateFee(tx))
 	expectedOutputs := []*OutputRequest{out1, out2}
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
@@ -303,7 +303,7 @@ func TestAddChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(3e6), int64(10)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
+	tx.calculateFee = func(tx *decoratedTx) btcutil.Amount {
 		return btcutil.Amount(fee)
 	}
 
@@ -328,7 +328,7 @@ func TestAddChangeNoChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(4e6), int64(0)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
+	tx.calculateFee = func(tx *decoratedTx) btcutil.Amount {
 		return btcutil.Amount(fee)
 	}
 
@@ -366,7 +366,7 @@ func TestRollbackLastOutput(t *testing.T) {
 	initialInputs := tx.inputs
 	initialOutputs := tx.outputs
 
-	tx.calculateFee = func() btcutil.Amount {
+	tx.calculateFee = func(tx *decoratedTx) btcutil.Amount {
 		return btcutil.Amount(1)
 	}
 	removedInputs, removedOutput, err := tx.rollBackLastOutput()
@@ -404,7 +404,7 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 	initialInputs := tx.inputs
 	initialOutputs := tx.outputs
 
-	tx.calculateFee = func() btcutil.Amount {
+	tx.calculateFee = func(tx *decoratedTx) btcutil.Amount {
 		return btcutil.Amount(1)
 	}
 	removedInputs, removedOutput, err := tx.rollBackLastOutput()
