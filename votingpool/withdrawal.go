@@ -296,6 +296,9 @@ type withdrawal struct {
 	pendingOutputs []*OutputRequest
 	eligibleInputs []CreditInterface
 	current        *decoratedTx
+	// newDecoratedTx is a member of the structure so it can be replaced for
+	// testing purposes.
+	newDecoratedTx func() *decoratedTx
 }
 
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
@@ -314,6 +317,10 @@ type decoratedTx struct {
 	// We use a func() field instead of a method so that it can be replaced in
 	// tests.
 	calculateFee func() btcutil.Amount
+
+	// isTooBig is a member of the structure so it can be replaced for testing
+	// purposes.
+	isTooBig func() bool
 }
 
 func newDecoratedTx() *decoratedTx {
@@ -321,6 +328,9 @@ func newDecoratedTx() *decoratedTx {
 	tx.calculateFee = func() btcutil.Amount {
 		// TODO:
 		return btcutil.Amount(1)
+	}
+	tx.isTooBig = func() bool {
+		return isTooBig(tx)
 	}
 	return tx
 }
@@ -412,7 +422,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 	return removedInputs, removedOutput, nil
 }
 
-func (d *decoratedTx) isTooBig() bool {
+func isTooBig(d *decoratedTx) bool {
 	// TODO: Implement me!
 	return estimateSize(d.msgtx) > 1000
 }
@@ -427,6 +437,7 @@ func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInte
 		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
 		net:            net,
+		newDecoratedTx: newDecoratedTx,
 	}
 }
 
@@ -577,7 +588,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
-	w.current = newDecoratedTx()
+	w.current = w.newDecoratedTx()
 	return nil
 }
 
