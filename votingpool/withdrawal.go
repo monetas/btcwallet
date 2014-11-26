@@ -296,6 +296,9 @@ type withdrawal struct {
 	pendingOutputs []*OutputRequest
 	eligibleInputs []CreditInterface
 	current        *decoratedTx
+	// newDecoratedTx is a member of the structure so it can be replaced for
+	// testing purposes.
+	newDecoratedTx func() *decoratedTx
 }
 
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
@@ -431,6 +434,7 @@ func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInte
 		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
 		net:            net,
+		newDecoratedTx: newDecoratedTx,
 	}
 }
 
@@ -581,7 +585,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
-	w.current = newDecoratedTx()
+	w.current = w.newDecoratedTx()
 	return nil
 }
 
