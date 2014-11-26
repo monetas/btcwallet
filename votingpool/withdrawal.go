@@ -331,6 +331,31 @@ func (d *decoratedTx) hasChange() bool {
 	return d.changeOutput != nil
 }
 
+func (d *decoratedTx) toMsgTx(net *btcnet.Params) (*btcwire.MsgTx, error) {
+	msgtx := btcwire.NewMsgTx()
+	// add outputs
+	for _, o := range d.outputs {
+		pkScript, err := o.request.pkScript(net)
+		if err != nil {
+			o.status = "invalid"
+			// XXX(lars): check if this is the correct error.
+			return nil, newError(ErrWithdrawalProcessing, "failed to generate pkScript", err)
+		}
+		msgtx.AddTxOut(btcwire.NewTxOut(int64(o.Amount()), pkScript))
+	}
+
+	// add change output
+	if d.hasChange() {
+		msgtx.AddTxOut(btcwire.NewTxOut(int64(d.changeOutput.amount), d.changeOutput.pkScript))
+	}
+
+	// add inputs
+	for _, i := range d.inputs {
+		msgtx.AddTxIn(btcwire.NewTxIn(i.OutPoint(), nil))
+	}
+	return msgtx, nil
+}
+
 func newDecoratedTx() *decoratedTx {
 	tx := &decoratedTx{msgtx: btcwire.NewMsgTx()}
 	tx.calculateFee = func() btcutil.Amount {
@@ -586,6 +611,8 @@ func (w *withdrawal) finalizeCurrentTx() error {
 		return newError(
 			ErrWithdrawalProcessing, "failed to generate pkScript for change address", err)
 	}
+	// XXX(lars) Change this to check if there was change - then we need to get
+	// the next change address.
 	if tx.addChange(pkScript) {
 		var err error
 		w.changeStart, err = w.changeStart.Next()
