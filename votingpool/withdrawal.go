@@ -316,19 +316,22 @@ type decoratedTx struct {
 	// calculateFee calculates the expected network fees for this transaction.
 	// We use a func() field instead of a method so that it can be replaced in
 	// tests.
-	calculateFee func(*decoratedTx) btcutil.Amount
+	calculateFee func() btcutil.Amount
 
-	// isTooBig decides if the passed transaction is oversized.
-	isTooBig func(*decoratedTx) bool
+	// isTooBig is a member of the structure so it can be replaced for testing
+	// purposes.
+	isTooBig func() bool
 }
 
 func newDecoratedTx() *decoratedTx {
 	tx := &decoratedTx{msgtx: btcwire.NewMsgTx()}
-	tx.calculateFee = func(*decoratedTx) btcutil.Amount {
+	tx.calculateFee = func() btcutil.Amount {
 		// TODO:
 		return btcutil.Amount(1)
 	}
-	tx.isTooBig = isTooBig
+	tx.isTooBig = func() bool {
+		return isTooBig(tx)
+	}
 	return tx
 }
 
@@ -380,7 +383,7 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 // it's called. Also, callsites must make sure adding a change output won't cause the tx
 // to exceed the size limit.
 func (d *decoratedTx) addChange(pkScript []byte) bool {
-	d.fee = d.calculateFee(d)
+	d.fee = d.calculateFee()
 	change := d.inputTotal - d.outputTotal - d.fee
 	if change > 0 {
 		d.msgtx.AddTxOut(btcwire.NewTxOut(int64(change), pkScript))
@@ -407,7 +410,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 
 	var removedInputs []CreditInterface
 	// Continue until sum(in) < sum(out) + fee
-	for d.inputTotal >= d.outputTotal+d.calculateFee(d) {
+	for d.inputTotal >= d.outputTotal+d.calculateFee() {
 		removed := d.popInput()
 		removedInputs = append(removedInputs, removed)
 	}
@@ -509,13 +512,13 @@ func (w *withdrawal) fulfilNextOutput() error {
 	}
 	outputIndex := w.current.addTxOut(output, pkScript)
 
-	if w.current.isTooBig(w.current) {
+	if w.current.isTooBig() {
 		if err := w.handleOversizeTx(); err != nil {
 			return err
 		}
 	}
 
-	fee := w.current.calculateFee(w.current)
+	fee := w.current.calculateFee()
 	for w.current.inputTotal < w.current.outputTotal+fee {
 		if len(w.eligibleInputs) == 0 {
 			// TODO: Implement Split Output procedure
@@ -524,9 +527,9 @@ func (w *withdrawal) fulfilNextOutput() error {
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
 		w.current.addTxIn(input)
-		fee = w.current.calculateFee(w.current)
+		fee = w.current.calculateFee()
 
-		if w.current.isTooBig(w.current) {
+		if w.current.isTooBig() {
 			if err := w.handleOversizeTx(); err != nil {
 				return err
 			}
