@@ -314,6 +314,9 @@ type decoratedTx struct {
 	// We use a func() field instead of a method so that it can be replaced in
 	// tests.
 	calculateFee func() btcutil.Amount
+
+	// isTooBig decides if the passed transaction is oversized.
+	isTooBig func(*decoratedTx) bool
 }
 
 func newDecoratedTx() *decoratedTx {
@@ -322,6 +325,7 @@ func newDecoratedTx() *decoratedTx {
 		// TODO:
 		return btcutil.Amount(1)
 	}
+	tx.isTooBig = isTooBig
 	return tx
 }
 
@@ -412,7 +416,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 	return removedInputs, removedOutput, nil
 }
 
-func (d *decoratedTx) isTooBig() bool {
+func isTooBig(d *decoratedTx) bool {
 	// TODO: Implement me!
 	return estimateSize(d.msgtx) > 1000
 }
@@ -501,7 +505,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 	}
 	outputIndex := w.current.addTxOut(output, pkScript)
 
-	if w.current.isTooBig() {
+	if w.current.isTooBig(w.current) {
 		if err := w.handleOversizeTx(); err != nil {
 			return err
 		}
@@ -518,7 +522,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 		w.current.addTxIn(input)
 		fee = w.current.calculateFee()
 
-		if w.current.isTooBig() {
+		if w.current.isTooBig(w.current) {
 			if err := w.handleOversizeTx(); err != nil {
 				return err
 			}
