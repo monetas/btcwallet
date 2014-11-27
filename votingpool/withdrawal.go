@@ -328,7 +328,7 @@ type decoratedTx struct {
 	net          *btcnet.Params
 }
 
-// hasChange returnes true if this transaction has a change output.
+// hasChange returns true if this transaction has a change output.
 func (d *decoratedTx) hasChange() bool {
 	return d.changeOutput != nil
 }

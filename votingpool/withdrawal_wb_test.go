@@ -55,8 +55,8 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	// This will create a transaction with one output spending the everything
-	// except 1e6 satoshis.
+	// This will create a transaction with one output spending everything except
+	// 1e6 satoshis.
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6})
 	// Let's ignore fees.
 	tx.calculateFee = func() btcutil.Amount {
