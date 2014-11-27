@@ -2,9 +2,6 @@ package chroma_test
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/monetas/btcnet"
@@ -12,7 +9,6 @@ import (
 	"github.com/monetas/btcwallet/chroma"
 	"github.com/monetas/btcwallet/waddrmgr"
 	"github.com/monetas/btcwallet/walletdb"
-	_ "github.com/monetas/btcwallet/walletdb/bdb"
 	"github.com/monetas/btcwire"
 	"github.com/monetas/gochroma"
 )
@@ -25,11 +21,7 @@ var fastScrypt = &waddrmgr.Options{
 
 func TestCreateAndLoad(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -45,7 +37,6 @@ func TestCreateAndLoad(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -72,11 +63,7 @@ func TestCreateAndLoad(t *testing.T) {
 
 func TestFetchColorId(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -92,7 +79,6 @@ func TestFetchColorId(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -122,11 +108,7 @@ func TestFetchColorId(t *testing.T) {
 
 func TestNewAddress(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -142,7 +124,6 @@ func TestNewAddress(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -196,11 +177,7 @@ func TestNewAddress(t *testing.T) {
 
 func TestNewUncoloredOutPoint(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -216,7 +193,6 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -259,11 +235,7 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 
 func TestNewColorOutPoint(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -279,7 +251,6 @@ func TestNewColorOutPoint(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -331,11 +302,7 @@ func TestNewColorOutPoint(t *testing.T) {
 
 func TestIssueColor(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -351,7 +318,6 @@ func TestIssueColor(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -402,11 +368,7 @@ func TestIssueColor(t *testing.T) {
 
 func TestColorBalance(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -422,7 +384,6 @@ func TestColorBalance(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -475,11 +436,7 @@ func TestColorBalance(t *testing.T) {
 
 func TestAllColors(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -495,7 +452,6 @@ func TestAllColors(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -536,11 +492,7 @@ func TestAllColors(t *testing.T) {
 
 func TestSend(t *testing.T) {
 	// setup
-	dir, err := ioutil.TempDir("", "chroma_test")
-	if err != nil {
-		t.Fatalf("Failed to create db dir: %v", err)
-	}
-	db, err := walletdb.Create("bdb", filepath.Join(dir, "wallet.db"))
+	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
@@ -556,7 +508,6 @@ func TestSend(t *testing.T) {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
 	defer mgr.Close()
-	defer os.RemoveAll(dir)
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)

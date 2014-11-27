@@ -22,30 +22,15 @@ type Wallet struct {
 }
 
 func Create(namespace walletdb.Namespace, mgr *waddrmgr.Manager, seed []byte) (*Wallet, error) {
-	var err error
-	if seed == nil {
-		seed, err = hdkeychain.GenerateSeed(32)
-		if err != nil {
-			return nil, errors.New("failed to generate seed")
-		}
-	}
-	if len(seed) != 32 {
-		return nil, errors.New("Need a 32 byte seed")
-	}
-
-	// get the hd root
-	priv, err := hdkeychain.NewMaster(seed)
-	if err != nil {
-		return nil, errors.New("failed to derive master extended key")
-	}
-	pub, err := priv.Neuter()
-	if err != nil {
-		return nil, errors.New("failed to get extended public key")
-	}
-
-	err = namespace.Update(
+	var priv, pub *hdkeychain.ExtendedKey
+	err := namespace.Update(
 		func(tx walletdb.Tx) error {
-			return initialize(tx, priv, pub)
+			err := initialize(tx, seed)
+			if err != nil {
+				return err
+			}
+			priv, pub, err = fetchKeys(tx)
+			return err
 		})
 	if err != nil {
 		return nil, err
@@ -550,15 +535,10 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 		return nil, err
 	}
 
+	allInputs := append(coloredInputs, uncoloredInputs...)
 	// sign everything
-	for i, in := range coloredInputs {
+	for i, in := range allInputs {
 		err = w.Sign(in.PkScript, tx, i)
-		if err != nil {
-			return nil, err
-		}
-	}
-	for i, in := range uncoloredInputs {
-		err = w.Sign(in.PkScript, tx, i+len(coloredInputs))
 		if err != nil {
 			return nil, err
 		}
@@ -568,22 +548,13 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 	if err != nil {
 		return nil, err
 	}
+
 	// mark everything as spent
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
-		for i, in := range coloredInputs {
+		for i, in := range allInputs {
 			in.Spent = true
 			in.SpendingTx = gochroma.BigEndianBytes(txHash)
 			in.SpendingIndex = uint32(i)
-			err = storeOutPoint(tx, in)
-			if err != nil {
-				return err
-			}
-
-		}
-		for i, in := range uncoloredInputs {
-			in.Spent = true
-			in.SpendingTx = gochroma.BigEndianBytes(txHash)
-			in.SpendingIndex = uint32(i + len(coloredInputs))
 			err = storeOutPoint(tx, in)
 			if err != nil {
 				return err

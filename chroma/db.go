@@ -51,18 +51,14 @@ func serializeOutPoint(op *btcwire.OutPoint) []byte {
 	return append(op.Hash.Bytes(), serializeUint32(op.Index)...)
 }
 
-func deserializeOutPoint(b []byte) *btcwire.OutPoint {
-	sha, _ := btcwire.NewShaHash(b[:32])
-	return btcwire.NewOutPoint(sha, deserializeUint32(b[32:]))
-}
-
 func serializeColorOutPoint(cop *ColorOutPoint) ([]byte, error) {
+	// nil cop will cause a panic, so handle it here
+	if cop == nil {
+		return nil, errors.New("Cannot serialize nil")
+	}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(cop)
-	if err != nil {
-		return nil, err
-	}
+	enc.Encode(cop)
 	return buf.Bytes(), nil
 }
 
@@ -83,22 +79,19 @@ func increment(id []byte) []byte {
 	return serializeUint32(x)
 }
 
-func currentId(tx walletdb.Tx, idKey []byte) ([]byte, error) {
+func currentId(tx walletdb.Tx, idKey []byte) []byte {
 	bucket := tx.RootBucket().Bucket(idBucketName)
 	id := bucket.Get(idKey)
 	if len(id) == 0 {
-		id = serializeUint32(uint32(1))
+		return serializeUint32(uint32(1))
 	}
-	return id, nil
+	return id
 }
 
 func newId(tx walletdb.Tx, idKey []byte) ([]byte, error) {
-	id, err := currentId(tx, idKey)
-	if err != nil {
-		return nil, err
-	}
+	id := currentId(tx, idKey)
 	bucket := tx.RootBucket().Bucket(idBucketName)
-	err = bucket.Put(idKey, increment(id))
+	err := bucket.Put(idKey, increment(id))
 	if err != nil {
 		return nil, err
 	}
@@ -155,15 +148,12 @@ func fetchOutPointId(tx walletdb.Tx, outPoint *btcwire.OutPoint) OutPointId {
 }
 
 func allColors(tx walletdb.Tx) (map[*gochroma.ColorDefinition]ColorId, error) {
-	maxColorId, err := currentId(tx, colorIdKey)
-	if err != nil {
-		return nil, err
-	}
+	maxColorId := currentId(tx, colorIdKey)
 	numColors := deserializeUint32(maxColorId) - 1
 	cds := make(map[*gochroma.ColorDefinition]ColorId, int(numColors))
 
 	bucket := tx.RootBucket().Bucket(colorDefinitionBucketName)
-	err = bucket.ForEach(
+	err := bucket.ForEach(
 		func(k, v []byte) error {
 			cd, err := gochroma.NewColorDefinitionFromStr(string(k) + ":0")
 			if err != nil {
@@ -193,7 +183,27 @@ func fetchKeys(tx walletdb.Tx) (*hdkeychain.ExtendedKey, *hdkeychain.ExtendedKey
 	return priv, pub, nil
 }
 
-func initialize(tx walletdb.Tx, priv, pub *hdkeychain.ExtendedKey) error {
+func initialize(tx walletdb.Tx, seed []byte) error {
+	var err error
+	if seed == nil {
+		seed, err = hdkeychain.GenerateSeed(32)
+		if err != nil {
+			return errors.New("failed to generate seed")
+		}
+	}
+	if len(seed) != 32 {
+		return errors.New("Need a 32 byte seed")
+	}
+	// get the hd root
+	priv, err := hdkeychain.NewMaster(seed)
+	if err != nil {
+		return errors.New("failed to derive master extended key")
+	}
+	pub, err := priv.Neuter()
+	if err != nil {
+		return errors.New("failed to get extended public key")
+	}
+
 	b, err := tx.RootBucket().CreateBucket(keyBucketName)
 	if err != nil {
 		return err
@@ -277,7 +287,7 @@ func storeOutPoint(tx walletdb.Tx, cop *ColorOutPoint) error {
 }
 
 func allColorOutPoints(tx walletdb.Tx) ([]*ColorOutPoint, error) {
-	currentOutPointId, err := currentId(tx, outPointIdKey)
+	currentOutPointId := currentId(tx, outPointIdKey)
 	limit := deserializeUint32(currentOutPointId)
 	outPoints := make([]*ColorOutPoint, limit-1)
 	b := tx.RootBucket().Bucket(colorOutPointBucketName)
@@ -288,6 +298,7 @@ func allColorOutPoints(tx walletdb.Tx) ([]*ColorOutPoint, error) {
 			str := fmt.Sprintf("there should be %v color out points, but none at index %v", limit-1, i+1)
 			return nil, errors.New(str)
 		}
+		var err error
 		outPoints[i], err = deserializeColorOutPoint(raw)
 		if err != nil {
 			return nil, err

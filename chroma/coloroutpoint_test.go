@@ -34,6 +34,19 @@ var coloredCOP = &chroma.ColorOutPoint{
 	PkScript:      []byte{1},
 }
 
+var errorCOP = &chroma.ColorOutPoint{
+	Id:            chroma.OutPointId([]byte{1}),
+	Tx:            []byte(""),
+	Index:         uint32(0),
+	Value:         uint64(100000),
+	Color:         chroma.ColorId([]byte{1, 0, 0, 0}),
+	ColorValue:    gochroma.ColorValue(10),
+	SpendingTx:    nil,
+	SpendingIndex: 0,
+	Spent:         false,
+	PkScript:      []byte{1},
+}
+
 func TestIsUncolored(t *testing.T) {
 	// execute
 	got := uncoloredCOP.IsUncolored()
@@ -81,5 +94,15 @@ func TestColorIn(t *testing.T) {
 	want := fmt.Sprintf("%x", coloredCOP.Tx)
 	if got != want {
 		t.Fatalf("shahash not what we expected: want %v, got %v", want, got)
+	}
+}
+
+func TestColorInError(t *testing.T) {
+	// execute
+	_, err := errorCOP.ColorIn()
+
+	//validate
+	if err == nil {
+		t.Fatalf("error expected and got nil")
 	}
 }
