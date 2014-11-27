@@ -684,9 +684,7 @@ func pkScriptAddr(t *testing.T, pkScript []byte, net *btcnet.Params) string {
 	return addresses[0].String()
 }
 
-// checkTxOutputs ensures that tx.outputs match the given outputs and that the
-// address and amount of the items in tx.msgtx.TxOut match the address and
-// amount of the given outputs.
+// checkTxOutputs ensures that the tx.outputs match the given outputs.
 func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, net *btcnet.Params) {
 	nOutputs := len(outputs)
 	if len(tx.outputs) != nOutputs {
@@ -701,11 +699,6 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, 
 	for i, output := range outputs {
 		outputRequests[i] = output.request
 	}
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkMsgTxOutputs(t, msgtx, outputRequests, net)
 }
 
 // checkMsgTxOutputs checks that the address and amount of every output in the
@@ -731,9 +724,7 @@ func checkMsgTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, outputs []*OutputRequ
 	}
 }
 
-// checkTxInputs ensures that tx.inputs match the given inputs and that the
-// outpoints of the items in the msgtx generated from the decoratedTx match the
-// outpoints of the given inputs.
+// checkTxInputs ensures that the tx.inputs match the given inputs.
 func checkTxInputs(t *testing.T, tx *decoratedTx, inputs []CreditInterface) {
 	if len(tx.inputs) != len(inputs) {
 		t.Fatalf("Wrong number of inputs in tx; got %d, want %d", len(tx.inputs), len(inputs))
@@ -741,22 +732,6 @@ func checkTxInputs(t *testing.T, tx *decoratedTx, inputs []CreditInterface) {
 	for i, input := range tx.inputs {
 		if input != inputs[i] {
 			t.Fatalf("Unexpected input; got %s, want %s", input, inputs[i])
-		}
-	}
-
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(msgtx.TxIn) != len(inputs) {
-		t.Fatalf("Wrong number of inputs in msgtx.TxIn; got %d, want %d",
-			len(msgtx.TxIn), len(inputs))
-	}
-	for i, input := range msgtx.TxIn {
-		if input.PreviousOutPoint != *inputs[i].OutPoint() {
-			t.Fatalf("Unexpected TxIn outpoint; got %v, want %v",
-				input.PreviousOutPoint, *inputs[i].OutPoint())
 		}
 	}
 }
