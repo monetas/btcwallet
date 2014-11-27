@@ -196,7 +196,8 @@ type OutputRequest struct {
 
 // String makes OutputRequest satisfy the Stringer interface.
 func (o *OutputRequest) String() string {
-	return fmt.Sprintf("OutputRequest to send %v to %s", o.amount, o.address)
+	return fmt.Sprintf("OutputRequest %s:%d to send %v to %s", o.server, o.transaction,
+		o.amount, o.address)
 }
 
 // outBailmentIDHash returns a byte slice which is used when sorting
@@ -525,8 +526,12 @@ func (w *withdrawal) fulfilNextOutput() error {
 	request := w.pendingOutputs[0]
 	w.pendingOutputs = w.pendingOutputs[1:]
 
-	output := &WithdrawalOutput{request: request}
-	// Add output to w.status in case we exit early due to on an invalid request.
+	// TODO: In the case of a split output because of oversize tx, will need to
+	// lookup the existing WithdrawalOutput instance for the orig request
+	output := &WithdrawalOutput{request: request, status: "success"}
+
+	// Add output to w.status in case we exit early due to on an invalid request
+	// and because splitOutput()/handleOversizeTx() may update it.
 	w.status.outputs = append(w.status.outputs, output)
 
 	outputIndex := w.current.addTxOut(output, request.pkScript)
@@ -540,8 +545,11 @@ func (w *withdrawal) fulfilNextOutput() error {
 	fee := w.current.calculateFee()
 	for w.current.inputTotal() < w.current.outputTotal()+fee {
 		if len(w.eligibleInputs) == 0 {
-			// TODO: Implement Split Output procedure
-			panic("Split Output not yet implemented")
+			log.Debug("Splitting last output because we don't have enough inputs")
+			if err := w.splitLastOutput(); err != nil {
+				return err
+			}
+			break
 		}
 		input := w.eligibleInputs[0]
 		w.eligibleInputs = w.eligibleInputs[1:]
@@ -557,14 +565,16 @@ func (w *withdrawal) fulfilNextOutput() error {
 
 	outpoint := OutBailmentOutpoint{index: outputIndex, amount: output.Amount()}
 	output.addOutpoint(outpoint)
-	output.status = "success"
 	return nil
 }
 
 // handleOversizeTx handles the case when a transaction has become too
 // big by either rolling back an output or splitting it.
 func (w *withdrawal) handleOversizeTx() error {
+	// TODO: Both when rolling back and splitting we'll want to rollback the
+	// last input and finalize the tx at the end.
 	if len(w.current.outputs) > 1 {
+		log.Debug("Rolling back last output because tx got too big")
 		inputs, output, err := w.current.rollBackLastOutput()
 		if err != nil {
 			return newError(ErrWithdrawalProcessing,
@@ -572,10 +582,16 @@ func (w *withdrawal) handleOversizeTx() error {
 		}
 		w.eligibleInputs = append(w.eligibleInputs, inputs...)
 		w.pendingOutputs = append(w.pendingOutputs, output.request)
-		w.finalizeCurrentTx()
+		if err = w.finalizeCurrentTx(); err != nil {
+			return err
+		}
 	} else if len(w.current.outputs) == 1 {
+		log.Debug("Splitting last output because tx got too big")
 		// TODO: Split last output in two, and continue the loop.
 		panic("Oversize TX ouput split not yet implemented")
+	} else {
+		return newError(
+			ErrPreconditionNotMet, "Oversize tx must have at least one output", nil)
 	}
 	return nil
 }
@@ -584,9 +600,10 @@ func (w *withdrawal) handleOversizeTx() error {
 // list of finalized transactions and replaces w.current with a new empty
 // transaction.
 func (w *withdrawal) finalizeCurrentTx() error {
-	log.Infof("Finalizing current transaction")
+	log.Debug("Finalizing current transaction")
 	tx := w.current
 	if len(tx.outputs) == 0 {
+		log.Debug("Current transaction has no outputs, doing nothing")
 		return nil
 	}
 
@@ -603,6 +620,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 				ErrWithdrawalProcessing, "failed to get next change address", err)
 		}
 	}
+
 	w.transactions = append(w.transactions, tx)
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
@@ -650,6 +668,12 @@ func (w *withdrawal) fulfilOutputs() error {
 		if err := w.fulfilNextOutput(); err != nil {
 			return err
 		}
+		tx := w.current
+		if len(w.eligibleInputs) == 0 && tx.inputTotal() <= tx.outputTotal()+tx.calculateFee() {
+			// We don't have more eligible inputs and all the inputs in the
+			// current tx have been spent.
+			break
+		}
 	}
 
 	if err := w.finalizeCurrentTx(); err != nil {
@@ -660,6 +684,36 @@ func (w *withdrawal) fulfilOutputs() error {
 		w.updateStatusFor(tx)
 		w.status.fees += tx.fee
 	}
+	return nil
+}
+
+func (w *withdrawal) splitLastOutput() error {
+	if len(w.current.outputs) == 0 {
+		return newError(ErrPreconditionNotMet,
+			"splitLastOutput requires current tx to have at least 1 output", nil)
+	}
+
+	tx := w.current
+	request := tx.outputs[len(tx.outputs)-1].request
+	origAmount := request.amount
+	spentAmount := tx.outputTotal() + tx.calculateFee() - request.amount
+	// This is how much we have left after satisfying all outputs except the last
+	// one. IOW, all we have left for the last output, so we set that as the
+	// amount of our last output request.
+	unspentAmount := tx.inputTotal() - spentAmount
+	request.amount = unspentAmount
+
+	// Create a new OutputRequest with the amount being the difference between
+	// the original amount and what was left in the original output request.
+	newRequest := &OutputRequest{
+		server:      request.server,
+		transaction: request.transaction,
+		address:     request.address,
+		pkScript:    request.pkScript,
+		amount:      origAmount - request.amount}
+	w.pendingOutputs = append([]*OutputRequest{newRequest}, w.pendingOutputs...)
+
+	w.status.outputs[len(w.status.outputs)-1].status = "partial-"
 	return nil
 }
 
