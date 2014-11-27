@@ -18,6 +18,7 @@ package votingpool
 
 import (
 	"bytes"
+	"reflect"
 	"sort"
 	"testing"
 
@@ -54,14 +55,20 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	// This will create a transaction with two outputs spending the whole amount from the
-	// single input.
-	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6, 1e6})
+	// This will create a transaction with one output spending the everything
+	// except 1e6 satoshis.
+	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6})
+	// Let's ignore fees.
+	tx.calculateFee = func() btcutil.Amount {
+		return btcutil.Amount(0)
+	}
 
-	// storeTransactions() will store the tx created above, with the second output as a
-	// change output.
-	// XXX(lars) need to fix this test
-	// tx.hasChange = true
+	// addChange stores the positive difference in input and output as change.
+	if !tx.addChange([]byte{}) {
+		t.Fatal("Expected change would be added")
+	}
+	// storeTransactions() will store the tx created above, making the change
+	// available as an unspent output.
 	if err := storeTransactions(store, []*decoratedTx{tx}, pool.Manager().Net()); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +111,7 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 		t.Fatalf("Credit doesn't come from a change output as we expected")
 	}
 	changeOut := msgtx.TxOut[1]
-	if credit.TxOut() != changeOut {
+	if !reflect.DeepEqual(credit.TxOut(), changeOut) {
 		t.Fatalf("Credit's txOut (%v) doesn't match changeOut (%v)", credit.TxOut(), changeOut)
 	}
 }
