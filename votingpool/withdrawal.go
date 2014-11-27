@@ -493,7 +493,7 @@ func (vp *Pool) Withdrawal(
 	if err := w.fulfilOutputs(); err != nil {
 		return nil, nil, err
 	}
-	sigs, err := getRawSigs(w.transactions, w.net)
+	sigs, err := getRawSigs(w.transactions)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -714,7 +714,7 @@ func Ntxid(tx *btcwire.MsgTx) string {
 // creditsUsed must have one entry for every transaction, with the transaction's ntxid
 // as the key and a slice of credits spent by that transaction as the value.
 // It returns a map of ntxids to signature lists.
-func getRawSigs(transactions []*decoratedTx, net *btcnet.Params) (map[string]TxSigs, error) {
+func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 	sigs := make(map[string]TxSigs)
 	for _, tx := range transactions {
 		txSigs := make(TxSigs, len(tx.inputs))

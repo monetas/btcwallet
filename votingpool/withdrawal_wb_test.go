@@ -122,7 +122,7 @@ func TestGetRawSigs(t *testing.T) {
 
 	tx := createDecoratedTx(t, pool, store, []int64{5e6, 4e6}, []int64{})
 
-	sigs, err := getRawSigs([]*decoratedTx{tx}, pool.Manager().Net())
+	sigs, err := getRawSigs([]*decoratedTx{tx})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestGetRawSigsOnlyOnePrivKeyAvailable(t *testing.T) {
 		series.privateKeys[i] = nil
 	}
 
-	sigs, err := getRawSigs([]*decoratedTx{tx}, pool.Manager().Net())
+	sigs, err := getRawSigs([]*decoratedTx{tx})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestGetRawSigsUnparseableRedeemScript(t *testing.T) {
 	// getRawSigs().
 	tx.inputs[0].Address().script = []byte{0x01}
 
-	_, err := getRawSigs([]*decoratedTx{tx}, pool.Manager().Net())
+	_, err := getRawSigs([]*decoratedTx{tx})
 
 	TstCheckError(t, "", err, ErrRawSigning)
 }
@@ -194,7 +194,7 @@ func TestGetRawSigsInvalidAddrBranch(t *testing.T) {
 	// an error in getRawSigs().
 	tx.inputs[0].Address().branch = Branch(999)
 
-	_, err := getRawSigs([]*decoratedTx{tx}, pool.Manager().Net())
+	_, err := getRawSigs([]*decoratedTx{tx})
 
 	TstCheckError(t, "", err, ErrInvalidBranch)
 }
@@ -383,7 +383,7 @@ func TestSignMultiSigUTXO(t *testing.T) {
 	// Create a new tx with a single input that we're going to sign.
 	mgr := pool.Manager()
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{4e6})
-	sigs, err := getRawSigs([]*decoratedTx{tx}, pool.Manager().Net())
+	sigs, err := getRawSigs([]*decoratedTx{tx})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +466,7 @@ func TestSignMultiSigUTXONotEnoughSigs(t *testing.T) {
 
 	mgr := pool.Manager()
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
-	sigs, err := getRawSigs([]*decoratedTx{tx}, mgr.Net())
+	sigs, err := getRawSigs([]*decoratedTx{tx})
 	if err != nil {
 		t.Fatal(err)
 	}
