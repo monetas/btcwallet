@@ -345,7 +345,7 @@ func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
 
 	// Add change output.
 	if d.hasChange() {
-		msgtx.AddTxOut(btcwire.NewTxOut(d.changeOutput.Value, d.changeOutput.PkScript))
+		msgtx.AddTxOut(d.changeOutput)
 	}
 
 	// Add inputs.
@@ -512,7 +512,7 @@ func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) erro
 			return err
 		}
 		if tx.hasChange() {
-			idx, err := tx.changeIndex()
+			idx, err := changeIndex(tx, msgtx)
 			if err != nil {
 				return err
 			}
@@ -526,6 +526,17 @@ func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) erro
 		return err
 	}
 	return nil
+}
+
+// changeIndex returns the change output index for a msgtx generated from the
+// passed decoratedTx.
+func changeIndex(tx *decoratedTx, msgtx *btcwire.MsgTx) (uint32, error) {
+	for i, o := range msgtx.TxOut {
+		if o == tx.changeOutput {
+			return uint32(i), nil
+		}
+	}
+	return 0, newError(ErrInvalidValue, "no changeindex found", nil)
 }
 
 // If this returns it means we have added an output and the necessary inputs to fulfil that
