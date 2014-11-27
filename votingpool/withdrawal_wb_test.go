@@ -31,6 +31,138 @@ import (
 	"github.com/conformal/btcwire"
 )
 
+func TestSplitLastOutput(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	outputAmount := btcutil.Amount(2)
+	request := TstNewOutputRequest(
+		t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", outputAmount, pool.Manager().Net())
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{3}, store)
+	changeStart := newChangeAddress(t, pool, seriesID, 0)
+	w := newWithdrawal(0, []*OutputRequest{request}, eligible, changeStart)
+	if err := w.fulfilNextOutput(); err != nil {
+		t.Fatal(err)
+	}
+	tx := w.current
+
+	// This should split our sole output in two, leaving one in the current tx
+	// and adding the other to pendingOutputs.
+	if err := w.splitLastOutput(); err != nil {
+		t.Fatal(err)
+	}
+
+	origOutput := request
+	if len(tx.inputs) != 1 {
+		t.Fatalf("Wrong number of tx inputs; got %d, want 1", len(tx.inputs))
+	}
+	if len(tx.outputs) != 1 {
+		t.Fatalf("Wrong number of tx outputs; got %d, want 1", len(tx.outputs))
+	}
+	wantAmount := tx.inputTotal() - tx.calculateFee()
+	if tx.outputs[0].Amount() != wantAmount {
+		t.Fatalf("Wrong amount in output; got %s, want %s", tx.outputs[0].Amount(), wantAmount)
+	}
+	if len(w.pendingOutputs) != 1 {
+		t.Fatalf("Wrong number of pending outputs; got %d, want 1", len(w.pendingOutputs))
+	}
+
+	// splitLastOutput() does not finalize the tx as that's the responsibility
+	// of its caller.
+	if len(w.transactions) != 0 {
+		t.Fatalf("Wrong number of finalized transactions; got %d, want 0", len(w.transactions))
+	}
+
+	// Check that the output was split and part of it is in w.pendingOutputs.
+	splitOutput := w.pendingOutputs[0]
+	splitAmount := outputAmount - origOutput.amount
+	if splitOutput.amount != splitAmount {
+		t.Fatalf("Wrong amount in split output; got %v, want %v", splitOutput.amount, splitAmount)
+	}
+
+	// This is a bit of a hack, but we change the amount of the split output so
+	// that we can use reflect.DeepEqual to ensure the split output is identical
+	// to the original one.
+	splitOutput.amount = origOutput.amount
+	if !reflect.DeepEqual(origOutput, splitOutput) {
+		t.Fatalf("Split output (%v) not identical to orig one (%v)", splitOutput, origOutput)
+	}
+
+	status := w.status.outputs[len(w.status.outputs)-1].status
+	if status != "partial-" {
+		t.Fatalf("Wrong output status; got '%s', want '%s'", status, "partial-")
+	}
+}
+
+// TestOutputSplittingNotEnoughInputs checks that an output will get split if we
+// don't have enough inputs to fulfil it.
+func TestOutputSplittingNotEnoughInputs(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	outputAmount := btcutil.Amount(2)
+	request := TstNewOutputRequest(
+		t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", outputAmount, pool.Manager().Net())
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{4}, store)
+	changeStart := newChangeAddress(t, pool, seriesID, 0)
+	w := newWithdrawal(0, []*OutputRequest{request}, eligible, changeStart)
+
+	// Trigger an output split because of lack of inputs by forcing a high fee.
+	// If we just started with not enough inputs for the requested outputs,
+	// fulfilOutputs() would drop outputs until we had enough.
+	w.current.calculateFee = TstConstantFee(3)
+	if err := w.fulfilOutputs(); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(w.transactions) != 1 {
+		t.Fatalf("Wrong number of finalized transactions; got %d, want 1", len(w.transactions))
+	}
+	tx := w.transactions[0]
+	if len(tx.outputs) != 1 {
+		t.Fatalf("Wrong number of outputs; got %d, want 1", len(tx.outputs))
+	}
+	wantAmount := tx.inputTotal() - tx.calculateFee()
+	if tx.outputs[0].Amount() != wantAmount {
+		t.Fatalf("Wrong output amount; got %d, want %d", tx.outputs[0].Amount(), wantAmount)
+	}
+	if len(tx.inputs) != 1 {
+		t.Fatalf("Wrong number of inputs; got %d, want 1", len(tx.inputs))
+	}
+
+}
+
+func TestSplitLastOutputNoOutputs(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	w := newWithdrawal(0, []*OutputRequest{}, []CreditInterface{}, nil)
+	w.current = createDecoratedTx(t, pool, store, []int64{}, []int64{})
+
+	err := w.splitLastOutput()
+
+	TstCheckError(t, "", err, ErrPreconditionNotMet)
+}
+
+func TestSplitLastOutputTooManyOutputs(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	w := newWithdrawal(0, []*OutputRequest{}, []CreditInterface{}, nil)
+	w.current = createDecoratedTx(t, pool, store, []int64{}, []int64{1, 3})
+
+	err := w.splitLastOutput()
+
+	TstCheckError(t, "", err, ErrPreconditionNotMet)
+}
+
+func TestOutputSplittingOversizeTx(t *testing.T) {
+	// TODO:
+	// Somehow create a withdrawal where the isTooBig() check returns true after
+	// the first input of the first tx is added, causing the output to be split.
+	// Then check the WithdrawalStatus
+}
+
 func TestStoreTransactionsWithoutChangeOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
@@ -193,8 +325,8 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	seriesID, eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
 	outputs := []*OutputRequest{
-		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6), net),
-		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6), net),
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", 3e6, net),
+		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", 2e6, net),
 	}
 	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
@@ -882,7 +1014,7 @@ func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, t
 
 func compareMsgTxAndDecoratedTxInputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx) {
 	if len(msgtx.TxIn) != len(tx.inputs) {
-		t.Fatal("Wrong number of inputs; got %d, want %d", len(msgtx.TxIn), len(tx.inputs))
+		t.Fatalf("Wrong number of inputs; got %d, want %d", len(msgtx.TxIn), len(tx.inputs))
 	}
 
 	for i, txin := range msgtx.TxIn {
@@ -936,4 +1068,12 @@ func checkTxChangeAmount(t *testing.T, tx *decoratedTx, amount btcutil.Amount) {
 		t.Fatalf("Wrong change output amount; got %d, want %d",
 			tx.changeOutput.Value, int64(amount))
 	}
+}
+
+func newChangeAddress(t *testing.T, pool *Pool, seriesID uint32, idx Index) *ChangeAddress {
+	changeAddr, err := pool.ChangeAddress(seriesID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return changeAddr
 }
