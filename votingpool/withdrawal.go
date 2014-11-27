@@ -297,7 +297,7 @@ type withdrawal struct {
 	current        *decoratedTx
 	// newDecoratedTx is a member of the structure so it can be replaced for
 	// testing purposes.
-	newDecoratedTx func() *decoratedTx
+	newDecoratedTx func(*btcnet.Params) *decoratedTx
 }
 
 type changeOutput struct {
@@ -324,7 +324,7 @@ type decoratedTx struct {
 	isTooBig func() bool
 
 	changeOutput *changeOutput
-	net          *btcnet.Param
+	net          *btcnet.Params
 }
 
 func (d *decoratedTx) hasChange() bool {
@@ -339,11 +339,11 @@ func (d *decoratedTx) changeIndex() (uint32, error) {
 	return 0, newError(ErrWithdrawalProcessing, "", nil)
 }
 
-func (d *decoratedTx) toMsgTx(net *btcnet.Params) (*btcwire.MsgTx, error) {
+func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
 	msgtx := btcwire.NewMsgTx()
 	// add outputs
 	for _, o := range d.outputs {
-		pkScript, err := o.request.pkScript(net)
+		pkScript, err := o.request.pkScript(d.net)
 		if err != nil {
 			o.status = "invalid"
 			// XXX(lars): check if this is the correct error.
@@ -466,7 +466,7 @@ func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInte
 	changeStart *ChangeAddress, net *btcnet.Params) *withdrawal {
 	return &withdrawal{
 		roundID:        roundID,
-		current:        newDecoratedTx(),
+		current:        newDecoratedTx(net),
 		pendingOutputs: outputs,
 		eligibleInputs: inputs,
 		status:         &WithdrawalStatus{},
@@ -509,7 +509,7 @@ func (vp *Pool) Withdrawal(
 // returning.
 func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx, net *btcnet.Params) error {
 	for _, tx := range transactions {
-		msgtx, err := tx.toMsgTx(net)
+		msgtx, err := tx.toMsgTx()
 		if err != nil {
 			return err
 		}
@@ -635,7 +635,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
-	w.current = w.newDecoratedTx()
+	w.current = w.newDecoratedTx(w.net)
 	return nil
 }
 
@@ -718,7 +718,7 @@ func getRawSigs(transactions []*decoratedTx, net *btcnet.Params) (map[string]TxS
 		// XXX(lars): replaced an msgtx instance with toMsgTx() which is hardly
 		// good for performance. This should be replaced with something else at
 		// some point.
-		msgtx, err := tx.toMsgTx(net)
+		msgtx, err := tx.toMsgTx()
 		if err != nil {
 			return nil, newError(ErrRawSigning, "failed to generate msgtx", err)
 		}

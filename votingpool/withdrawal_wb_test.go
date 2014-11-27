@@ -67,7 +67,7 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	}
 
 	// Check that the tx was stored in the txstore.
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestGetRawSigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestGetRawSigsOnlyOnePrivKeyAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
 	expectedOutputs := append(
 		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
 		expectedOutputs, NewOutputRequest("foo", 4, changeStart.Addr().String(), change))
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestAddChange(t *testing.T) {
 		t.Fatal("tx.addChange() returned false, meaning it did not add a change output")
 	}
 
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestAddChangeNoChange(t *testing.T) {
 	if tx.addChange([]byte{}) {
 		t.Fatal("tx.addChange() returned true, meaning it added a change output")
 	}
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func TestSignMultiSigUTXO(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestSignMultiSigUTXOUnparseablePkScript(t *testing.T) {
 
 	mgr := pool.Manager()
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestSignMultiSigUTXOPkScriptNotP2SH(t *testing.T) {
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
 	addr, _ := btcutil.DecodeAddress("1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX", mgr.Net())
 	pubKeyHashPkScript, _ := btcscript.PayToAddrScript(addr.(*btcutil.AddressPubKeyHash))
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestSignMultiSigUTXORedeemScriptNotFound(t *testing.T) {
 	if _, err := mgr.Address(addr); err == nil {
 		t.Fatalf("Address %s found in manager when it shouldn't", addr)
 	}
-	msgtx, err := tx.toMsgTx(mgr.Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestSignMultiSigUTXONotEnoughSigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -622,7 +622,7 @@ func TestPopInput(t *testing.T) {
 // rollBackLastOutput returns an error if there are less than two
 // outputs in the transaction.
 func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
-	tx := newDecoratedTx()
+	tx := newDecoratedTx(&btcnet.MainNetParams)
 	_, _, err := tx.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 
@@ -694,7 +694,7 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, 
 	for i, output := range outputs {
 		outputRequests[i] = output.request
 	}
-	msgtx, err := tx.toMsgTx(net)
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -737,7 +737,7 @@ func checkTxInputs(t *testing.T, tx *decoratedTx, inputs []CreditInterface) {
 		}
 	}
 
-	msgtx, err := tx.toMsgTx(pool.Manager().Net())
+	msgtx, err := tx.toMsgTx()
 	if err != nil {
 		t.Fatal(err)
 	}

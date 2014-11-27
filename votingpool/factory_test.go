@@ -51,7 +51,7 @@ func getUniqueID() uint32 {
 // createDecoratedTx creates a decoratedTx with the given input and output amounts.
 func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmounts []int64,
 	outputAmounts []int64) *decoratedTx {
-	tx := newDecoratedTx()
+	tx := newDecoratedTx(pool.Manager().Net())
 	_, credits := TstCreateCredits(t, pool, inputAmounts, store)
 	for _, c := range credits {
 		tx.addTxIn(c)
