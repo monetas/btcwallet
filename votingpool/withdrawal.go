@@ -217,6 +217,8 @@ func (o *OutputRequest) outBailmentIDHash() []byte {
 func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
 	address, err := btcutil.DecodeAddress(o.address, net)
 	if err != nil {
+		// TODO: make this return a votingpool.Error error instead of passing a
+		// btcutil error.
 		return nil, err
 	}
 	return btcscript.PayToAddrScript(address)
@@ -350,8 +352,7 @@ func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
 		pkScript, err := o.request.pkScript(d.net)
 		if err != nil {
 			o.status = "invalid"
-			// XXX(lars): come up with a better error.
-			return nil, newError(ErrWithdrawalProcessing, "failed to generate pkScript", err)
+			return nil, err
 		}
 		msgtx.AddTxOut(btcwire.NewTxOut(int64(o.Amount()), pkScript))
 	}
