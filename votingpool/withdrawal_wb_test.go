@@ -36,7 +36,7 @@ func TestStoreTransactionsWithoutChangeOutput(t *testing.T) {
 	defer tearDown()
 
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6})
-	if err := storeTransactions(store, []*decoratedTx{tx}, pool.Manager().Net()); err != nil {
+	if err := storeTransactions(store, []*decoratedTx{tx}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,7 +69,7 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	}
 	// storeTransactions() will store the tx created above, making the change
 	// available as an unspent output.
-	if err := storeTransactions(store, []*decoratedTx{tx}, pool.Manager().Net()); err != nil {
+	if err := storeTransactions(store, []*decoratedTx{tx}); err != nil {
 		t.Fatal(err)
 	}
 

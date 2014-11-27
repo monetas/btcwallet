@@ -498,7 +498,7 @@ func (vp *Pool) Withdrawal(
 		return nil, nil, err
 	}
 
-	if err := storeTransactions(txStore, w.transactions, w.net); err != nil {
+	if err := storeTransactions(txStore, w.transactions); err != nil {
 		return nil, nil, err
 	}
 
@@ -512,7 +512,7 @@ func (vp *Pool) Withdrawal(
 //
 // TODO: Wrap the errors we catch here in a custom votingpool.Error before
 // returning.
-func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx, net *btcnet.Params) error {
+func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) error {
 	for _, tx := range transactions {
 		msgtx, err := tx.toMsgTx()
 		if err != nil {
