@@ -302,11 +302,6 @@ type withdrawal struct {
 	newDecoratedTx func(*btcnet.Params) *decoratedTx
 }
 
-type changeOutput struct {
-	pkScript []byte
-	amount   btcutil.Amount
-}
-
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
 // withdrawal process.
 type decoratedTx struct {
@@ -326,22 +321,13 @@ type decoratedTx struct {
 	isTooBig func() bool
 
 	// changeOutput holds information about the change for this transaction.
-	changeOutput *changeOutput
+	changeOutput *btcwire.TxOut
 	net          *btcnet.Params
 }
 
 // hasChange returns true if this transaction has a change output.
 func (d *decoratedTx) hasChange() bool {
 	return d.changeOutput != nil
-}
-
-// changeIndex returns the changeIndex for this transaction if it has a change
-// output and otherwise an error is returned.
-func (d *decoratedTx) changeIndex() (uint32, error) {
-	if d.hasChange() {
-		return uint32(len(d.outputs)), nil
-	}
-	return 0, newError(ErrWithdrawalProcessing, "transaction has no change output", nil)
 }
 
 // toMsgTx generates a btcwire.MsgTx.
@@ -359,7 +345,7 @@ func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
 
 	// Add change output.
 	if d.hasChange() {
-		msgtx.AddTxOut(btcwire.NewTxOut(int64(d.changeOutput.amount), d.changeOutput.pkScript))
+		msgtx.AddTxOut(btcwire.NewTxOut(d.changeOutput.Value, d.changeOutput.PkScript))
 	}
 
 	// Add inputs.
@@ -423,10 +409,7 @@ func (d *decoratedTx) addChange(pkScript []byte) bool {
 	d.fee = d.calculateFee()
 	change := d.inputTotal - d.outputTotal - d.fee
 	if change > 0 {
-		d.changeOutput = &changeOutput{
-			pkScript: pkScript,
-			amount:   change,
-		}
+		d.changeOutput = btcwire.NewTxOut(int64(change), pkScript)
 		log.Infof("Added change output with amount %v", change)
 	}
 	return d.hasChange()
