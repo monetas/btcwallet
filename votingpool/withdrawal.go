@@ -323,41 +323,45 @@ type decoratedTx struct {
 	// purposes.
 	isTooBig func() bool
 
+	// changeOutput holds information about the change for this transaction.
 	changeOutput *changeOutput
 	net          *btcnet.Params
 }
 
+// hasChange returnes true if this transaction has a change output.
 func (d *decoratedTx) hasChange() bool {
 	return d.changeOutput != nil
 }
 
+// changeIndex returns the changeIndex for this transaction if it has a change
+// output and otherwise an error is returned.
 func (d *decoratedTx) changeIndex() (uint32, error) {
 	if d.hasChange() {
 		return uint32(len(d.outputs)), nil
 	}
-	// XXX(lars): Need a better error here
-	return 0, newError(ErrWithdrawalProcessing, "", nil)
+	return 0, newError(ErrWithdrawalProcessing, "transaction has no change output", nil)
 }
 
+// toMsgTx generates a btcwire.MsgTx.
 func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
 	msgtx := btcwire.NewMsgTx()
-	// add outputs
+	// Add outputs.
 	for _, o := range d.outputs {
 		pkScript, err := o.request.pkScript(d.net)
 		if err != nil {
 			o.status = "invalid"
-			// XXX(lars): check if this is the correct error.
+			// XXX(lars): come up with a better error.
 			return nil, newError(ErrWithdrawalProcessing, "failed to generate pkScript", err)
 		}
 		msgtx.AddTxOut(btcwire.NewTxOut(int64(o.Amount()), pkScript))
 	}
 
-	// add change output
+	// Add change output.
 	if d.hasChange() {
 		msgtx.AddTxOut(btcwire.NewTxOut(int64(d.changeOutput.amount), d.changeOutput.pkScript))
 	}
 
-	// add inputs
+	// Add inputs.
 	for _, i := range d.inputs {
 		msgtx.AddTxIn(btcwire.NewTxIn(i.OutPoint(), nil))
 	}
@@ -384,8 +388,7 @@ func (d *decoratedTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32
 }
 
 // popOutput will pop the last added output and return it as well as
-// update the outputTotal value.  The corresponding output will be
-// removed from the underlying MsgTx
+// update the outputTotal value.
 func (d *decoratedTx) popOutput() *WithdrawalOutput {
 	removed := d.outputs[len(d.outputs)-1]
 	d.outputs = d.outputs[:len(d.outputs)-1]
@@ -394,8 +397,7 @@ func (d *decoratedTx) popOutput() *WithdrawalOutput {
 }
 
 // popInput will pop the last added input and return it as well as
-// update the inputTotal value.  The corresponding input will be
-// removed from the underlying MsgTx
+// update the inputTotal value.
 func (d *decoratedTx) popInput() CreditInterface {
 	removed := d.inputs[len(d.inputs)-1]
 	d.inputs = d.inputs[:len(d.inputs)-1]
@@ -409,12 +411,13 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 	d.inputTotal += input.Amount()
 }
 
-// addChange adds a change output if there are any satoshis left after paying all the
-// outputs and network fees. It returns true if a change output was added, and in that
-// case the change output will be the last one in msgtx.TxOut.
-// This method must be called only once, and no extra inputs/outputs should be added after
-// it's called. Also, callsites must make sure adding a change output won't cause the tx
-// to exceed the size limit.
+// addChange adds a change output if there are any satoshis left after paying
+// all the outputs and network fees. It returns true if a change output was
+// added.
+//
+// This method must be called only once, and no extra inputs/outputs should be
+// added after it's called. Also, callsites must make sure adding a change
+// output won't cause the tx to exceed the size limit.
 func (d *decoratedTx) addChange(pkScript []byte) bool {
 	d.fee = d.calculateFee()
 	change := d.inputTotal - d.outputTotal - d.fee
@@ -501,10 +504,11 @@ func (vp *Pool) Withdrawal(
 	return w.status, sigs, nil
 }
 
-// storeTransactions adds the given transactions to the txStore and writes it to
-// disk. The credits used in each transaction are removed from the store's
-// unspent list, and if a transaction includes a change output, it is added to
-// the store as a credit.
+// storeTransactions generates the msgtx transaction from the given transactions
+// and adds them to the txStore and writes it to disk. The credits used in each
+// transaction are removed from the store's unspent list, and if a transaction
+// includes a change output, it is added to the store as a credit.
+//
 // TODO: Wrap the errors we catch here in a custom votingpool.Error before
 // returning.
 func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx, net *btcnet.Params) error {
@@ -621,8 +625,6 @@ func (w *withdrawal) finalizeCurrentTx() error {
 		return newError(
 			ErrWithdrawalProcessing, "failed to generate pkScript for change address", err)
 	}
-	// XXX(lars) Change this to check if there was change - then we need to get
-	// the next change address.
 	if tx.addChange(pkScript) {
 		var err error
 		w.changeStart, err = w.changeStart.Next()
