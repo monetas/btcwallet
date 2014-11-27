@@ -324,6 +324,7 @@ type decoratedTx struct {
 	isTooBig func() bool
 
 	changeOutput *changeOutput
+	net          *btcnet.Param
 }
 
 func (d *decoratedTx) hasChange() bool {
@@ -363,8 +364,8 @@ func (d *decoratedTx) toMsgTx(net *btcnet.Params) (*btcwire.MsgTx, error) {
 	return msgtx, nil
 }
 
-func newDecoratedTx() *decoratedTx {
-	tx := &decoratedTx{}
+func newDecoratedTx(net *btcnet.Params) *decoratedTx {
+	tx := &decoratedTx{net: net}
 	tx.calculateFee = func() btcutil.Amount {
 		// TODO:
 		return btcutil.Amount(1)
