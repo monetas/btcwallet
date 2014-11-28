@@ -824,22 +824,20 @@ func compareMsgTxAndDecoratedTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, tx *d
 		t.Fatalf("Unexpected number of TxOuts; got %d, want %d", len(msgtx.TxOut), nOutputs)
 	}
 
-	var outputs []*OutputRequest
-	for _, o := range tx.outputs {
-		outputs = append(outputs, o.request)
-	}
-
-	for i, output := range outputs {
+	for i, output := range tx.outputs {
+		outputRequest := output.request
 		txOut := msgtx.TxOut[i]
 		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
-		if gotAddr != output.address {
+		if gotAddr != outputRequest.address {
 			t.Fatalf(
-				"Unexpected address for output %d; got %s, want %s", i, gotAddr, output.address)
+				"Unexpected address for outputRequest %d; got %s, want %s",
+				i, gotAddr, outputRequest.address)
 		}
 		gotAmount := btcutil.Amount(txOut.Value)
-		if gotAmount != output.amount {
+		if gotAmount != outputRequest.amount {
 			t.Fatalf(
-				"Unexpected amount for output %d; got %v, want %v", i, gotAmount, output.amount)
+				"Unexpected amount for outputRequest %d; got %v, want %v",
+				i, gotAmount, outputRequest.amount)
 		}
 	}
 
