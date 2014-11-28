@@ -730,3 +730,113 @@ func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, t
 		}
 	}
 }
+
+func TestToMsgTxNoInputsOrOutputsOrChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
+	msgtx, err := tx.toMsgTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+}
+
+func TestToMsgTxNoInputsOrOutputsWithChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
+	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
+	msgtx, err := tx.toMsgTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+}
+
+func TestToMsgTxWithInputButNoOutputsOrChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{1}, []int64{})
+	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
+	msgtx, err := tx.toMsgTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+}
+
+func TestToMsgTxWithInputOutputsAndChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{1, 2, 3}, []int64{4, 5, 6})
+	tx.changeOutput = btcwire.NewTxOut(int64(7), []byte{})
+	msgtx, err := tx.toMsgTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+}
+
+func compareMsgTxAndDecoratedTxInputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx, net *btcnet.Params) {
+	if len(msgtx.TxIn) != len(tx.inputs) {
+		t.Fatal("Wrong number of inputs; got %d, want %d", len(msgtx.TxIn), len(tx.inputs))
+	}
+
+	for i, txin := range msgtx.TxIn {
+		if txin.PreviousOutPoint != *tx.inputs[i].OutPoint() {
+			t.Fatalf("Wrong output; got %v expected %v", txin.PreviousOutPoint, *tx.inputs[i].OutPoint())
+		}
+	}
+}
+
+func compareMsgTxAndDecoratedTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx, net *btcnet.Params) {
+	nOutputs := len(tx.outputs)
+
+	if tx.changeOutput != nil {
+		nOutputs++
+	}
+
+	if len(msgtx.TxOut) != nOutputs {
+		t.Fatalf("Unexpected number of TxOuts; got %d, want %d", len(msgtx.TxOut), nOutputs)
+	}
+
+	var outputs []*OutputRequest
+	for _, o := range tx.outputs {
+		outputs = append(outputs, o.request)
+	}
+
+	for i, output := range outputs {
+		txOut := msgtx.TxOut[i]
+		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
+		if gotAddr != output.address {
+			t.Fatalf(
+				"Unexpected address for output %d; got %s, want %s", i, gotAddr, output.address)
+		}
+		gotAmount := btcutil.Amount(txOut.Value)
+		if gotAmount != output.amount {
+			t.Fatalf(
+				"Unexpected amount for output %d; got %v, want %v", i, gotAmount, output.amount)
+		}
+	}
+
+	// Finally check the change output if it exists
+	if tx.changeOutput != nil {
+		msgTxChange := msgtx.TxOut[len(msgtx.TxOut)-1]
+		if msgTxChange != tx.changeOutput {
+			t.Fatalf("wrong TxOut in msgtx; got %v, want %v", msgTxChange, tx.changeOutput)
+		}
+	}
+}
