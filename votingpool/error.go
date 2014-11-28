@@ -128,9 +128,9 @@ const (
 	// ErrTxSigning indicates an error when signing a transaction.
 	ErrTxSigning
 
-	// ErrNoChangeIndex indicates that there is no change index, possibly
-	// because of a missing change output.
-	ErrNoChangeIndex
+	// ErrTxOutNotFound indicates that an transaction output was not found or is
+	// missing.
+	ErrTxOutNotFound
 
 	// lastErr is used for testing, making it possible to iterate over
 	// the error codes in order to check that they all have proper
@@ -169,7 +169,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrRawSigning:              "ErrRawSigning",
 	ErrPreconditionNotMet:      "ErrPreconditionNotMet",
 	ErrTxSigning:               "ErrTxSigning",
-	ErrNoChangeIndex:           "ErrNoChangeIndex",
+	ErrTxOutNotFound:           "ErrTxOutNotFound",
 }
 
 // String returns the ErrorCode as a human-readable name.

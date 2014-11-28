@@ -512,7 +512,7 @@ func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) erro
 			return err
 		}
 		if tx.hasChange() {
-			idx, err := changeIndex(tx, msgtx)
+			idx, err := getTxOutIndex(tx.changeOutput, msgtx)
 			if err != nil {
 				return err
 			}
@@ -528,15 +528,14 @@ func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) erro
 	return nil
 }
 
-// changeIndex returns the change output index for a msgtx generated from the
-// passed decoratedTx.
-func changeIndex(tx *decoratedTx, msgtx *btcwire.MsgTx) (uint32, error) {
+// getTxOutIndex returns the index of the TxOut in the MsgTx.
+func getTxOutIndex(txout *btcwire.TxOut, msgtx *btcwire.MsgTx) (uint32, error) {
 	for i, o := range msgtx.TxOut {
-		if o == tx.changeOutput {
+		if o == txout {
 			return uint32(i), nil
 		}
 	}
-	return 0, newError(ErrNoChangeIndex, "no changeindex found", nil)
+	return 0, newError(ErrTxOutNotFound, "", nil)
 }
 
 // If this returns it means we have added an output and the necessary inputs to fulfil that
