@@ -54,8 +54,9 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	// Create a transaction without only one change output of 3e6 satoshis.
-	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
+	// Create a transaction without one input consumed partly consumed by two
+	// outputs and the rest is in the changeoutput.
+	tx := createDecoratedTx(t, pool, store, []int64{5e6}, []int64{1e6, 1e6})
 	tx.changeOutput = btcwire.NewTxOut(int64(3e6), []byte{})
 
 	// storeTransactions() will store the tx created above, making the change
@@ -78,6 +79,16 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 		t.Fatal("The new tx doesn't seem to have been stored")
 	}
 
+	ignoreChange := true
+	gotAmount := storedTx.OutputAmount(ignoreChange)
+	if gotAmount != btcutil.Amount(2e6) {
+		t.Fatalf("Unexpected output amount; got %v, want %v", gotAmount, btcutil.Amount(2e6))
+	}
+	debits, _ := storedTx.Debits()
+	if debits.InputAmount() != btcutil.Amount(5e6) {
+		t.Fatalf("Unexpected input amount; got %v, want %v", debits.InputAmount(),
+			btcutil.Amount(5e6))
+	}
 	// There should be one unspent output (credit) in the txstore, corresponding to the
 	// change output in the tx we created above.
 	credits, err := store.UnspentOutputs()
@@ -91,7 +102,7 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	if !credit.Change() {
 		t.Fatalf("Credit doesn't come from a change output as we expected")
 	}
-	changeOut := msgtx.TxOut[0]
+	changeOut := msgtx.TxOut[2]
 	if credit.TxOut() != changeOut {
 		t.Fatalf("Credit's txOut (%v) doesn't match changeOut (%v)", credit.TxOut(), changeOut)
 	}
