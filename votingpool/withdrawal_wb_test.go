@@ -770,7 +770,7 @@ func TestToMsgTxNoInputsOrOutputsWithChange(t *testing.T) {
 	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
 }
 
-func TestToMsgTxWithInputButNoOutputsOrChange(t *testing.T) {
+func TestToMsgTxWithInputButNoOutputsWithChange(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
