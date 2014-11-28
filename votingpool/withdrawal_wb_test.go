@@ -18,7 +18,6 @@ package votingpool
 
 import (
 	"bytes"
-	"reflect"
 	"sort"
 	"testing"
 
@@ -55,18 +54,10 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	// This will create a transaction with one output spending everything except
-	// 1e6 satoshis.
-	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{3e6})
-	// Let's ignore fees.
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(0)
-	}
+	// Create a transaction without only one change output of 3e6 satoshis.
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
+	tx.changeOutput = btcwire.NewTxOut(int64(3e6), []byte{})
 
-	// addChange stores the positive difference in input and output as change.
-	if !tx.addChange([]byte{}) {
-		t.Fatal("Expected change would be added")
-	}
 	// storeTransactions() will store the tx created above, making the change
 	// available as an unspent output.
 	if err := storeTransactions(store, []*decoratedTx{tx}); err != nil {
@@ -86,16 +77,6 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	if storedTx == nil {
 		t.Fatal("The new tx doesn't seem to have been stored")
 	}
-	ignoreChange := true
-	gotAmount := storedTx.OutputAmount(ignoreChange)
-	if gotAmount != btcutil.Amount(3e6) {
-		t.Fatalf("Unexpected output amount; got %v, want %v", gotAmount, btcutil.Amount(3e6))
-	}
-	debits, _ := storedTx.Debits()
-	if debits.InputAmount() != btcutil.Amount(4e6) {
-		t.Fatalf("Unexpected input amount; got %v, want %v", debits.InputAmount(),
-			btcutil.Amount(4e6))
-	}
 
 	// There should be one unspent output (credit) in the txstore, corresponding to the
 	// change output in the tx we created above.
@@ -110,8 +91,8 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	if !credit.Change() {
 		t.Fatalf("Credit doesn't come from a change output as we expected")
 	}
-	changeOut := msgtx.TxOut[1]
-	if !reflect.DeepEqual(credit.TxOut(), changeOut) {
+	changeOut := msgtx.TxOut[0]
+	if credit.TxOut() != changeOut {
 		t.Fatalf("Credit's txOut (%v) doesn't match changeOut (%v)", credit.TxOut(), changeOut)
 	}
 }
