@@ -526,7 +526,6 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 	checkTxInputs(t, tx, initialInputs)
 }
 
-// TODO: Check that tx.outputTotal is updated
 func TestPopOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
@@ -558,7 +557,6 @@ func TestPopOutput(t *testing.T) {
 	}
 }
 
-// TODO: Check that tx.inputTotal is updated
 func TestPopInput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
@@ -681,6 +679,79 @@ func TestTriggerSecondTxTooBigAndRollback(t *testing.T) {
 	// TODO
 }
 
+func TestToMsgTxNoInputsOrOutputsOrChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
+	msgtx := tx.toMsgTx()
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
+}
+
+func TestToMsgTxNoInputsOrOutputsWithChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
+	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
+
+	msgtx := tx.toMsgTx()
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
+}
+
+func TestToMsgTxWithInputButNoOutputsWithChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{1}, []int64{})
+	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
+
+	msgtx := tx.toMsgTx()
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
+}
+
+func TestToMsgTxWithInputOutputsAndChange(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{1, 2, 3}, []int64{4, 5, 6})
+	tx.changeOutput = btcwire.NewTxOut(int64(7), []byte{})
+
+	msgtx := tx.toMsgTx()
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
+}
+
+func TestInputTotal(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{5}, []int64{})
+
+	if tx.inputTotal() != btcutil.Amount(5) {
+		t.Fatalf("Wrong total output; got %v, want %v", tx.outputTotal(), btcutil.Amount(5))
+	}
+}
+
+func TestOutputTotal(t *testing.T) {
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{4})
+	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
+
+	if tx.outputTotal() != btcutil.Amount(4) {
+		t.Fatalf("Wrong total output; got %v, want %v", tx.outputTotal(), btcutil.Amount(4))
+	}
+}
+
 // lookupStoredTx returns the TxRecord from the given store whose SHA matches the
 // given ShaHash.
 func lookupStoredTx(store *txstore.Store, sha *btcwire.ShaHash) *txstore.TxRecord {
@@ -774,56 +845,6 @@ func signTxAndValidate(t *testing.T, mgr *waddrmgr.Manager, tx *btcwire.MsgTx, t
 			t.Fatal(err)
 		}
 	}
-}
-
-func TestToMsgTxNoInputsOrOutputsOrChange(t *testing.T) {
-	tearDown, pool, store := TstCreatePoolAndTxStore(t)
-	defer tearDown()
-
-	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
-	msgtx := tx.toMsgTx()
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
-}
-
-func TestToMsgTxNoInputsOrOutputsWithChange(t *testing.T) {
-	tearDown, pool, store := TstCreatePoolAndTxStore(t)
-	defer tearDown()
-
-	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
-	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
-
-	msgtx := tx.toMsgTx()
-
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
-}
-
-func TestToMsgTxWithInputButNoOutputsWithChange(t *testing.T) {
-	tearDown, pool, store := TstCreatePoolAndTxStore(t)
-	defer tearDown()
-
-	tx := createDecoratedTx(t, pool, store, []int64{1}, []int64{})
-	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
-
-	msgtx := tx.toMsgTx()
-
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
-}
-
-func TestToMsgTxWithInputOutputsAndChange(t *testing.T) {
-	tearDown, pool, store := TstCreatePoolAndTxStore(t)
-
-	defer tearDown()
-
-	tx := createDecoratedTx(t, pool, store, []int64{1, 2, 3}, []int64{4, 5, 6})
-	tx.changeOutput = btcwire.NewTxOut(int64(7), []byte{})
-
-	msgtx := tx.toMsgTx()
-
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
 }
 
 func compareMsgTxAndDecoratedTxInputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx) {

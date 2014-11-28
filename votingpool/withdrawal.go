@@ -284,11 +284,9 @@ type withdrawal struct {
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
 // withdrawal process.
 type decoratedTx struct {
-	inputs      []CreditInterface
-	outputs     []*WithdrawalOutput
-	inputTotal  btcutil.Amount
-	outputTotal btcutil.Amount
-	fee         btcutil.Amount
+	inputs  []CreditInterface
+	outputs []*WithdrawalOutput
+	fee     btcutil.Amount
 
 	// calculateFee calculates the expected network fees for this transaction.
 	// We use a func() field instead of a method so that it can be replaced in
@@ -301,6 +299,23 @@ type decoratedTx struct {
 
 	// changeOutput holds information about the change for this transaction.
 	changeOutput *btcwire.TxOut
+}
+
+// inputTotal returns the sum amount of all inputs in this tx.
+func (d *decoratedTx) inputTotal() (total btcutil.Amount) {
+	for _, input := range d.inputs {
+		total += input.Amount()
+	}
+	return total
+}
+
+// outputTotal returns the sum amount of all outputs in this tx. It does not
+// include the amount for the change output, in case the tx has one.
+func (d *decoratedTx) outputTotal() (total btcutil.Amount) {
+	for _, output := range d.outputs {
+		total += output.Amount()
+	}
+	return total
 }
 
 // hasChange returns true if this transaction has a change output.
@@ -342,33 +357,27 @@ func newDecoratedTx() *decoratedTx {
 
 func (d *decoratedTx) addTxOut(output *WithdrawalOutput, pkScript []byte) uint32 {
 	log.Infof("Added output sending %s to %s", output.Amount(), output.Address())
-	d.outputTotal += output.Amount()
 	d.outputs = append(d.outputs, output)
 	return uint32(len(d.outputs) - 1)
 }
 
-// popOutput will pop the last added output and return it as well as
-// update the outputTotal value.
+// popOutput will pop the last added output and return it.
 func (d *decoratedTx) popOutput() *WithdrawalOutput {
 	removed := d.outputs[len(d.outputs)-1]
 	d.outputs = d.outputs[:len(d.outputs)-1]
-	d.outputTotal -= removed.Amount()
 	return removed
 }
 
-// popInput will pop the last added input and return it as well as
-// update the inputTotal value.
+// popInput will pop the last added input and return it.
 func (d *decoratedTx) popInput() CreditInterface {
 	removed := d.inputs[len(d.inputs)-1]
 	d.inputs = d.inputs[:len(d.inputs)-1]
-	d.inputTotal -= removed.Amount()
 	return removed
 }
 
 func (d *decoratedTx) addTxIn(input CreditInterface) {
 	log.Infof("Added input with amount %v", input.Amount())
 	d.inputs = append(d.inputs, input)
-	d.inputTotal += input.Amount()
 }
 
 // addChange adds a change output if there are any satoshis left after paying
@@ -380,8 +389,9 @@ func (d *decoratedTx) addTxIn(input CreditInterface) {
 // output won't cause the tx to exceed the size limit.
 func (d *decoratedTx) addChange(pkScript []byte) bool {
 	d.fee = d.calculateFee()
-	change := d.inputTotal - d.outputTotal - d.fee
-	log.Debugf("addChange: input total %d, output total %d, fee %d", d.inputTotal, d.outputTotal, d.fee)
+	change := d.inputTotal() - d.outputTotal() - d.fee
+	log.Debugf("addChange: input total %d, output total %d, fee %d", d.inputTotal(),
+		d.outputTotal(), d.fee)
 	if change > 0 {
 		d.changeOutput = btcwire.NewTxOut(int64(change), pkScript)
 		log.Infof("Added change output with amount %v", change)
@@ -406,7 +416,7 @@ func (d *decoratedTx) rollBackLastOutput() ([]CreditInterface, *WithdrawalOutput
 
 	var removedInputs []CreditInterface
 	// Continue until sum(in) < sum(out) + fee
-	for d.inputTotal >= d.outputTotal+d.calculateFee() {
+	for d.inputTotal() >= d.outputTotal()+d.calculateFee() {
 		removed := d.popInput()
 		removedInputs = append(removedInputs, removed)
 	}
@@ -528,7 +538,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 	}
 
 	fee := w.current.calculateFee()
-	for w.current.inputTotal < w.current.outputTotal+fee {
+	for w.current.inputTotal() < w.current.outputTotal()+fee {
 		if len(w.eligibleInputs) == 0 {
 			// TODO: Implement Split Output procedure
 			panic("Split Output not yet implemented")
