@@ -536,7 +536,7 @@ func changeIndex(tx *decoratedTx, msgtx *btcwire.MsgTx) (uint32, error) {
 			return uint32(i), nil
 		}
 	}
-	return 0, newError(ErrInvalidValue, "no changeindex found", nil)
+	return 0, newError(ErrNoChangeIndex, "no changeindex found", nil)
 }
 
 // If this returns it means we have added an output and the necessary inputs to fulfil that
