@@ -22,7 +22,6 @@ import (
 	"sort"
 
 	"github.com/conformal/btclog"
-	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
@@ -180,8 +179,9 @@ func (u byAmount) Swap(i, j int)      { u[i], u[j] = u[j], u[i] }
 // OutputRequest represents one of the outputs (address/amount) requested by a
 // withdrawal, and includes information about the user's outbailment request.
 type OutputRequest struct {
-	address string
-	amount  btcutil.Amount
+	address  btcutil.Address
+	amount   btcutil.Amount
+	pkScript []byte
 
 	// The notary server that received the outbailment request.
 	server string
@@ -214,26 +214,6 @@ func (o *OutputRequest) outBailmentIDHash() []byte {
 	return id
 }
 
-func (o *OutputRequest) pkScript(net *btcnet.Params) ([]byte, error) {
-	address, err := btcutil.DecodeAddress(o.address, net)
-	if err != nil {
-		// TODO: make this return a votingpool.Error error instead of passing a
-		// btcutil error.
-		return nil, err
-	}
-	return btcscript.PayToAddrScript(address)
-}
-
-func NewOutputRequest(
-	server string, transaction uint32, address string, amount btcutil.Amount) *OutputRequest {
-	return &OutputRequest{
-		address:     address,
-		amount:      amount,
-		server:      server,
-		transaction: transaction,
-	}
-}
-
 // WithdrawalOutput represents a possibly fulfilled OutputRequest.
 type WithdrawalOutput struct {
 	request *OutputRequest
@@ -260,7 +240,7 @@ func (o *WithdrawalOutput) Amount() btcutil.Amount {
 }
 
 func (o *WithdrawalOutput) Address() string {
-	return o.request.address
+	return o.request.address.String()
 }
 
 func (o *WithdrawalOutput) Outpoints() []OutBailmentOutpoint {
@@ -291,7 +271,6 @@ type RawSig []byte
 type withdrawal struct {
 	roundID        uint32
 	status         *WithdrawalStatus
-	net            *btcnet.Params
 	changeStart    *ChangeAddress
 	transactions   []*decoratedTx
 	pendingOutputs []*OutputRequest
@@ -299,7 +278,7 @@ type withdrawal struct {
 	current        *decoratedTx
 	// newDecoratedTx is a member of the structure so it can be replaced for
 	// testing purposes.
-	newDecoratedTx func(*btcnet.Params) *decoratedTx
+	newDecoratedTx func() *decoratedTx
 }
 
 // A btcwire.MsgTx decorated with some supporting data structures needed throughout the
@@ -322,7 +301,6 @@ type decoratedTx struct {
 
 	// changeOutput holds information about the change for this transaction.
 	changeOutput *btcwire.TxOut
-	net          *btcnet.Params
 }
 
 // hasChange returns true if this transaction has a change output.
@@ -331,16 +309,11 @@ func (d *decoratedTx) hasChange() bool {
 }
 
 // toMsgTx generates a btcwire.MsgTx.
-func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
+func (d *decoratedTx) toMsgTx() *btcwire.MsgTx {
 	msgtx := btcwire.NewMsgTx()
 	// Add outputs.
 	for _, o := range d.outputs {
-		pkScript, err := o.request.pkScript(d.net)
-		if err != nil {
-			o.status = "invalid"
-			return nil, err
-		}
-		msgtx.AddTxOut(btcwire.NewTxOut(int64(o.Amount()), pkScript))
+		msgtx.AddTxOut(btcwire.NewTxOut(int64(o.Amount()), o.request.pkScript))
 	}
 
 	// Add change output.
@@ -352,11 +325,11 @@ func (d *decoratedTx) toMsgTx() (*btcwire.MsgTx, error) {
 	for _, i := range d.inputs {
 		msgtx.AddTxIn(btcwire.NewTxIn(i.OutPoint(), nil))
 	}
-	return msgtx, nil
+	return msgtx
 }
 
-func newDecoratedTx(net *btcnet.Params) *decoratedTx {
-	tx := &decoratedTx{net: net}
+func newDecoratedTx() *decoratedTx {
+	tx := &decoratedTx{}
 	tx.calculateFee = func() btcutil.Amount {
 		// TODO:
 		return btcutil.Amount(1)
@@ -450,15 +423,14 @@ func isTooBig(d *decoratedTx) bool {
 }
 
 func newWithdrawal(roundID uint32, outputs []*OutputRequest, inputs []CreditInterface,
-	changeStart *ChangeAddress, net *btcnet.Params) *withdrawal {
+	changeStart *ChangeAddress) *withdrawal {
 	return &withdrawal{
 		roundID:        roundID,
-		current:        newDecoratedTx(net),
+		current:        newDecoratedTx(),
 		pendingOutputs: outputs,
 		eligibleInputs: inputs,
 		status:         &WithdrawalStatus{},
 		changeStart:    changeStart,
-		net:            net,
 		newDecoratedTx: newDecoratedTx,
 	}
 }
@@ -472,7 +444,7 @@ func (vp *Pool) Withdrawal(
 	changeStart *ChangeAddress,
 	txStore *txstore.Store,
 ) (*WithdrawalStatus, map[string]TxSigs, error) {
-	w := newWithdrawal(roundID, outputs, inputs, changeStart, vp.manager.Net())
+	w := newWithdrawal(roundID, outputs, inputs, changeStart)
 	if err := w.fulfilOutputs(); err != nil {
 		return nil, nil, err
 	}
@@ -497,10 +469,7 @@ func (vp *Pool) Withdrawal(
 // returning.
 func storeTransactions(txStore *txstore.Store, transactions []*decoratedTx) error {
 	for _, tx := range transactions {
-		msgtx, err := tx.toMsgTx()
-		if err != nil {
-			return err
-		}
+		msgtx := tx.toMsgTx()
 		// XXX(lars): replaced tx.msgtx with tx.toMsgTx here.  not sure if
 		// that's the right thing to do performancewise. We could store the
 		// generated msgtxs somewhere.
@@ -549,12 +518,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 	// Add output to w.status in case we exit early due to on an invalid request.
 	w.status.outputs = append(w.status.outputs, output)
 
-	pkScript, err := request.pkScript(w.net)
-	if err != nil {
-		output.status = "invalid"
-		return nil
-	}
-	outputIndex := w.current.addTxOut(output, pkScript)
+	outputIndex := w.current.addTxOut(output, request.pkScript)
 
 	if w.current.isTooBig() {
 		if err := w.handleOversizeTx(); err != nil {
@@ -631,7 +595,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
 
-	w.current = w.newDecoratedTx(w.net)
+	w.current = w.newDecoratedTx()
 	return nil
 }
 
@@ -714,10 +678,7 @@ func getRawSigs(transactions []*decoratedTx) (map[string]TxSigs, error) {
 		// XXX(lars): replaced an msgtx instance with toMsgTx() which is hardly
 		// good for performance. This should be replaced with something else at
 		// some point.
-		msgtx, err := tx.toMsgTx()
-		if err != nil {
-			return nil, newError(ErrRawSigning, "failed to generate msgtx", err)
-		}
+		msgtx := tx.toMsgTx()
 		ntxid := Ntxid(msgtx)
 		for inputIdx, input := range tx.inputs {
 			creditAddr := input.Address()

@@ -66,10 +66,7 @@ func TestStoreTransactionsWithChangeOutput(t *testing.T) {
 	}
 
 	// Check that the tx was stored in the txstore.
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	sha, err := msgtx.TxSha()
 	if err != nil {
 		t.Fatal(err)
@@ -118,10 +115,7 @@ func TestGetRawSigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	txSigs := sigs[Ntxid(msgtx)]
 	if len(txSigs) != len(tx.inputs) {
 		t.Fatalf("Unexpected number of sig lists; got %d, want %d", len(txSigs), len(tx.inputs))
@@ -151,10 +145,7 @@ func TestGetRawSigsOnlyOnePrivKeyAvailable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	txSigs := sigs[Ntxid(msgtx)]
 	if len(txSigs) != len(tx.inputs) {
 		t.Fatalf("Unexpected number of sig lists; got %d, want %d", len(txSigs), len(tx.inputs))
@@ -196,19 +187,20 @@ func TestGetRawSigsInvalidAddrBranch(t *testing.T) {
 func TestWithdrawalTxOutputs(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
+	net := pool.Manager().Net()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	seriesID, eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
 	outputs := []*OutputRequest{
-		NewOutputRequest("foo", 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6)),
-		NewOutputRequest("foo", 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6)),
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6), net),
+		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6), net),
 	}
 	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	w := newWithdrawal(0, outputs, eligible, changeStart, pool.Manager().Net())
+	w := newWithdrawal(0, outputs, eligible, changeStart)
 	if err := w.fulfilOutputs(); err != nil {
 		t.Fatal(err)
 	}
@@ -223,12 +215,9 @@ func TestWithdrawalTxOutputs(t *testing.T) {
 	inputAmount := eligible[0].Amount() + eligible[1].Amount()
 	change := inputAmount - (outputs[0].amount + outputs[1].amount + tx.calculateFee())
 	expectedOutputs := append(
-		outputs, NewOutputRequest("foo", 3, changeStart.Addr().String(), change))
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkMsgTxOutputs(t, msgtx, expectedOutputs, pool.Manager().Net())
+		outputs, TstNewOutputRequest(t, 3, changeStart.Addr().String(), change, net))
+	msgtx := tx.toMsgTx()
+	checkMsgTxOutputs(t, msgtx, expectedOutputs)
 }
 
 // Check that withdrawal.status correctly states that no outputs were fulfilled when we
@@ -239,13 +228,14 @@ func TestFulfilOutputsNoSatisfiableOutputs(t *testing.T) {
 
 	seriesID, eligible := TstCreateCredits(t, pool, []int64{1e6}, store)
 	outputs := []*OutputRequest{
-		NewOutputRequest("foo", 1, "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe", btcutil.Amount(3e6))}
+		TstNewOutputRequest(t, 1, "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe", btcutil.Amount(3e6),
+			pool.Manager().Net())}
 	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	w := newWithdrawal(0, outputs, eligible, changeStart, pool.Manager().Net())
+	w := newWithdrawal(0, outputs, eligible, changeStart)
 	if err := w.fulfilOutputs(); err != nil {
 		t.Fatal(err)
 	}
@@ -270,19 +260,23 @@ func TestFulfilOutputsNoSatisfiableOutputs(t *testing.T) {
 func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
+	net := pool.Manager().Net()
 
 	// Create eligible inputs and the list of outputs we need to fulfil.
 	seriesID, eligible := TstCreateCredits(t, pool, []int64{2e6, 4e6}, store)
-	out1 := NewOutputRequest("foo", 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6))
-	out2 := NewOutputRequest("foo", 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6))
-	out3 := NewOutputRequest("foo", 3, "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe", btcutil.Amount(5e6))
+	out1 := TstNewOutputRequest(
+		t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3e6), net)
+	out2 := TstNewOutputRequest(
+		t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2e6), net)
+	out3 := TstNewOutputRequest(
+		t, 3, "3Qt1EaKRD9g9FeL2DGkLLswhK1AKmmXFSe", btcutil.Amount(5e6), net)
 	outputs := []*OutputRequest{out1, out2, out3}
 	changeStart, err := pool.ChangeAddress(seriesID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	w := newWithdrawal(0, outputs, eligible, changeStart, pool.Manager().Net())
+	w := newWithdrawal(0, outputs, eligible, changeStart)
 	if err := w.fulfilOutputs(); err != nil {
 		t.Fatal(err)
 	}
@@ -297,12 +291,9 @@ func TestFulfilOutputsNotEnoughCreditsForAllRequests(t *testing.T) {
 	expectedOutputs := []*OutputRequest{out1, out2}
 	sort.Sort(byOutBailmentID(expectedOutputs))
 	expectedOutputs = append(
-		expectedOutputs, NewOutputRequest("foo", 4, changeStart.Addr().String(), change))
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkMsgTxOutputs(t, msgtx, expectedOutputs, pool.Manager().Net())
+		expectedOutputs, TstNewOutputRequest(t, 4, changeStart.Addr().String(), change, net))
+	msgtx := tx.toMsgTx()
+	checkMsgTxOutputs(t, msgtx, expectedOutputs)
 
 	// withdrawal.status should state that outputs 1 and 2 were successfully fulfilled,
 	// and that output 3 was not.
@@ -330,10 +321,7 @@ func TestAddChange(t *testing.T) {
 		t.Fatal("tx.addChange() returned false, meaning it did not add a change output")
 	}
 
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	if len(msgtx.TxOut) != 2 {
 		t.Fatalf("Unexpected number of txouts; got %d, want 2", len(msgtx.TxOut))
 	}
@@ -359,10 +347,7 @@ func TestAddChangeNoChange(t *testing.T) {
 	if tx.addChange([]byte{}) {
 		t.Fatal("tx.addChange() returned true, meaning it added a change output")
 	}
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	if len(msgtx.TxOut) != 1 {
 		t.Fatalf("Unexpected number of txouts; got %d, want 1", len(msgtx.TxOut))
 	}
@@ -380,10 +365,7 @@ func TestSignMultiSigUTXO(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	txSigs := sigs[Ntxid(msgtx)]
 	TstUnlockManager(t, mgr)
 
@@ -400,13 +382,10 @@ func TestSignMultiSigUTXOUnparseablePkScript(t *testing.T) {
 
 	mgr := pool.Manager()
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 
 	unparseablePkScript := []byte{0x01}
-	err = signMultiSigUTXO(mgr, msgtx, 0, unparseablePkScript, []RawSig{RawSig{}})
+	err := signMultiSigUTXO(mgr, msgtx, 0, unparseablePkScript, []RawSig{RawSig{}})
 
 	TstCheckError(t, "", err, ErrTxSigning)
 }
@@ -419,12 +398,9 @@ func TestSignMultiSigUTXOPkScriptNotP2SH(t *testing.T) {
 	tx := createDecoratedTx(t, pool, store, []int64{4e6}, []int64{})
 	addr, _ := btcutil.DecodeAddress("1MirQ9bwyQcGVJPwKUgapu5ouK2E2Ey4gX", mgr.Net())
 	pubKeyHashPkScript, _ := btcscript.PayToAddrScript(addr.(*btcutil.AddressPubKeyHash))
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 
-	err = signMultiSigUTXO(mgr, msgtx, 0, pubKeyHashPkScript, []RawSig{RawSig{}})
+	err := signMultiSigUTXO(mgr, msgtx, 0, pubKeyHashPkScript, []RawSig{RawSig{}})
 
 	TstCheckError(t, "", err, ErrTxSigning)
 }
@@ -441,13 +417,10 @@ func TestSignMultiSigUTXORedeemScriptNotFound(t *testing.T) {
 	if _, err := mgr.Address(addr); err == nil {
 		t.Fatalf("Address %s found in manager when it shouldn't", addr)
 	}
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 
 	pkScript, _ := btcscript.PayToAddrScript(addr.(*btcutil.AddressScriptHash))
-	err = signMultiSigUTXO(mgr, msgtx, 0, pkScript, []RawSig{RawSig{}})
+	err := signMultiSigUTXO(mgr, msgtx, 0, pkScript, []RawSig{RawSig{}})
 
 	TstCheckError(t, "", err, ErrTxSigning)
 }
@@ -462,10 +435,7 @@ func TestSignMultiSigUTXONotEnoughSigs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
+	msgtx := tx.toMsgTx()
 	txSigs := sigs[Ntxid(msgtx)]
 	TstUnlockManager(t, mgr)
 
@@ -517,7 +487,7 @@ func TestRollbackLastOutput(t *testing.T) {
 
 	// Now check that the inputs and outputs left in the tx match what we
 	// expect.
-	checkTxOutputs(t, tx, initialOutputs[:len(initialOutputs)-1], pool.Manager().Net())
+	checkTxOutputs(t, tx, initialOutputs[:len(initialOutputs)-1])
 	checkTxInputs(t, tx, initialInputs[:len(initialInputs)-1])
 }
 
@@ -551,7 +521,7 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 
 	// Now check that the inputs and outputs left in the tx match what we
 	// expect.
-	checkTxOutputs(t, tx, initialOutputs[:len(initialOutputs)-1], pool.Manager().Net())
+	checkTxOutputs(t, tx, initialOutputs[:len(initialOutputs)-1])
 	checkTxInputs(t, tx, initialInputs)
 }
 
@@ -559,13 +529,12 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 func TestPopOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
-	net := pool.Manager().Net()
 
 	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{1, 2})
 	outputs := tx.outputs
 	// Make sure we have created the transaction with the expected
 	// outputs.
-	checkTxOutputs(t, tx, outputs, net)
+	checkTxOutputs(t, tx, outputs)
 
 	remainingWithdrawalOutput := tx.outputs[0]
 	wantPoppedWithdrawalOutput := tx.outputs[1]
@@ -579,7 +548,7 @@ func TestPopOutput(t *testing.T) {
 			gotPoppedWithdrawalOutput, wantPoppedWithdrawalOutput)
 	}
 	// And that the remaining output is correct.
-	checkTxOutputs(t, tx, []*WithdrawalOutput{remainingWithdrawalOutput}, net)
+	checkTxOutputs(t, tx, []*WithdrawalOutput{remainingWithdrawalOutput})
 
 	// Make sure that the remaining output is really the right one.
 	if tx.outputs[0] != remainingWithdrawalOutput {
@@ -621,11 +590,12 @@ func TestPopInput(t *testing.T) {
 // rollBackLastOutput returns an error if there are less than two
 // outputs in the transaction.
 func TestRollBackLastOutputInsufficientOutputs(t *testing.T) {
-	tx := newDecoratedTx(&btcnet.MainNetParams)
+	tx := newDecoratedTx()
 	_, _, err := tx.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 
-	output := &WithdrawalOutput{request: &OutputRequest{amount: btcutil.Amount(3)}}
+	output := &WithdrawalOutput{request: TstNewOutputRequest(
+		t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(3), &btcnet.MainNetParams)}
 	tx.addTxOut(output, []byte{})
 	_, _, err = tx.rollBackLastOutput()
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
@@ -664,20 +634,8 @@ func checkNonEmptySigsForPrivKeys(t *testing.T, txSigs TxSigs, privKeys []*hdkey
 	}
 }
 
-// pkScriptAddr parses the given pkScript and returns the address associated with it.
-func pkScriptAddr(t *testing.T, pkScript []byte, net *btcnet.Params) string {
-	_, addresses, _, err := btcscript.ExtractPkScriptAddrs(pkScript, net)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(addresses) != 1 {
-		t.Fatalf("Unexpected number of addresses in pkScript; got %d, want 1", len(addresses))
-	}
-	return addresses[0].String()
-}
-
 // checkTxOutputs ensures that the tx.outputs match the given outputs.
-func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, net *btcnet.Params) {
+func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput) {
 	nOutputs := len(outputs)
 	if len(tx.outputs) != nOutputs {
 		t.Fatalf("Wrong number of outputs in tx; got %d, want %d", len(tx.outputs), nOutputs)
@@ -687,26 +645,22 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput, 
 			t.Fatalf("Unexpected output; got %v, want %v", output, outputs[i])
 		}
 	}
-	outputRequests := make([]*OutputRequest, nOutputs)
-	for i, output := range outputs {
-		outputRequests[i] = output.request
-	}
 }
 
-// checkMsgTxOutputs checks that the address and amount of every output in the
-// given msgtx match the address and amount of every item in the slice of
+// checkMsgTxOutputs checks that the pkScript and amount of every output in the
+// given msgtx match the pkScript and amount of every item in the slice of
 // OutputRequests.
-func checkMsgTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, outputs []*OutputRequest, net *btcnet.Params) {
+func checkMsgTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, outputs []*OutputRequest) {
 	nOutputs := len(outputs)
 	if len(msgtx.TxOut) != nOutputs {
 		t.Fatalf("Unexpected number of TxOuts; got %d, want %d", len(msgtx.TxOut), nOutputs)
 	}
 	for i, output := range outputs {
 		txOut := msgtx.TxOut[i]
-		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
-		if gotAddr != output.address {
+		if !bytes.Equal(txOut.PkScript, output.pkScript) {
 			t.Fatalf(
-				"Unexpected address for output %d; got %s, want %s", i, gotAddr, output.address)
+				"Unexpected pkScript for output %d; got %v, want %v", i, txOut.PkScript,
+				output.pkScript)
 		}
 		gotAmount := btcutil.Amount(txOut.Value)
 		if gotAmount != output.amount {
@@ -747,12 +701,9 @@ func TestToMsgTxNoInputsOrOutputsOrChange(t *testing.T) {
 	defer tearDown()
 
 	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+	msgtx := tx.toMsgTx()
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
 }
 
 func TestToMsgTxNoInputsOrOutputsWithChange(t *testing.T) {
@@ -761,13 +712,11 @@ func TestToMsgTxNoInputsOrOutputsWithChange(t *testing.T) {
 
 	tx := createDecoratedTx(t, pool, store, []int64{}, []int64{})
 	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+	msgtx := tx.toMsgTx()
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
 }
 
 func TestToMsgTxWithInputButNoOutputsWithChange(t *testing.T) {
@@ -776,13 +725,11 @@ func TestToMsgTxWithInputButNoOutputsWithChange(t *testing.T) {
 
 	tx := createDecoratedTx(t, pool, store, []int64{1}, []int64{})
 	tx.changeOutput = btcwire.NewTxOut(int64(1), []byte{})
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+	msgtx := tx.toMsgTx()
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
 }
 
 func TestToMsgTxWithInputOutputsAndChange(t *testing.T) {
@@ -792,16 +739,14 @@ func TestToMsgTxWithInputOutputsAndChange(t *testing.T) {
 
 	tx := createDecoratedTx(t, pool, store, []int64{1, 2, 3}, []int64{4, 5, 6})
 	tx.changeOutput = btcwire.NewTxOut(int64(7), []byte{})
-	msgtx, err := tx.toMsgTx()
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx, pool.Manager().Net())
-	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx, pool.Manager().Net())
+	msgtx := tx.toMsgTx()
+
+	compareMsgTxAndDecoratedTxOutputs(t, msgtx, tx)
+	compareMsgTxAndDecoratedTxInputs(t, msgtx, tx)
 }
 
-func compareMsgTxAndDecoratedTxInputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx, net *btcnet.Params) {
+func compareMsgTxAndDecoratedTxInputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx) {
 	if len(msgtx.TxIn) != len(tx.inputs) {
 		t.Fatal("Wrong number of inputs; got %d, want %d", len(msgtx.TxIn), len(tx.inputs))
 	}
@@ -813,7 +758,7 @@ func compareMsgTxAndDecoratedTxInputs(t *testing.T, msgtx *btcwire.MsgTx, tx *de
 	}
 }
 
-func compareMsgTxAndDecoratedTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx, net *btcnet.Params) {
+func compareMsgTxAndDecoratedTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, tx *decoratedTx) {
 	nOutputs := len(tx.outputs)
 
 	if tx.changeOutput != nil {
@@ -827,11 +772,10 @@ func compareMsgTxAndDecoratedTxOutputs(t *testing.T, msgtx *btcwire.MsgTx, tx *d
 	for i, output := range tx.outputs {
 		outputRequest := output.request
 		txOut := msgtx.TxOut[i]
-		gotAddr := pkScriptAddr(t, txOut.PkScript, net)
-		if gotAddr != outputRequest.address {
+		if !bytes.Equal(txOut.PkScript, outputRequest.pkScript) {
 			t.Fatalf(
-				"Unexpected address for outputRequest %d; got %s, want %s",
-				i, gotAddr, outputRequest.address)
+				"Unexpected pkScript for outputRequest %d; got %x, want %x",
+				i, txOut.PkScript, outputRequest.pkScript)
 		}
 		gotAmount := btcutil.Amount(txOut.Value)
 		if gotAmount != outputRequest.amount {

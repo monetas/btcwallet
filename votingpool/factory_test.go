@@ -51,17 +51,16 @@ func getUniqueID() uint32 {
 // createDecoratedTx creates a decoratedTx with the given input and output amounts.
 func createDecoratedTx(t *testing.T, pool *Pool, store *txstore.Store, inputAmounts []int64,
 	outputAmounts []int64) *decoratedTx {
-	tx := newDecoratedTx(pool.Manager().Net())
+	net := pool.Manager().Net()
+	tx := newDecoratedTx()
 	_, credits := TstCreateCredits(t, pool, inputAmounts, store)
 	for _, c := range credits {
 		tx.addTxIn(c)
 	}
-	net := pool.Manager().Net()
 	for i, amount := range outputAmounts {
-		request := NewOutputRequest(
-			"server", uint32(i), "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(amount))
-		pkScript, _ := request.pkScript(net)
-		tx.addTxOut(&WithdrawalOutput{request: request}, pkScript)
+		request := TstNewOutputRequest(
+			t, uint32(i), "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(amount), net)
+		tx.addTxOut(&WithdrawalOutput{request: request}, request.pkScript)
 	}
 	return tx
 }
@@ -322,4 +321,23 @@ func TstCreatePool(t *testing.T) (tearDownFunc func(), mgr *waddrmgr.Manager, po
 		os.RemoveAll(dir)
 	}
 	return tearDownFunc, mgr, pool
+}
+
+func TstNewOutputRequest(t *testing.T, transaction uint32, address string, amount btcutil.Amount,
+	net *btcnet.Params) *OutputRequest {
+	addr, err := btcutil.DecodeAddress(address, net)
+	if err != nil {
+		t.Fatalf("Unable to decode address %s", address)
+	}
+	pkScript, err := btcscript.PayToAddrScript(addr)
+	if err != nil {
+		t.Fatalf("Unable to generate pkScript for %v", addr)
+	}
+	return &OutputRequest{
+		pkScript:    pkScript,
+		address:     addr,
+		amount:      amount,
+		server:      "server",
+		transaction: transaction,
+	}
 }

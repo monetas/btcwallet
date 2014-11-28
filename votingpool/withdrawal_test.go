@@ -32,6 +32,7 @@ import (
 func TestWithdrawal(t *testing.T) {
 	tearDown, pool, store := vp.TstCreatePoolAndTxStore(t)
 	defer tearDown()
+	mgr := pool.Manager()
 
 	masters := []*hdkeychain.ExtendedKey{
 		vp.TstCreateMasterKey(t, bytes.Repeat([]byte{0x00, 0x01}, 16)),
@@ -44,8 +45,8 @@ func TestWithdrawal(t *testing.T) {
 	address1 := "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6"
 	address2 := "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG"
 	outputs := []*vp.OutputRequest{
-		vp.NewOutputRequest("foo", 1, address1, btcutil.Amount(4e6)),
-		vp.NewOutputRequest("foo", 2, address2, btcutil.Amount(1e6)),
+		vp.TstNewOutputRequest(t, 1, address1, btcutil.Amount(4e6), mgr.Net()),
+		vp.TstNewOutputRequest(t, 2, address2, btcutil.Amount(1e6), mgr.Net()),
 	}
 	changeStart, err := pool.ChangeAddress(def.SeriesID, 0)
 	if err != nil {
@@ -64,13 +65,12 @@ func TestWithdrawal(t *testing.T) {
 	// XXX: The ntxid is deterministic so we hardcode it here, but if the test is changed
 	// in a way that causes the generated transactions to change (e.g. different
 	// inputs/outputs), the ntxid will change too.
-	ntxid := "dce3f6bca2288fc5f797c5b40b19cc57a064201f4074e424954a84648caf0ef0"
+	ntxid := "9d306fd97c8cdb371db0e441b023ede36c2e50e203e0ff6577a4d951269e3915"
 	txSigs := sigs[ntxid]
 
 	// Finally we use SignTx() to construct the SignatureScripts (using the raw
 	// signatures).  Must unlock the manager first as signing involves looking
 	// up the redeem script, which is stored encrypted.
-	mgr := pool.Manager()
 	vp.TstUnlockManager(t, mgr)
 	sha, _ := btcwire.NewShaHashFromStr(ntxid)
 	tx := store.UnminedTx(sha).MsgTx()
