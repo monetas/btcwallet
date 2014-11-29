@@ -42,6 +42,10 @@ func (b *TstBucket) CreateBucket(key []byte) (walletdb.Bucket, error) {
 	if b.ErrorAfter != -1 && b.ErrorAfter <= b.count {
 		return nil, TestError
 	}
+	bucket, ok := b.buckets[string(key)]
+	if ok {
+		return bucket, nil
+	}
 	b.count++
 	newBucket := TstBucket{
 		lookup:     make(map[string]string, 10),

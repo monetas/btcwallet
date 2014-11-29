@@ -191,9 +191,6 @@ func initialize(tx walletdb.Tx, seed []byte) error {
 			return errors.New("failed to generate seed")
 		}
 	}
-	if len(seed) != 32 {
-		return errors.New("Need a 32 byte seed")
-	}
 	// get the hd root
 	priv, err := hdkeychain.NewMaster(seed)
 	if err != nil {
@@ -277,13 +274,23 @@ func storeScriptIndex(tx walletdb.Tx, acct, index uint32, addr btcutil.Address) 
 	return b.Put(pkScript, val)
 
 }
-func storeOutPoint(tx walletdb.Tx, cop *ColorOutPoint) error {
-	b := tx.RootBucket().Bucket(colorOutPointBucketName)
+func storeColorOutPoint(tx walletdb.Tx, cop *ColorOutPoint) error {
 	s, err := serializeColorOutPoint(cop)
 	if err != nil {
 		return err
 	}
-	return b.Put(cop.Id, s)
+	b := tx.RootBucket().Bucket(colorOutPointBucketName)
+	err = b.Put(cop.Id, s)
+	if err != nil {
+		return err
+	}
+	b = tx.RootBucket().Bucket(outPointIndexBucketName)
+	outPoint, err := cop.OutPoint()
+	if err != nil {
+		return err
+	}
+	serializedOutPoint := serializeOutPoint(outPoint)
+	return b.Put(serializedOutPoint, cop.Id)
 }
 
 func allColorOutPoints(tx walletdb.Tx) ([]*ColorOutPoint, error) {
@@ -291,15 +298,15 @@ func allColorOutPoints(tx walletdb.Tx) ([]*ColorOutPoint, error) {
 	limit := deserializeUint32(currentOutPointId)
 	outPoints := make([]*ColorOutPoint, limit-1)
 	b := tx.RootBucket().Bucket(colorOutPointBucketName)
-	for i := 0; i < int(limit-1); i++ {
-		key := serializeUint32(uint32(i + 1))
+	for i := uint32(1); i < limit; i++ {
+		key := serializeUint32(i)
 		raw := b.Get(key)
 		if len(raw) == 0 {
-			str := fmt.Sprintf("there should be %v color out points, but none at index %v", limit-1, i+1)
+			str := fmt.Sprintf("there should be %v color out points, but none at index %v", limit-1, i)
 			return nil, errors.New(str)
 		}
 		var err error
-		outPoints[i], err = deserializeColorOutPoint(raw)
+		outPoints[i-1], err = deserializeColorOutPoint(raw)
 		if err != nil {
 			return nil, err
 		}

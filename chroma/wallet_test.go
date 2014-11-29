@@ -327,12 +327,13 @@ func TestIssueColor(t *testing.T) {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
 	defer w.Close()
+	txHash2 := make([]byte, 32)
 	blockReaderWriter := &TstBlockReaderWriter{
 		block:       [][]byte{rawBlock},
 		txBlockHash: [][]byte{blockHash},
 		rawTx:       [][]byte{specialTx, specialTx, specialTx, specialTx, specialTx, specialTx, specialTx},
 		txOutSpents: []bool{false, false, false},
-		sendHash:    [][]byte{txHash},
+		sendHash:    [][]byte{txHash2},
 	}
 	b := &gochroma.BlockExplorer{blockReaderWriter}
 	shaHash, err := gochroma.NewShaHash(txHash)
@@ -359,7 +360,7 @@ func TestIssueColor(t *testing.T) {
 
 	// validate
 	gotStr := cd.HashString()
-	wantStr := fmt.Sprintf("%v:%x:0", kernelCode, txHash)
+	wantStr := fmt.Sprintf("%v:%x:0", kernelCode, txHash2)
 	if gotStr != wantStr {
 		t.Fatalf("color definition different than expected: want %v, got %v",
 			wantStr, gotStr)
@@ -517,12 +518,17 @@ func TestSend(t *testing.T) {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
 	defer w.Close()
+	txHash2 := make([]byte, 32)
+	txHash3 := make([]byte, 32)
+	txHash4 := make([]byte, 32)
+	txHash3[0] = 1
+	txHash4[0] = 2
 	blockReaderWriter := &TstBlockReaderWriter{
 		txBlockHash: [][]byte{blockHash},
 		block:       [][]byte{rawBlock},
 		rawTx:       [][]byte{specialTx, specialTx, specialTx, niceTx, niceTx, niceTx, niceTx, niceTx, niceTx, niceTx, niceTx, niceTx, niceTx},
 		txOutSpents: []bool{false, false, false, false, false, false, false, false},
-		sendHash:    [][]byte{txHash, txHash},
+		sendHash:    [][]byte{txHash2, txHash3},
 	}
 	b := &gochroma.BlockExplorer{blockReaderWriter}
 	shaHash, err := gochroma.NewShaHash(txHash)
@@ -534,7 +540,7 @@ func TestSend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shaHash, err = gochroma.NewShaHash(txHash)
+	shaHash, err = gochroma.NewShaHash(txHash4)
 	if err != nil {
 		t.Fatalf("failed to convert hash %v: %v", txHash, err)
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 var uncoloredCOP = &chroma.ColorOutPoint{
-	Id:            chroma.OutPointId([]byte{1}),
+	Id:            chroma.SerializeUint32(1),
 	Tx:            []byte("fake transactionfake transaction"),
 	Index:         uint32(0),
 	Value:         uint64(10000),
@@ -22,7 +22,7 @@ var uncoloredCOP = &chroma.ColorOutPoint{
 }
 
 var coloredCOP = &chroma.ColorOutPoint{
-	Id:            chroma.OutPointId([]byte{1}),
+	Id:            chroma.SerializeUint32(1),
 	Tx:            []byte("blahblahblahblahblahblahblahblah"),
 	Index:         uint32(0),
 	Value:         uint64(100000),
@@ -35,7 +35,7 @@ var coloredCOP = &chroma.ColorOutPoint{
 }
 
 var errorCOP = &chroma.ColorOutPoint{
-	Id:            chroma.OutPointId([]byte{1}),
+	Id:            chroma.SerializeUint32(1),
 	Tx:            []byte(""),
 	Index:         uint32(0),
 	Value:         uint64(100000),

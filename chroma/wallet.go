@@ -163,7 +163,7 @@ func (w *Wallet) NewUncoloredOutPoint(b *gochroma.BlockExplorer, outPoint *btcwi
 
 	// store outpoint in DB
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
-		return storeOutPoint(tx, colorOutPoint)
+		return storeColorOutPoint(tx, colorOutPoint)
 	})
 	if err != nil {
 		return nil, err
@@ -231,7 +231,7 @@ func (w *Wallet) NewColorOutPoint(b *gochroma.BlockExplorer, outPoint *btcwire.O
 
 	// store outpoint in DB
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
-		return storeOutPoint(tx, colorOutPoint)
+		return storeColorOutPoint(tx, colorOutPoint)
 	})
 	if err != nil {
 		return nil, err
@@ -304,7 +304,7 @@ func (w *Wallet) fetchSpendable(b *gochroma.BlockExplorer, colorId ColorId, need
 				// update this outpoint
 				colorOutPoint.Spent = true
 				err := w.namespace.Update(func(tx walletdb.Tx) error {
-					return storeOutPoint(tx, colorOutPoint)
+					return storeColorOutPoint(tx, colorOutPoint)
 				})
 				if err != nil {
 					return nil, err
@@ -418,7 +418,7 @@ func (w *Wallet) IssueColor(b *gochroma.BlockExplorer, kernel gochroma.ColorKern
 			in.Spent = true
 			in.SpendingTx = gochroma.BigEndianBytes(txHash)
 			in.SpendingIndex = uint32(i)
-			err = storeOutPoint(tx, in)
+			err = storeColorOutPoint(tx, in)
 			if err != nil {
 				return err
 			}
@@ -555,7 +555,7 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 			in.Spent = true
 			in.SpendingTx = gochroma.BigEndianBytes(txHash)
 			in.SpendingIndex = uint32(i)
-			err = storeOutPoint(tx, in)
+			err = storeColorOutPoint(tx, in)
 			if err != nil {
 				return err
 			}
