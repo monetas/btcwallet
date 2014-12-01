@@ -653,11 +653,13 @@ func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
 	checkTxChangeAmount(t, secondTx, btcutil.Amount(3))
 }
 
-// TestTriggerSecondTxTooBigAndRollback test the rollback triggered by the
-// second isTooBig check when adding more inputs to satisfy the outputs. The
-// test sets up two ouputs with exact inputs to mach, but the isTooBig check
-// returns true if there are more than one input in a transaction, forcing a
-// rollback on the second output and input.
+// TestTriggerSecondTxTooBigAndRollback tests the rollback triggered when a tx
+// gets too big after an input is added.
+//
+// The test sets up two ouputs with exact inputs to macht, but the isTooBig
+// check returns true if there are more than one input in a transaction, forcing
+// a rollback on the second output and input which are subsequently added to the
+// second tx.
 func TestTriggerSecondTxTooBigAndRollback(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
