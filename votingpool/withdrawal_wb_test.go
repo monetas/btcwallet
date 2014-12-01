@@ -650,27 +650,16 @@ func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
 	// First tx should have one output with 1 and one change output with 4
 	// satoshis.
 	firstTx := w.transactions[0]
-	if len(firstTx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want %d", len(firstTx.outputs), 1)
-	}
-	txOutput := firstTx.outputs[0]
-	if txOutput.request != outputs[0] {
-		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[0])
-	}
-
+	wOutput := TstNewWithdrawalOutput(outputs[0], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 1}})
+	checkTxOutputs(t, firstTx, []*WithdrawalOutput{wOutput})
 	checkTxChangeAmount(t, firstTx, btcutil.Amount(4))
 
 	// Second tx should have one output with 2 and one changeoutput with 3 satoshis.
 	secondTx := w.transactions[1]
-	if len(secondTx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want %d", len(secondTx.outputs), 1)
-	}
-
-	txOutput = secondTx.outputs[0]
-	if txOutput.request != outputs[1] {
-		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[1])
-	}
-
+	wOutput = TstNewWithdrawalOutput(outputs[1], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 2}})
+	checkTxOutputs(t, secondTx, []*WithdrawalOutput{wOutput})
 	checkTxChangeAmount(t, secondTx, btcutil.Amount(3))
 }
 
@@ -722,29 +711,15 @@ func TestTriggerSecondTxTooBigAndRollback(t *testing.T) {
 
 	// First tx should have one output with amount of 1 no change output.
 	firstTx := w.transactions[0]
-	if len(firstTx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want %d", len(firstTx.outputs), 1)
-	}
-	txOutput := firstTx.outputs[0]
-	if txOutput.request != outputs[0] {
-		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[0])
-	}
-	if firstTx.hasChange() {
-		t.Fatalf("Expected no change output")
-	}
+	wOutput := TstNewWithdrawalOutput(outputs[0], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 1}})
+	checkTxOutputs(t, firstTx, []*WithdrawalOutput{wOutput})
 
 	// Second tx should have one output with amount of 2 and no change output.
 	secondTx := w.transactions[1]
-	if len(secondTx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want %d", len(secondTx.outputs), 1)
-	}
-	txOutput = secondTx.outputs[0]
-	if txOutput.request != outputs[1] {
-		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[1])
-	}
-	if secondTx.hasChange() {
-		t.Fatalf("Expected no change output")
-	}
+	wOutput = TstNewWithdrawalOutput(outputs[1], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 2}})
+	checkTxOutputs(t, secondTx, []*WithdrawalOutput{wOutput})
 }
 
 func TestToMsgTxNoInputsOrOutputsOrChange(t *testing.T) {
@@ -860,8 +835,8 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput) 
 		t.Fatalf("Wrong number of outputs in tx; got %d, want %d", len(tx.outputs), nOutputs)
 	}
 	for i, output := range tx.outputs {
-		if !reflect.DeepEqual(*output, *outputs[i]) {
-			t.Fatalf("Unexpected output; got %v, want %v", output, outputs[i])
+		if !reflect.DeepEqual(output, outputs[i]) {
+			t.Fatalf("Unexpected output; got %#v, want %#v", output, outputs[i])
 		}
 	}
 }
