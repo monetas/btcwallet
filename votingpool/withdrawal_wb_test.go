@@ -314,9 +314,7 @@ func TestAddChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(3e6), int64(10)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(fee)
-	}
+	tx.calculateFee = TstConstantFee(btcutil.Amount(fee))
 
 	if !tx.addChange([]byte{}) {
 		t.Fatal("tx.addChange() returned false, meaning it did not add a change output")
@@ -341,9 +339,7 @@ func TestAddChangeNoChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(4e6), int64(0)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(fee)
-	}
+	tx.calculateFee = TstConstantFee(btcutil.Amount(fee))
 
 	if tx.addChange([]byte{}) {
 		t.Fatal("tx.addChange() returned true, meaning it added a change output")
@@ -464,9 +460,7 @@ func TestRollbackLastOutput(t *testing.T) {
 	initialInputs := tx.inputs
 	initialOutputs := tx.outputs
 
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(1)
-	}
+	tx.calculateFee = TstConstantFee(1)
 	removedInputs, removedOutput, err := tx.rollBackLastOutput()
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
@@ -502,9 +496,7 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 	initialInputs := tx.inputs
 	initialOutputs := tx.outputs
 
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(1)
-	}
+	tx.calculateFee = TstConstantFee(1)
 	removedInputs, removedOutput, err := tx.rollBackLastOutput()
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
@@ -615,8 +607,8 @@ func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
 	series, eligible := TstCreateCredits(t, pool, []int64{5, 5}, store)
 	outputs := []*OutputRequest{
 		// This is ordered by bailment ID
-		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", btcutil.Amount(1), net),
-		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", btcutil.Amount(2), net),
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", 1, net),
+		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", 2, net),
 	}
 	changeStart, err := pool.ChangeAddress(series, 0)
 	if err != nil {
@@ -631,9 +623,7 @@ func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
 			return len(d.outputs) > 1
 		}
 		// A fee of zero makes things simpler.
-		d.calculateFee = func() btcutil.Amount {
-			return btcutil.Amount(0)
-		}
+		d.calculateFee = TstConstantFee(0)
 		return d
 	}
 	w.current = w.newDecoratedTx()
@@ -650,33 +640,76 @@ func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
 	// First tx should have one output with 1 and one change output with 4
 	// satoshis.
 	firstTx := w.transactions[0]
-	if len(firstTx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want %d", len(firstTx.outputs), 1)
-	}
-	txOutput := firstTx.outputs[0]
-	if txOutput.request != outputs[0] {
-		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[0])
-	}
-
+	wOutput := TstNewWithdrawalOutput(outputs[0], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 1}})
+	checkTxOutputs(t, firstTx, []*WithdrawalOutput{wOutput})
 	checkTxChangeAmount(t, firstTx, btcutil.Amount(4))
 
 	// Second tx should have one output with 2 and one changeoutput with 3 satoshis.
 	secondTx := w.transactions[1]
-	if len(secondTx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want %d", len(secondTx.outputs), 1)
-	}
-
-	txOutput = secondTx.outputs[0]
-	if txOutput.request != outputs[1] {
-		t.Fatalf("Wrong outputrequest; got %v, want %v", txOutput.request, outputs[1])
-	}
-
+	wOutput = TstNewWithdrawalOutput(outputs[1], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 2}})
+	checkTxOutputs(t, secondTx, []*WithdrawalOutput{wOutput})
 	checkTxChangeAmount(t, secondTx, btcutil.Amount(3))
 }
 
-// TestTriggerSecondTxTooBigAndRollback
+// TestTriggerSecondTxTooBigAndRollback tests the rollback triggered when a tx
+// gets too big after an input is added.
+//
+// The test sets up two ouputs with exact inputs to macht, but the isTooBig
+// check returns true if there are more than one input in a transaction, forcing
+// a rollback on the second output and input which are subsequently added to the
+// second tx.
 func TestTriggerSecondTxTooBigAndRollback(t *testing.T) {
-	// TODO
+	tearDown, pool, store := TstCreatePoolAndTxStore(t)
+	defer tearDown()
+
+	net := pool.Manager().Net()
+	// Create eligible inputs and the list of outputs we need to fulfil.
+	series, eligible := TstCreateCredits(t, pool, []int64{1, 2}, store)
+	outputs := []*OutputRequest{
+		// This is ordered by bailment ID
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", 1, net),
+		TstNewOutputRequest(t, 2, "3PbExiaztsSYgh6zeMswC49hLUwhTQ86XG", 2, net),
+	}
+	changeStart, err := pool.ChangeAddress(series, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := newWithdrawal(0, outputs, eligible, changeStart)
+	w.newDecoratedTx = func() *decoratedTx {
+		d := newDecoratedTx()
+		// Make a transaction too big if it contains more than one input.
+		d.isTooBig = func() bool {
+			return len(d.inputs) > 1
+		}
+		// A fee of zero makes things simpler.
+		d.calculateFee = TstConstantFee(0)
+		return d
+	}
+	w.current = w.newDecoratedTx()
+
+	if err := w.fulfilOutputs(); err != nil {
+		t.Fatal("Unexpected error:", err)
+	}
+
+	// At this point we should have two finalized transactions.
+	if len(w.transactions) != 2 {
+		t.Fatalf("Wrong number of finalized transactions; got %d, want 2", len(w.transactions))
+	}
+
+	// First tx should have one output with amount of 1 no change output.
+	firstTx := w.transactions[0]
+	wOutput := TstNewWithdrawalOutput(outputs[0], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 1}})
+	checkTxOutputs(t, firstTx, []*WithdrawalOutput{wOutput})
+
+	// Second tx should have one output with amount of 2 and no change output.
+	secondTx := w.transactions[1]
+	wOutput = TstNewWithdrawalOutput(outputs[1], "success",
+		[]OutBailmentOutpoint{OutBailmentOutpoint{index: 0, amount: 2}})
+	checkTxOutputs(t, secondTx, []*WithdrawalOutput{wOutput})
 }
 
 func TestToMsgTxNoInputsOrOutputsOrChange(t *testing.T) {
@@ -792,8 +825,8 @@ func checkTxOutputs(t *testing.T, tx *decoratedTx, outputs []*WithdrawalOutput) 
 		t.Fatalf("Wrong number of outputs in tx; got %d, want %d", len(tx.outputs), nOutputs)
 	}
 	for i, output := range tx.outputs {
-		if !reflect.DeepEqual(*output, *outputs[i]) {
-			t.Fatalf("Unexpected output; got %v, want %v", output, outputs[i])
+		if !reflect.DeepEqual(output, outputs[i]) {
+			t.Fatalf("Unexpected output; got %#v, want %#v", output, outputs[i])
 		}
 	}
 }

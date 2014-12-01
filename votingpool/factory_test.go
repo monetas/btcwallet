@@ -341,3 +341,18 @@ func TstNewOutputRequest(t *testing.T, transaction uint32, address string, amoun
 		transaction: transaction,
 	}
 }
+
+func TstNewWithdrawalOutput(requests *OutputRequest, status string, outpoints []OutBailmentOutpoint) *WithdrawalOutput {
+	output := &WithdrawalOutput{
+		request:   requests,
+		status:    status,
+		outpoints: outpoints,
+	}
+	return output
+}
+
+func TstConstantFee(fee btcutil.Amount) func() btcutil.Amount {
+	return func() btcutil.Amount {
+		return fee
+	}
+}
