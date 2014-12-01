@@ -314,9 +314,7 @@ func TestAddChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(3e6), int64(10)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(fee)
-	}
+	tx.calculateFee = TstConstantFee(btcutil.Amount(fee))
 
 	if !tx.addChange([]byte{}) {
 		t.Fatal("tx.addChange() returned false, meaning it did not add a change output")
@@ -341,9 +339,7 @@ func TestAddChangeNoChange(t *testing.T) {
 
 	input, output, fee := int64(4e6), int64(4e6), int64(0)
 	tx := createDecoratedTx(t, pool, store, []int64{input}, []int64{output})
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(fee)
-	}
+	tx.calculateFee = TstConstantFee(btcutil.Amount(fee))
 
 	if tx.addChange([]byte{}) {
 		t.Fatal("tx.addChange() returned true, meaning it added a change output")
@@ -464,9 +460,7 @@ func TestRollbackLastOutput(t *testing.T) {
 	initialInputs := tx.inputs
 	initialOutputs := tx.outputs
 
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(1)
-	}
+	tx.calculateFee = TstConstantFee(1)
 	removedInputs, removedOutput, err := tx.rollBackLastOutput()
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
@@ -502,9 +496,7 @@ func TestRollbackLastOutputNoInputsRolledBack(t *testing.T) {
 	initialInputs := tx.inputs
 	initialOutputs := tx.outputs
 
-	tx.calculateFee = func() btcutil.Amount {
-		return btcutil.Amount(1)
-	}
+	tx.calculateFee = TstConstantFee(1)
 	removedInputs, removedOutput, err := tx.rollBackLastOutput()
 	if err != nil {
 		t.Fatal("Unexpected error:", err)
@@ -631,9 +623,7 @@ func TestTriggerFirstTxTooBigAndRollback(t *testing.T) {
 			return len(d.outputs) > 1
 		}
 		// A fee of zero makes things simpler.
-		d.calculateFee = func() btcutil.Amount {
-			return btcutil.Amount(0)
-		}
+		d.calculateFee = TstConstantFee(0)
 		return d
 	}
 	w.current = w.newDecoratedTx()
@@ -693,9 +683,7 @@ func TestTriggerSecondTxTooBigAndRollback(t *testing.T) {
 			return len(d.inputs) > 1
 		}
 		// A fee of zero makes things simpler.
-		d.calculateFee = func() btcutil.Amount {
-			return btcutil.Amount(0)
-		}
+		d.calculateFee = TstConstantFee(0)
 		return d
 	}
 	w.current = w.newDecoratedTx()

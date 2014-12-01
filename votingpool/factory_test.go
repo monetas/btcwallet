@@ -348,3 +348,9 @@ func TstNewWithdrawalOutput(requests *OutputRequest, status string, outpoints []
 	output.outpoints = outpoints
 	return output
 }
+
+func TstConstantFee(fee btcutil.Amount) func() btcutil.Amount {
+	return func() btcutil.Amount {
+		return fee
+	}
+}
