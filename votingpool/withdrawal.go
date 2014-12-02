@@ -683,10 +683,9 @@ func (w *withdrawal) fulfilOutputs() error {
 }
 
 func (w *withdrawal) splitLastOutput() error {
-	if len(w.current.outputs) != 1 {
-		errorStr := fmt.Sprintf(
-			"splitLastOutput requires current tx to have 1 output, got %d", len(w.current.outputs))
-		return newError(ErrPreconditionNotMet, errorStr, nil)
+	if len(w.current.outputs) == 0 {
+		return newError(ErrPreconditionNotMet,
+			"splitLastOutput requires current tx to have at least 1 output", nil)
 	}
 
 	tx := w.current

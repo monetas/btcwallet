@@ -144,18 +144,6 @@ func TestSplitLastOutputNoOutputs(t *testing.T) {
 	TstCheckError(t, "", err, ErrPreconditionNotMet)
 }
 
-func TestSplitLastOutputTooManyOutputs(t *testing.T) {
-	tearDown, pool, store := TstCreatePoolAndTxStore(t)
-	defer tearDown()
-
-	w := newWithdrawal(0, []*OutputRequest{}, []CreditInterface{}, nil)
-	w.current = createDecoratedTx(t, pool, store, []int64{}, []int64{1, 3})
-
-	err := w.splitLastOutput()
-
-	TstCheckError(t, "", err, ErrPreconditionNotMet)
-}
-
 func TestOutputSplittingOversizeTx(t *testing.T) {
 	// TODO:
 	// Somehow create a withdrawal where the isTooBig() check returns true after
