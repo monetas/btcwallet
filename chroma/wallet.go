@@ -2,7 +2,6 @@ package chroma
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	"github.com/monetas/btcscript"
@@ -61,13 +60,17 @@ func (w *Wallet) Close() error {
 func (w *Wallet) newAddress(acct uint32) (btcutil.Address, error) {
 	subKey, err := w.pubKey.Child(acct)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v:%v", w.pubKey, acct)
+		return nil, MakeError(ErrHDKey, str, err)
 	}
 	var index *uint32
 	err = w.namespace.View(func(tx walletdb.Tx) error {
 		tmp, err := fetchAcctIndex(tx, acct)
+		if err != nil {
+			return err
+		}
 		index = &(*tmp)
-		return err
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -75,11 +78,13 @@ func (w *Wallet) newAddress(acct uint32) (btcutil.Address, error) {
 
 	key, err := subKey.Child(*index)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v:%v", subKey, *index)
+		return nil, MakeError(ErrHDKey, str, err)
 	}
 	addr, err := key.Address(w.manager.Net())
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v", key)
+		return nil, MakeError(ErrAddress, str, err)
 	}
 
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
@@ -122,14 +127,14 @@ func (w *Wallet) FetchColorId(cd *gochroma.ColorDefinition) (ColorId, error) {
 	return colorId, nil
 }
 
-func (w *Wallet) NewUncoloredOutPoint(b *gochroma.BlockExplorer, outPoint *btcwire.OutPoint) (*ColorOutPoint, error) {
+func (w *Wallet) colorOutPoint(b *gochroma.BlockExplorer, outPoint *btcwire.OutPoint) (*ColorOutPoint, error) {
 	// look up the outpoint and see if it's already in the db
 	var outPointId OutPointId
 	err := w.namespace.Update(func(tx walletdb.Tx) error {
 		tmp := fetchOutPointId(tx, outPoint)
 		if tmp != nil {
-			str := fmt.Sprintf("out point %v already in db", outPoint)
-			return errors.New(str)
+			str := fmt.Sprintf("%v", outPoint)
+			return MakeError(ErrOutPointExists, str, nil)
 		}
 		tmp, err := newOutPointId(tx)
 		outPointId = make(OutPointId, len(tmp))
@@ -143,7 +148,8 @@ func (w *Wallet) NewUncoloredOutPoint(b *gochroma.BlockExplorer, outPoint *btcwi
 	// get tx data
 	tx, err := b.OutPointTx(outPoint)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("OutPointTx:%v", outPoint)
+		return nil, MakeError(ErrBlockExplorer, str, err)
 	}
 	msgTx := tx.MsgTx()
 	txOut := msgTx.TxOut[outPoint.Index]
@@ -152,14 +158,23 @@ func (w *Wallet) NewUncoloredOutPoint(b *gochroma.BlockExplorer, outPoint *btcwi
 
 	// construct the outpoint
 	colorOutPoint := &ColorOutPoint{
-		Id:         outPointId,
-		Tx:         gochroma.BigEndianBytes(&outPoint.Hash),
-		Index:      outPoint.Index,
-		Value:      satoshiValue,
-		Color:      UncoloredColorId,
-		ColorValue: gochroma.ColorValue(satoshiValue),
-		PkScript:   pkScript,
+		Id:       outPointId,
+		Tx:       gochroma.BigEndianBytes(&outPoint.Hash),
+		Index:    outPoint.Index,
+		Value:    satoshiValue,
+		PkScript: pkScript,
 	}
+	return colorOutPoint, nil
+}
+
+func (w *Wallet) NewUncoloredOutPoint(b *gochroma.BlockExplorer, outPoint *btcwire.OutPoint) (*ColorOutPoint, error) {
+
+	colorOutPoint, err := w.colorOutPoint(b, outPoint)
+	if err != nil {
+		return nil, err
+	}
+	colorOutPoint.Color = UncoloredColorId
+	colorOutPoint.ColorValue = gochroma.ColorValue(colorOutPoint.Value)
 
 	// store outpoint in DB
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
@@ -173,33 +188,10 @@ func (w *Wallet) NewUncoloredOutPoint(b *gochroma.BlockExplorer, outPoint *btcwi
 }
 
 func (w *Wallet) NewColorOutPoint(b *gochroma.BlockExplorer, outPoint *btcwire.OutPoint, cd *gochroma.ColorDefinition) (*ColorOutPoint, error) {
-	// look up the outpoint and see if it's already in the db
-	var outPointId OutPointId
-	err := w.namespace.Update(func(tx walletdb.Tx) error {
-		var err error
-		outPointId = fetchOutPointId(tx, outPoint)
-		if outPointId != nil {
-			str := fmt.Sprintf("out point %v already in db", outPoint)
-			return errors.New(str)
-		}
-		tmp, err := newOutPointId(tx)
-		outPointId = make(OutPointId, len(tmp))
-		copy(outPointId, tmp)
-		return err
-	})
+	colorOutPoint, err := w.colorOutPoint(b, outPoint)
 	if err != nil {
 		return nil, err
 	}
-
-	// get tx data
-	tx, err := b.OutPointTx(outPoint)
-	if err != nil {
-		return nil, err
-	}
-	msgTx := tx.MsgTx()
-	txOut := msgTx.TxOut[outPoint.Index]
-	satoshiValue := uint64(txOut.Value)
-	pkScript := txOut.PkScript
 
 	// get color data
 	var color ColorId
@@ -213,21 +205,13 @@ func (w *Wallet) NewColorOutPoint(b *gochroma.BlockExplorer, outPoint *btcwire.O
 		return nil, err
 	}
 	colorValue, err := cd.ColorValue(b, outPoint)
-
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v", cd)
+		return nil, MakeError(ErrColor, str, err)
 	}
 
-	// construct the outpoint
-	colorOutPoint := &ColorOutPoint{
-		Id:         outPointId,
-		Tx:         gochroma.BigEndianBytes(&outPoint.Hash),
-		Index:      outPoint.Index,
-		Value:      satoshiValue,
-		Color:      color,
-		ColorValue: *colorValue,
-		PkScript:   pkScript,
-	}
+	colorOutPoint.Color = color
+	colorOutPoint.ColorValue = *colorValue
 
 	// store outpoint in DB
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
@@ -252,22 +236,25 @@ func (w *Wallet) Sign(pkScript []byte, tx *btcwire.MsgTx, txIndex int) error {
 	}
 	acctKey, err := w.privKey.Child(*acct)
 	if err != nil {
-		return err
+		str := fmt.Sprintf("%v:%v", w.privKey, *acct)
+		return MakeError(ErrHDKey, str, err)
 	}
 	indexKey, err := acctKey.Child(*index)
 	if err != nil {
-		return err
+		str := fmt.Sprintf("%v:%v", acctKey, *index)
+		return MakeError(ErrHDKey, str, err)
 	}
 	privateKey, err := indexKey.ECPrivKey()
 	if err != nil {
-		return err
+		str := fmt.Sprintf("%v", indexKey)
+		return MakeError(ErrHDKey, str, err)
 	}
 
 	sigScript, err := btcscript.SignatureScript(
 		tx, txIndex, pkScript, btcscript.SigHashAll, privateKey, true)
 	if err != nil {
-		str := fmt.Sprintf("cannot create sigScript: %s", err)
-		return errors.New(str)
+		str := fmt.Sprintf("%v:%v:%v:%v", tx, txIndex, pkScript, privateKey)
+		return MakeError(ErrScript, str, err)
 	}
 	tx.TxIn[txIndex].SignatureScript = sigScript
 	return nil
@@ -297,7 +284,8 @@ func (w *Wallet) fetchSpendable(b *gochroma.BlockExplorer, colorId ColorId, need
 			}
 			spent, err := b.OutPointSpent(op)
 			if err != nil {
-				return nil, err
+				str := fmt.Sprintf("OutPointSpent:%v", op)
+				return nil, MakeError(ErrBlockExplorer, str, err)
 			}
 
 			if *spent {
@@ -320,7 +308,7 @@ func (w *Wallet) fetchSpendable(b *gochroma.BlockExplorer, colorId ColorId, need
 	}
 	if sum < needed {
 		str := fmt.Sprintf("Need %d value, only have %d value", needed, sum)
-		return nil, errors.New(str)
+		return nil, MakeError(ErrSpend, str, nil)
 	}
 
 	return ret, nil
@@ -379,7 +367,8 @@ func (w *Wallet) IssueColor(b *gochroma.BlockExplorer, kernel gochroma.ColorKern
 	}
 	pkScript, err := btcscript.PayToAddrScript(outAddr)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v", outAddr)
+		return nil, MakeError(ErrScript, str, err)
 	}
 	outputs := []*gochroma.ColorOut{&gochroma.ColorOut{pkScript, value}}
 	changeAddr, err := w.NewUncoloredAddress()
@@ -388,12 +377,13 @@ func (w *Wallet) IssueColor(b *gochroma.BlockExplorer, kernel gochroma.ColorKern
 	}
 	changeScript, err := btcscript.PayToAddrScript(changeAddr)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v", changeAddr)
+		return nil, MakeError(ErrScript, str, err)
 	}
 
 	tx, err := kernel.IssuingTx(b, inputs, outputs, changeScript, fee)
 	if err != nil {
-		return nil, err
+		return nil, MakeError(ErrColor, "", err)
 	}
 
 	// sign everything
@@ -406,7 +396,8 @@ func (w *Wallet) IssueColor(b *gochroma.BlockExplorer, kernel gochroma.ColorKern
 
 	txHash, err := b.PublishTx(tx)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("PublishTx:%v", tx)
+		return nil, MakeError(ErrBlockExplorer, str, err)
 	}
 
 	var genesis *btcwire.OutPoint
@@ -428,7 +419,8 @@ func (w *Wallet) IssueColor(b *gochroma.BlockExplorer, kernel gochroma.ColorKern
 		var err error
 		cd, err = gochroma.NewColorDefinition(kernel, genesis, 0)
 		if err != nil {
-			return err
+			str := fmt.Sprintf("%v:%v", kernel, genesis)
+			return MakeError(ErrColor, str, err)
 		}
 		_, err = fetchColorId(tx, cd)
 		if err != nil {
@@ -475,7 +467,8 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 		needed += cv
 		pkScript, err := btcscript.PayToAddrScript(addr)
 		if err != nil {
-			return nil, err
+			str := fmt.Sprintf("%v", addr)
+			return nil, MakeError(ErrScript, str, err)
 		}
 		outputs = append(outputs, &gochroma.ColorOut{pkScript, cv})
 	}
@@ -505,7 +498,8 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 		}
 		pkScript, err := btcscript.PayToAddrScript(addr)
 		if err != nil {
-			return nil, err
+			str := fmt.Sprintf("%v", addr)
+			return nil, MakeError(ErrScript, str, err)
 		}
 		outputs = append(outputs, &gochroma.ColorOut{pkScript, inSum - needed})
 	}
@@ -526,13 +520,13 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 	}
 	changeScript, err := btcscript.PayToAddrScript(changeAddr)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v", changeAddr)
+		return nil, MakeError(ErrScript, str, err)
 	}
 
 	tx, err := cd.TransferringTx(b, inputs, outputs, changeScript, fee, false)
-
 	if err != nil {
-		return nil, err
+		return nil, MakeError(ErrColor, "", err)
 	}
 
 	allInputs := append(coloredInputs, uncoloredInputs...)
@@ -546,7 +540,8 @@ func (w *Wallet) Send(b *gochroma.BlockExplorer, cd *gochroma.ColorDefinition, a
 
 	txHash, err := b.PublishTx(tx)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("PublishTx:%v", tx)
+		return nil, MakeError(ErrBlockExplorer, str, err)
 	}
 
 	// mark everything as spent

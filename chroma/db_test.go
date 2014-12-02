@@ -3,6 +3,8 @@ package chroma_test
 import (
 	"testing"
 
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcutil"
 	"github.com/monetas/btcwallet/chroma"
 	"github.com/monetas/gochroma"
 )
@@ -15,6 +17,11 @@ func TestDeserializeColorOutPointError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrSerialization)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
 }
 
 func TestSerializeColorOutPointError(t *testing.T) {
@@ -25,28 +32,29 @@ func TestSerializeColorOutPointError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrSerialization)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
 }
 
 func TestFetchColorIdErrors(t *testing.T) {
 	tests := []struct {
-		desc       string
-		bucket     []byte
-		errorAfter int
+		desc   string
+		bucket []byte
 	}{
 		{
-			desc:       "id fetch",
-			bucket:     chroma.IdBucketName,
-			errorAfter: 0,
+			desc:   "id fetch",
+			bucket: chroma.IdBucketName,
 		},
 		{
-			desc:       "cd put",
-			bucket:     chroma.ColorDefinitionBucketName,
-			errorAfter: 0,
+			desc:   "cd put",
+			bucket: chroma.ColorDefinitionBucketName,
 		},
 		{
-			desc:       "account put",
-			bucket:     chroma.AccountBucketName,
-			errorAfter: 0,
+			desc:   "account put",
+			bucket: chroma.AccountBucketName,
 		},
 	}
 
@@ -64,7 +72,7 @@ func TestFetchColorIdErrors(t *testing.T) {
 		}
 		bucket := testTx.Root.Bucket(test.bucket)
 		b := bucket.(*chroma.TstBucket)
-		b.ErrorAfter = test.errorAfter
+		b.ErrorAfter = 0
 
 		// execute
 		_, err = chroma.FetchColorId(testTx, cd)
@@ -73,8 +81,10 @@ func TestFetchColorIdErrors(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%v: expected error, got nil", test.desc)
 		}
-		if err != chroma.TestError {
-			t.Fatalf("%v: different error than expected: want %v got %v", chroma.TestError, err)
+		rerr := err.(chroma.ChromaError)
+		want := chroma.ErrorCode(chroma.ErrWriteDB)
+		if rerr.ErrorCode != want {
+			t.Fatalf("%v: different error than expected: want %v got %v", want, err)
 		}
 	}
 }
@@ -124,6 +134,11 @@ func TestAllColorsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrColor)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
 }
 
 func TestFetchKeysError(t *testing.T) {
@@ -160,6 +175,11 @@ func TestFetchKeysError(t *testing.T) {
 		// validate
 		if err == nil {
 			t.Fatalf("%v: expected error, got nil", test.desc)
+		}
+		rerr := err.(chroma.ChromaError)
+		want := chroma.ErrorCode(chroma.ErrHDKey)
+		if rerr.ErrorCode != want {
+			t.Fatalf("%v: want %v, got %v", test.desc, want, err)
 		}
 	}
 }
@@ -213,8 +233,10 @@ func TestInitializeError1(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%v: expected error, got nil", test.desc)
 		}
-		if err != chroma.TestError {
-			t.Fatalf("%v: unexpected error: want %v, got %v", err, chroma.TestError)
+		rerr := err.(chroma.ChromaError)
+		want := chroma.ErrorCode(chroma.ErrCreateBucket)
+		if rerr.ErrorCode != want {
+			t.Fatalf("%v: unexpected error: want %v, got %v", test.desc, want, err)
 		}
 	}
 }
@@ -264,8 +286,10 @@ func TestInitializeError2(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%v: expected error, got nil", test.desc)
 		}
-		if err != chroma.TestError {
-			t.Fatalf("%v: unexpected error: want %v, got %v", err, chroma.TestError)
+		rerr := err.(chroma.ChromaError)
+		want := chroma.ErrorCode(chroma.ErrWriteDB)
+		if rerr.ErrorCode != want {
+			t.Fatalf("%v: unexpected error: want %v, got %v", test.desc, want, err)
 		}
 	}
 }
@@ -280,6 +304,11 @@ func TestInitializeError3(t *testing.T) {
 	// validate
 	if err == nil {
 		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrHDKey)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
 	}
 }
 
@@ -298,9 +327,14 @@ func TestFetchAcctIndex(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrAcct)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
 }
 
-func TestStoreScriptIndex(t *testing.T) {
+func TestStoreScriptIndex1(t *testing.T) {
 	// setup
 	testTx := &chroma.TstTx{Root: chroma.NewBucket(-1)}
 	err := chroma.Initialize(testTx, nil)
@@ -314,6 +348,43 @@ func TestStoreScriptIndex(t *testing.T) {
 	// validate
 	if err == nil {
 		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrScript)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestStoreScriptIndex2(t *testing.T) {
+	// setup
+	testTx := &chroma.TstTx{Root: chroma.NewBucket(-1)}
+	err := chroma.Initialize(testTx, nil)
+	if err != nil {
+		t.Fatalf("couldn't initialize tx: %v", err)
+	}
+	bucket, err := testTx.RootBucket().CreateBucket(chroma.ScriptToAccountIndexBucketName)
+	if err != nil {
+		t.Fatalf("can't create bucket %v", err)
+	}
+	b := bucket.(*chroma.TstBucket)
+	b.ErrorAfter = 0
+	addr, err := btcutil.DecodeAddress("1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", &btcnet.MainNetParams)
+	if err != nil {
+		t.Fatalf("can't make addr %v", err)
+	}
+
+	// execute
+	err = chroma.StoreScriptIndex(testTx, 0, 0, addr)
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrWriteDB)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
 	}
 }
 
@@ -332,7 +403,11 @@ func TestStoreColorOutPointError1(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrSerialization)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
 }
 
 func TestStoreColorOutPointError2(t *testing.T) {
@@ -353,8 +428,10 @@ func TestStoreColorOutPointError2(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-	if err != chroma.TestError {
-		t.Fatalf("unexpected error: want %v, got %v", chroma.TestError, err)
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrWriteDB)
+	if rerr.ErrorCode != want {
+		t.Fatalf("unexpected error: want %v, got %v", want, err)
 	}
 }
 
@@ -372,6 +449,36 @@ func TestStoreColorOutPointError3(t *testing.T) {
 	// validate
 	if err == nil {
 		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrShaHash)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestStoreColorOutPointError4(t *testing.T) {
+	// setup
+	testTx := &chroma.TstTx{Root: chroma.NewBucket(-1)}
+	err := chroma.Initialize(testTx, nil)
+	if err != nil {
+		t.Fatalf("couldn't initialize tx: %v", err)
+	}
+	bucket := testTx.RootBucket().Bucket(chroma.OutPointIndexBucketName)
+	b := bucket.(*chroma.TstBucket)
+	b.ErrorAfter = 0
+
+	// execute
+	err = chroma.StoreColorOutPoint(testTx, uncoloredCOP)
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrWriteDB)
+	if rerr.ErrorCode != want {
+		t.Fatalf("unexpected error: want %v, got %v", want, err)
 	}
 }
 
@@ -391,7 +498,11 @@ func TestAllColorOutPointError1(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrColorOutPoint)
+	if rerr.ErrorCode != want {
+		t.Fatalf("unexpected error: want %v, got %v", want, err)
+	}
 }
 
 func TestAllColorOutPointError2(t *testing.T) {
@@ -419,7 +530,11 @@ func TestAllColorOutPointError2(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrSerialization)
+	if rerr.ErrorCode != want {
+		t.Fatalf("unexpected error: want %v, got %v", want, err)
+	}
 }
 
 func TestLookupScriptError(t *testing.T) {
@@ -437,5 +552,9 @@ func TestLookupScriptError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
-
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrScript)
+	if rerr.ErrorCode != want {
+		t.Fatalf("unexpected error: want %v, got %v", want, err)
+	}
 }

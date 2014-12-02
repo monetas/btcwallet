@@ -75,3 +75,7 @@ func AllColorOutPoints(tx walletdb.Tx) ([]*ColorOutPoint, error) {
 func LookupScript(tx walletdb.Tx, pkScript []byte) (*uint32, *uint32, error) {
 	return lookupScript(tx, pkScript)
 }
+
+func (w *Wallet) NewAddress(acct uint32) (btcutil.Address, error) {
+	return w.newAddress(acct)
+}

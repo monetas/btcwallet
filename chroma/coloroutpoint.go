@@ -2,7 +2,7 @@ package chroma
 
 import (
 	"bytes"
-	"errors"
+	"fmt"
 
 	"github.com/monetas/btcwire"
 	"github.com/monetas/gochroma"
@@ -32,14 +32,15 @@ func (cop *ColorOutPoint) IsUncolored() bool {
 func (cop *ColorOutPoint) OutPoint() (*btcwire.OutPoint, error) {
 	shaHash, err := gochroma.NewShaHash(cop.Tx)
 	if err != nil {
-		return nil, err
+		str := fmt.Sprintf("%v", cop.Tx)
+		return nil, MakeError(ErrShaHash, str, err)
 	}
 	return btcwire.NewOutPoint(shaHash, cop.Index), nil
 }
 
 func (cop *ColorOutPoint) ColorIn() (*gochroma.ColorIn, error) {
 	if cop.IsUncolored() {
-		return nil, errors.New("Cannot make an uncolored out point into a color in")
+		return nil, MakeError(ErrColorOutPoint, "uncolored", nil)
 	}
 	outPoint, err := cop.OutPoint()
 	if err != nil {

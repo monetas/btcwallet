@@ -25,7 +25,6 @@ func TestCreateAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -36,7 +35,6 @@ func TestCreateAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -61,13 +59,12 @@ func TestCreateAndLoad(t *testing.T) {
 	}
 }
 
-func TestFetchColorId(t *testing.T) {
+func TestCreateError(t *testing.T) {
 	// setup
 	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -78,7 +75,163 @@ func TestFetchColorId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+
+	// execute
+	_, err = chroma.Create(chromaNamespace, mgr, []byte("nonsense"))
+
+	if err == nil {
+		t.Fatalf("Expected error, got none")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrHDKey)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestLoadError(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+	_, err = chroma.Create(chromaNamespace, mgr, nil)
+	if err != nil {
+		t.Fatalf("Chroma Wallet creation failed: %v", err)
+	}
+	testNS := chromaNamespace.(*chroma.TstNamespace)
+	b := testNS.Tx.RootBucket().Bucket(chroma.KeyBucketName)
+	err = b.Put(chroma.PrivKeyName, []byte("nonsense"))
+	if err != nil {
+		t.Fatalf("Chroma bucket update failed: %v", err)
+	}
+
+	// execute
+	_, err = chroma.Load(chromaNamespace, mgr)
+
+	// validate
+	if err == nil {
+		t.Fatalf("Expected error, got none")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrHDKey)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestNewAddressError(t *testing.T) {
+
+	tests := []struct {
+		desc string
+		acct uint32
+		err  chroma.ErrorCode
+	}{
+		{
+			desc: "child key too big",
+			acct: 1<<31 + 1,
+			err:  chroma.ErrHDKey,
+		},
+		{
+			desc: "account does not exist",
+			acct: 2,
+			err:  chroma.ErrAcct,
+		},
+		{
+			desc: "sub key too big",
+			acct: 0,
+			err:  chroma.ErrHDKey,
+		},
+		{
+			desc: "error on store",
+			acct: 1,
+			err:  chroma.ErrWriteDB,
+		},
+	}
+
+	for _, test := range tests {
+
+		// setup
+		db, err := walletdb.Create("test")
+		if err != nil {
+			t.Fatalf("Failed to create wallet DB: %v", err)
+		}
+		mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+		if err != nil {
+			t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+		}
+		seed := make([]byte, 32)
+		mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+			[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+		if err != nil {
+			t.Fatalf("Failed to create addr manager: %v", err)
+		}
+		chromaNamespace, err := db.Namespace([]byte("chroma"))
+		if err != nil {
+			t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+		}
+		w, err := chroma.Create(chromaNamespace, mgr, seed)
+		if err != nil {
+			t.Fatalf("Chroma Wallet creation failed: %v", err)
+		}
+		testNS := chromaNamespace.(*chroma.TstNamespace)
+		b := testNS.Tx.RootBucket().Bucket(chroma.AccountBucketName)
+		err = b.Put(chroma.SerializeUint32(0), chroma.SerializeUint32(1<<31+1))
+		if err != nil {
+			t.Fatalf("Couldn't do a put", err)
+		}
+		tstBucket := b.(*chroma.TstBucket)
+		tstBucket.ErrorAfter = 1
+
+		// execute
+		_, err = w.NewAddress(test.acct)
+
+		// validate
+		if err == nil {
+			t.Fatalf("%v: Expected error, got none", test.desc)
+		}
+		rerr := err.(chroma.ChromaError)
+		if rerr.ErrorCode != test.err {
+			t.Fatalf("want %v, got %v", test.err, err)
+		}
+
+	}
+}
+
+func TestFetchColorId(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -87,7 +240,6 @@ func TestFetchColorId(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
 	cdStr := "EPOBC:00000000000000000000000000000000:0:1"
 	cd, err := gochroma.NewColorDefinitionFromStr(cdStr)
 	if err != nil {
@@ -106,13 +258,12 @@ func TestFetchColorId(t *testing.T) {
 	}
 }
 
-func TestNewAddress(t *testing.T) {
+func TestFetchColorIdError(t *testing.T) {
 	// setup
 	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -123,7 +274,6 @@ func TestNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -132,7 +282,54 @@ func TestNewAddress(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
+	cdStr := "EPOBC:00000000000000000000000000000000:0:1"
+	cd, err := gochroma.NewColorDefinitionFromStr(cdStr)
+	if err != nil {
+		t.Fatalf("Definition creation failed: %v", err)
+	}
+	testNS := chromaNamespace.(*chroma.TstNamespace)
+	b := testNS.Tx.RootBucket().Bucket(chroma.ColorDefinitionBucketName)
+	tstBucket := b.(*chroma.TstBucket)
+	tstBucket.ErrorAfter = 0
+
+	// execute
+	_, err = w.FetchColorId(cd)
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected err, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrWriteDB)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestNewAddress(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+	w, err := chroma.Create(chromaNamespace, mgr, seed)
+	if err != nil {
+		t.Fatalf("Chroma Wallet creation failed: %v", err)
+	}
 	cdStr := "EPOBC:00000000000000000000000000000000:0:1"
 	cd, err := gochroma.NewColorDefinitionFromStr(cdStr)
 	if err != nil {
@@ -181,7 +378,6 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -192,7 +388,6 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -201,7 +396,6 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
 	blockReaderWriter := &TstBlockReaderWriter{
 		rawTx: [][]byte{normalTx},
 	}
@@ -218,7 +412,7 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify
+	// validate
 	value := cop.ColorValue
 	wantValue := gochroma.ColorValue(100000000)
 	if value != wantValue {
@@ -233,13 +427,12 @@ func TestNewUncoloredOutPoint(t *testing.T) {
 	}
 }
 
-func TestNewColorOutPoint(t *testing.T) {
+func TestNewUncoloredOutPointError1(t *testing.T) {
 	// setup
 	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -250,7 +443,6 @@ func TestNewColorOutPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -259,7 +451,156 @@ func TestNewColorOutPoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
+	blockReaderWriter := &TstBlockReaderWriter{
+		rawTx: [][]byte{normalTx},
+	}
+	b := &gochroma.BlockExplorer{blockReaderWriter}
+	shaHash, err := gochroma.NewShaHash(txHash)
+	if err != nil {
+		t.Fatalf("failed to convert hash %v: %v", txHash, err)
+	}
+	outPoint := btcwire.NewOutPoint(shaHash, 0)
+	_, err = w.NewUncoloredOutPoint(b, outPoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// execute
+	_, err = w.NewUncoloredOutPoint(b, outPoint)
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrOutPointExists)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestNewUncoloredOutPointError2(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+	w, err := chroma.Create(chromaNamespace, mgr, seed)
+	if err != nil {
+		t.Fatalf("Chroma Wallet creation failed: %v", err)
+	}
+	blockReaderWriter := &TstBlockReaderWriter{}
+	b := &gochroma.BlockExplorer{blockReaderWriter}
+	shaHash, err := gochroma.NewShaHash(txHash)
+	if err != nil {
+		t.Fatalf("failed to convert hash %v: %v", txHash, err)
+	}
+	outPoint := btcwire.NewOutPoint(shaHash, 0)
+
+	// execute
+	_, err = w.NewUncoloredOutPoint(b, outPoint)
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrBlockExplorer)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestNewUncoloredOutPointError3(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+	w, err := chroma.Create(chromaNamespace, mgr, seed)
+	if err != nil {
+		t.Fatalf("Chroma Wallet creation failed: %v", err)
+	}
+	blockReaderWriter := &TstBlockReaderWriter{
+		rawTx: [][]byte{normalTx},
+	}
+	b := &gochroma.BlockExplorer{blockReaderWriter}
+	shaHash, err := gochroma.NewShaHash(txHash)
+	if err != nil {
+		t.Fatalf("failed to convert hash %v: %v", txHash, err)
+	}
+	outPoint := btcwire.NewOutPoint(shaHash, 0)
+	testNS := chromaNamespace.(*chroma.TstNamespace)
+	bucket := testNS.Tx.RootBucket().Bucket(chroma.ColorOutPointBucketName)
+	tstBucket := bucket.(*chroma.TstBucket)
+	tstBucket.ErrorAfter = 0
+
+	// execute
+	_, err = w.NewUncoloredOutPoint(b, outPoint)
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrWriteDB)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
+	}
+}
+
+func TestNewColorOutPoint(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+	w, err := chroma.Create(chromaNamespace, mgr, seed)
+	if err != nil {
+		t.Fatalf("Chroma Wallet creation failed: %v", err)
+	}
 	blockReaderWriter := &TstBlockReaderWriter{
 		txBlockHash: [][]byte{blockHash},
 		block:       [][]byte{rawBlock},
@@ -286,10 +627,10 @@ func TestNewColorOutPoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify
+	// validate
 	wantValue := gochroma.ColorValue(1)
 	if cop.ColorValue != wantValue {
-		t.Fatalf("Did not get value that we expected: got %d, want %d", cop.ColorValue, wantValue)
+		t.Fatalf("unexpected value: got %d, want %d", cop.ColorValue, wantValue)
 	}
 	cin, err := cop.ColorIn()
 	if err != nil {
@@ -300,13 +641,205 @@ func TestNewColorOutPoint(t *testing.T) {
 	}
 }
 
+func TestNewColorOutPointError(t *testing.T) {
+	tests := []struct {
+		desc   string
+		rawTx  [][]byte
+		bucket []byte
+		err    chroma.ErrorCode
+	}{
+		{
+			desc:   "fail on outpoint creation",
+			rawTx:  [][]byte{},
+			bucket: chroma.IdBucketName,
+			err:    chroma.ErrWriteDB,
+		},
+		{
+			desc:   "fail on color id fetch",
+			rawTx:  [][]byte{genesisTx, genesisTx},
+			bucket: chroma.ColorDefinitionBucketName,
+			err:    chroma.ErrWriteDB,
+		},
+		{
+			desc:   "fail on color value fetch",
+			rawTx:  [][]byte{genesisTx},
+			bucket: chroma.ScriptToAccountIndexBucketName,
+			err:    chroma.ErrColor,
+		},
+		{
+			desc:   "fail on color outpoint store",
+			rawTx:  [][]byte{genesisTx, genesisTx},
+			bucket: chroma.ColorOutPointBucketName,
+			err:    chroma.ErrWriteDB,
+		},
+	}
+
+	for _, test := range tests {
+		// setup
+		db, err := walletdb.Create("test")
+		if err != nil {
+			t.Errorf("%v: Failed to create wallet DB: %v", test.desc, err)
+			continue
+		}
+		mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+		if err != nil {
+			t.Errorf("%v: Failed to create addr manager DB namespace: %v", test.desc, err)
+			continue
+		}
+		seed := make([]byte, 32)
+		mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+			[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+		if err != nil {
+			t.Errorf("%v: Failed to create addr manager: %v", test.desc, err)
+			continue
+		}
+		chromaNamespace, err := db.Namespace([]byte("chroma"))
+		if err != nil {
+			t.Errorf("%v: Failed to create Chroma DB namespace: %v", test.desc, err)
+			continue
+		}
+		w, err := chroma.Create(chromaNamespace, mgr, seed)
+		if err != nil {
+			t.Errorf("%v: Chroma Wallet creation failed: %v", test.desc, err)
+			continue
+		}
+		blockReaderWriter := &TstBlockReaderWriter{
+			txBlockHash: [][]byte{blockHash},
+			block:       [][]byte{rawBlock},
+			rawTx:       test.rawTx,
+			txOutSpents: []bool{false},
+		}
+		b := &gochroma.BlockExplorer{blockReaderWriter}
+		tx, err := btcutil.NewTxFromBytes(genesisTx)
+		if err != nil {
+			t.Errorf("%v: failed to get tx %v", test.desc, err)
+			continue
+		}
+		outPoint := btcwire.NewOutPoint(tx.Sha(), 0)
+		shaBytes := gochroma.BigEndianBytes(tx.Sha())
+		txString := fmt.Sprintf("%x", shaBytes)
+		colorStr := "SPOBC:" + txString + ":0:1"
+		cd, err := gochroma.NewColorDefinitionFromStr(colorStr)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		testNS := chromaNamespace.(*chroma.TstNamespace)
+		bucket := testNS.Tx.RootBucket().Bucket(test.bucket)
+		tstBucket := bucket.(*chroma.TstBucket)
+		tstBucket.ErrorAfter = 0
+
+		// execute
+		_, err = w.NewColorOutPoint(b, outPoint, cd)
+
+		// validate
+		if err == nil {
+			t.Errorf("%v: expected error, got nil", test.desc)
+			continue
+		}
+		rerr := err.(chroma.ChromaError)
+		want := chroma.ErrorCode(test.err)
+		if rerr.ErrorCode != want {
+			t.Errorf("%v: want %v, got %v", test.desc, want, err)
+			continue
+		}
+	}
+}
+
+func TestSignError(t *testing.T) {
+	tests := []struct {
+		desc   string
+		lookup []byte
+		script []byte
+		acct   uint32
+		index  uint32
+		err    chroma.ErrorCode
+	}{
+		{
+			desc:   "fail on lookup",
+			lookup: nil,
+			script: []byte("nonsense"),
+			acct:   0,
+			index:  0,
+			err:    chroma.ErrScript,
+		},
+		{
+			desc:   "fail on lookup",
+			lookup: []byte{1},
+			script: []byte{1},
+			acct:   0,
+			index:  0,
+			err:    chroma.ErrScript,
+		},
+	}
+
+	for _, test := range tests {
+		// setup
+		db, err := walletdb.Create("test")
+		if err != nil {
+			t.Errorf("%v: Failed to create wallet DB: %v", test.desc, err)
+			continue
+		}
+		mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+		if err != nil {
+			t.Errorf("%v: Failed to create addr manager DB namespace: %v", test.desc, err)
+			continue
+		}
+		seed := make([]byte, 32)
+		mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+			[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+		if err != nil {
+			t.Errorf("%v: Failed to create addr manager: %v", test.desc, err)
+			continue
+		}
+		chromaNamespace, err := db.Namespace([]byte("chroma"))
+		if err != nil {
+			t.Errorf("%v: Failed to create Chroma DB namespace: %v", test.desc, err)
+			continue
+		}
+		w, err := chroma.Create(chromaNamespace, mgr, seed)
+		if err != nil {
+			t.Errorf("%v: Chroma Wallet creation failed: %v", test.desc, err)
+			continue
+		}
+		tx, err := btcutil.NewTxFromBytes(genesisTx)
+		if err != nil {
+			t.Errorf("%v: failed to get tx %v", test.desc, err)
+			continue
+		}
+		acct := chroma.SerializeUint32(test.acct)
+		index := chroma.SerializeUint32(test.index)
+		testNS := chromaNamespace.(*chroma.TstNamespace)
+		bucket := testNS.Tx.RootBucket().Bucket(chroma.ScriptToAccountIndexBucketName)
+		err = bucket.Put(test.script, append(acct, index...))
+		if err != nil {
+			t.Errorf("%v: failed to put script %v", test.desc, err)
+			continue
+		}
+
+		// execute
+		err = w.Sign(test.lookup, tx.MsgTx(), 0)
+
+		// validate
+		if err == nil {
+			t.Errorf("%v: Expected error, got nil", test.desc)
+			continue
+		}
+		rerr := err.(chroma.ChromaError)
+		want := chroma.ErrorCode(test.err)
+		if rerr.ErrorCode != want {
+			t.Errorf("%v: want %v, got %v", test.desc, want, err)
+			continue
+		}
+	}
+}
+
 func TestIssueColor(t *testing.T) {
 	// setup
 	db, err := walletdb.Create("test")
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -317,7 +850,6 @@ func TestIssueColor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -326,7 +858,6 @@ func TestIssueColor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
 	txHash2 := make([]byte, 32)
 	blockReaderWriter := &TstBlockReaderWriter{
 		block:       [][]byte{rawBlock},
@@ -373,7 +904,6 @@ func TestColorBalance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -384,7 +914,6 @@ func TestColorBalance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -393,7 +922,6 @@ func TestColorBalance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
 	blockReaderWriter := &TstBlockReaderWriter{
 		txBlockHash: [][]byte{blockHash},
 		block:       [][]byte{rawBlock},
@@ -441,7 +969,6 @@ func TestAllColors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -452,7 +979,6 @@ func TestAllColors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -461,7 +987,6 @@ func TestAllColors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
 	num := 10
 	for i := 0; i < num; i++ {
 		var kernel string
@@ -497,7 +1022,6 @@ func TestSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create wallet DB: %v", err)
 	}
-	defer db.Close()
 	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
 	if err != nil {
 		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
@@ -508,7 +1032,6 @@ func TestSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create addr manager: %v", err)
 	}
-	defer mgr.Close()
 	chromaNamespace, err := db.Namespace([]byte("chroma"))
 	if err != nil {
 		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
@@ -517,7 +1040,6 @@ func TestSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Chroma Wallet creation failed: %v", err)
 	}
-	defer w.Close()
 	txHash2 := make([]byte, 32)
 	txHash3 := make([]byte, 32)
 	txHash4 := make([]byte, 32)

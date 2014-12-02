@@ -138,20 +138,20 @@ func (tx *TstTx) Rollback() error {
 }
 
 type TstNamespace struct {
-	tx  *TstTx
+	Tx  *TstTx
 	key []byte
 }
 
 var _ walletdb.Namespace = (*TstNamespace)(nil)
 
 func (ns *TstNamespace) Begin(writable bool) (walletdb.Tx, error) {
-	return ns.tx, nil
+	return ns.Tx, nil
 }
 func (ns *TstNamespace) View(fn func(walletdb.Tx) error) error {
-	return fn(ns.tx)
+	return fn(ns.Tx)
 }
 func (ns *TstNamespace) Update(fn func(walletdb.Tx) error) error {
-	return fn(ns.tx)
+	return fn(ns.Tx)
 }
 
 type TstDb struct {
@@ -165,7 +165,7 @@ func (db *TstDb) Namespace(key []byte) (walletdb.Namespace, error) {
 	namespace, ok := db.namespaces[string(key)]
 	if !ok {
 		tx := &TstTx{Root: NewBucket(-1)}
-		db.namespaces[string(key)] = &TstNamespace{tx: tx, key: key}
+		db.namespaces[string(key)] = &TstNamespace{Tx: tx, key: key}
 		return db.namespaces[string(key)], nil
 	}
 	return namespace, nil
