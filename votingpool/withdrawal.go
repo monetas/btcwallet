@@ -196,7 +196,8 @@ type OutputRequest struct {
 
 // String makes OutputRequest satisfy the Stringer interface.
 func (o *OutputRequest) String() string {
-	return fmt.Sprintf("OutputRequest to send %v to %s", o.amount, o.address)
+	return fmt.Sprintf("OutputRequest %s:%d to send %v to %s", o.server, o.transaction,
+		o.amount, o.address)
 }
 
 // outBailmentIDHash returns a byte slice which is used when sorting

@@ -35,14 +35,20 @@ func TestSplitLastOutput(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	outputAmount := btcutil.Amount(2)
-	request := TstNewOutputRequest(
-		t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", outputAmount, pool.Manager().Net())
-	seriesID, eligible := TstCreateCredits(t, pool, []int64{3}, store)
-	changeStart := newChangeAddress(t, pool, seriesID, 0)
-	w := newWithdrawal(0, []*OutputRequest{request}, eligible, changeStart)
-	if err := w.fulfilNextOutput(); err != nil {
-		t.Fatal(err)
+	output1Amount := btcutil.Amount(2)
+	output2Amount := btcutil.Amount(3)
+	net := pool.Manager().Net()
+	requests := []*OutputRequest{
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", output1Amount, net),
+		TstNewOutputRequest(t, 2, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", output2Amount, net),
+	}
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{6}, store)
+	w := newWithdrawal(0, requests, eligible, newChangeAddress(t, pool, seriesID, 0))
+	// Fulfil our two outputs, without finalizing the tx.
+	for _ = range []int{1, 2} {
+		if err := w.fulfilNextOutput(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	tx := w.current
 
@@ -52,46 +58,29 @@ func TestSplitLastOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	origOutput := request
-	if len(tx.inputs) != 1 {
-		t.Fatalf("Wrong number of tx inputs; got %d, want 1", len(tx.inputs))
-	}
-	if len(tx.outputs) != 1 {
-		t.Fatalf("Wrong number of tx outputs; got %d, want 1", len(tx.outputs))
-	}
-	wantAmount := tx.inputTotal() - tx.calculateFee()
-	if tx.outputs[0].Amount() != wantAmount {
-		t.Fatalf("Wrong amount in output; got %s, want %s", tx.outputs[0].Amount(), wantAmount)
-	}
-	if len(w.pendingOutputs) != 1 {
-		t.Fatalf("Wrong number of pending outputs; got %d, want 1", len(w.pendingOutputs))
-	}
-
 	// splitLastOutput() does not finalize the tx as that's the responsibility
 	// of its caller.
 	if len(w.transactions) != 0 {
 		t.Fatalf("Wrong number of finalized transactions; got %d, want 0", len(w.transactions))
 	}
 
-	// Check that the output was split and part of it is in w.pendingOutputs.
-	splitOutput := w.pendingOutputs[0]
-	splitAmount := outputAmount - origOutput.amount
-	if splitOutput.amount != splitAmount {
-		t.Fatalf("Wrong amount in split output; got %v, want %v", splitOutput.amount, splitAmount)
+	if len(tx.inputs) != 1 {
+		t.Fatalf("Wrong number of tx inputs; got %d, want 1", len(tx.inputs))
+	}
+	if len(tx.outputs) != 2 {
+		t.Fatalf("Wrong number of tx outputs; got %d, want 2", len(tx.outputs))
+	}
+	if tx.outputs[0].Amount() != output1Amount {
+		t.Fatalf("Wrong amount in first tx output; got %s, want %s", tx.outputs[0].Amount(),
+			output1Amount)
+	}
+	if len(w.pendingOutputs) != 1 {
+		t.Fatalf("Wrong number of pending outputs; got %d, want 1", len(w.pendingOutputs))
 	}
 
-	// This is a bit of a hack, but we change the amount of the split output so
-	// that we can use reflect.DeepEqual to ensure the split output is identical
-	// to the original one.
-	splitOutput.amount = origOutput.amount
-	if !reflect.DeepEqual(origOutput, splitOutput) {
-		t.Fatalf("Split output (%v) not identical to orig one (%v)", splitOutput, origOutput)
-	}
-
-	status := w.status.outputs[len(w.status.outputs)-1].status
-	if status != "partial-" {
-		t.Fatalf("Wrong output status; got '%s', want '%s'", status, "partial-")
-	}
+	splitRequest := w.pendingOutputs[0]
+	newAmount := tx.inputTotal() - output1Amount - tx.calculateFee()
+	checkLastOutputWasSplit(t, w, w.current, splitRequest, output2Amount, newAmount)
 }
 
 // TestOutputSplittingNotEnoughInputs checks that an output will get split if we
@@ -136,12 +125,11 @@ func TestOutputSplittingNotEnoughInputs(t *testing.T) {
 			output1Amount)
 	}
 
-	// The second one should have had its amount updated to whatever we had left
-	// after satisfying all previous outputs.
-	wantAmount := tx.inputTotal() - output1Amount - tx.calculateFee()
-	if tx.outputs[1].Amount() != wantAmount {
-		t.Fatalf("Wrong output amount; got %d, want %d", tx.outputs[1].Amount(), wantAmount)
-	}
+	splitRequest := w.pendingOutputs[0]
+	// The last output should have had its amount updated to whatever we had
+	// left after satisfying all previous outputs.
+	newAmount := tx.inputTotal() - output1Amount - tx.calculateFee()
+	checkLastOutputWasSplit(t, w, tx, splitRequest, output2Amount, newAmount)
 }
 
 func TestSplitLastOutputNoOutputs(t *testing.T) {
@@ -1076,4 +1064,43 @@ func newChangeAddress(t *testing.T, pool *Pool, seriesID uint32, idx Index) *Cha
 		t.Fatal(err)
 	}
 	return changeAddr
+}
+
+// checkLastOutputWasSplit ensures that the amount of the last output in the
+// given tx matches newAmount and that the splitRequest amount is equal to
+// origAmount - newAmount. It also checks that splitRequest is identical (except
+// for its amount) to the request of the last output in the tx.
+func checkLastOutputWasSplit(t *testing.T, w *withdrawal, tx *decoratedTx,
+	splitRequest *OutputRequest, origAmount, newAmount btcutil.Amount) {
+	lastOutput := tx.outputs[len(tx.outputs)-1]
+	if lastOutput.Amount() != newAmount {
+		t.Fatalf("Wrong amount in last output; got %s, want %s", lastOutput.Amount(), newAmount)
+	}
+
+	wantSplitAmount := origAmount - newAmount
+	if splitRequest.amount != wantSplitAmount {
+		t.Fatalf("Wrong amount in split output; got %v, want %v", splitRequest.amount,
+			wantSplitAmount)
+	}
+
+	// Check that the split request is identical (except for its amount) to the
+	// original one.
+	origRequest := lastOutput.request
+	if !bytes.Equal(origRequest.pkScript, splitRequest.pkScript) {
+		t.Fatalf("Wrong pkScript in split request; got %x, want %x", splitRequest.pkScript,
+			origRequest.pkScript)
+	}
+	if origRequest.server != splitRequest.server {
+		t.Fatalf("Wrong server in split request; got %s, want %s", splitRequest.server,
+			origRequest.server)
+	}
+	if origRequest.transaction != splitRequest.transaction {
+		t.Fatalf("Wrong transaction # in split request; got %d, want %d", splitRequest.transaction,
+			origRequest.transaction)
+	}
+
+	status := w.status.outputs[len(w.status.outputs)-1].status
+	if status != "partial-" {
+		t.Fatalf("Wrong output status; got '%s', want '%s'", status, "partial-")
+	}
 }
