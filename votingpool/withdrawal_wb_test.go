@@ -100,12 +100,18 @@ func TestOutputSplittingNotEnoughInputs(t *testing.T) {
 	tearDown, pool, store := TstCreatePoolAndTxStore(t)
 	defer tearDown()
 
-	outputAmount := btcutil.Amount(2)
-	request := TstNewOutputRequest(
-		t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", outputAmount, pool.Manager().Net())
-	seriesID, eligible := TstCreateCredits(t, pool, []int64{4}, store)
-	changeStart := newChangeAddress(t, pool, seriesID, 0)
-	w := newWithdrawal(0, []*OutputRequest{request}, eligible, changeStart)
+	net := pool.Manager().Net()
+	output1Amount := btcutil.Amount(2)
+	output2Amount := btcutil.Amount(3)
+	requests := []*OutputRequest{
+		// These output requests will have the same server ID, so we know
+		// they'll be fulfilled in the order they're defined here, which is
+		// important for this test.
+		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", output1Amount, net),
+		TstNewOutputRequest(t, 2, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", output2Amount, net),
+	}
+	seriesID, eligible := TstCreateCredits(t, pool, []int64{7}, store)
+	w := newWithdrawal(0, requests, eligible, newChangeAddress(t, pool, seriesID, 0))
 
 	// Trigger an output split because of lack of inputs by forcing a high fee.
 	// If we just started with not enough inputs for the requested outputs,
@@ -118,18 +124,24 @@ func TestOutputSplittingNotEnoughInputs(t *testing.T) {
 	if len(w.transactions) != 1 {
 		t.Fatalf("Wrong number of finalized transactions; got %d, want 1", len(w.transactions))
 	}
+
 	tx := w.transactions[0]
-	if len(tx.outputs) != 1 {
-		t.Fatalf("Wrong number of outputs; got %d, want 1", len(tx.outputs))
-	}
-	wantAmount := tx.inputTotal() - tx.calculateFee()
-	if tx.outputs[0].Amount() != wantAmount {
-		t.Fatalf("Wrong output amount; got %d, want %d", tx.outputs[0].Amount(), wantAmount)
-	}
-	if len(tx.inputs) != 1 {
-		t.Fatalf("Wrong number of inputs; got %d, want 1", len(tx.inputs))
+	if len(tx.outputs) != 2 {
+		t.Fatalf("Wrong number of outputs; got %d, want 2", len(tx.outputs))
 	}
 
+	// The first output should've been left untouched.
+	if tx.outputs[0].Amount() != output1Amount {
+		t.Fatalf("Wrong amount for first tx output; got %v, want %v", tx.outputs[0].Amount(),
+			output1Amount)
+	}
+
+	// The second one should have had its amount updated to whatever we had left
+	// after satisfying all previous outputs.
+	wantAmount := tx.inputTotal() - output1Amount - tx.calculateFee()
+	if tx.outputs[1].Amount() != wantAmount {
+		t.Fatalf("Wrong output amount; got %d, want %d", tx.outputs[1].Amount(), wantAmount)
+	}
 }
 
 func TestSplitLastOutputNoOutputs(t *testing.T) {

@@ -544,6 +544,7 @@ func (w *withdrawal) fulfilNextOutput() error {
 	fee := w.current.calculateFee()
 	for w.current.inputTotal() < w.current.outputTotal()+fee {
 		if len(w.eligibleInputs) == 0 {
+			log.Debug("Splitting last output because we don't have enough inputs")
 			if err := w.splitLastOutput(); err != nil {
 				return err
 			}
@@ -572,6 +573,7 @@ func (w *withdrawal) handleOversizeTx() error {
 	// TODO: Both when rolling back and splitting we'll want to rollback the
 	// last input and finalize the tx at the end.
 	if len(w.current.outputs) > 1 {
+		log.Debug("Rolling back last output because tx got too big")
 		inputs, output, err := w.current.rollBackLastOutput()
 		if err != nil {
 			return newError(ErrWithdrawalProcessing,
@@ -583,6 +585,7 @@ func (w *withdrawal) handleOversizeTx() error {
 			return err
 		}
 	} else if len(w.current.outputs) == 1 {
+		log.Debug("Splitting last output because tx got too big")
 		// TODO: Split last output in two, and continue the loop.
 		panic("Oversize TX ouput split not yet implemented")
 	} else {
@@ -616,6 +619,7 @@ func (w *withdrawal) finalizeCurrentTx() error {
 				ErrWithdrawalProcessing, "failed to get next change address", err)
 		}
 	}
+
 	w.transactions = append(w.transactions, tx)
 
 	// TODO: Update the ntxid of all WithdrawalOutput entries fulfilled by this transaction
@@ -689,21 +693,23 @@ func (w *withdrawal) splitLastOutput() error {
 	}
 
 	tx := w.current
-	// Update the amount of w.current.outputs[0], to spend all available inputs
-	// minus fees.
-	request := tx.outputs[0].request
+	request := tx.outputs[len(tx.outputs)-1].request
 	origAmount := request.amount
-	availableInputAmount := tx.inputTotal() - tx.calculateFee()
-	request.amount = availableInputAmount
+	spentAmount := tx.outputTotal() + tx.calculateFee() - request.amount
+	// This is how much we have left after satisfying all outputs except the last
+	// one. IOW, all we have left for the last output, so we set that as the
+	// amount of our last output request.
+	unspentAmount := tx.inputTotal() - spentAmount
+	request.amount = unspentAmount
 
 	// Create a new OutputRequest with the amount being the difference between
-	// the origianl amount and what was left in the original output.
+	// the original amount and what was left in the original output request.
 	newRequest := &OutputRequest{
 		server:      request.server,
 		transaction: request.transaction,
 		address:     request.address,
 		pkScript:    request.pkScript,
-		amount:      origAmount - availableInputAmount}
+		amount:      origAmount - request.amount}
 	w.pendingOutputs = append([]*OutputRequest{newRequest}, w.pendingOutputs...)
 
 	w.status.outputs[len(w.status.outputs)-1].status = "partial-"
