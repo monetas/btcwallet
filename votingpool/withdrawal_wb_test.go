@@ -31,58 +31,6 @@ import (
 	"github.com/conformal/btcwire"
 )
 
-func TestSplitLastOutput(t *testing.T) {
-	tearDown, pool, store := TstCreatePoolAndTxStore(t)
-	defer tearDown()
-
-	output1Amount := btcutil.Amount(2)
-	output2Amount := btcutil.Amount(3)
-	net := pool.Manager().Net()
-	requests := []*OutputRequest{
-		TstNewOutputRequest(t, 1, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", output1Amount, net),
-		TstNewOutputRequest(t, 2, "34eVkREKgvvGASZW7hkgE2uNc1yycntMK6", output2Amount, net),
-	}
-	seriesID, eligible := TstCreateCredits(t, pool, []int64{6}, store)
-	w := newWithdrawal(0, requests, eligible, newChangeAddress(t, pool, seriesID, 0))
-	// Fulfil our two outputs, without finalizing the tx.
-	for _ = range []int{1, 2} {
-		if err := w.fulfilNextOutput(); err != nil {
-			t.Fatal(err)
-		}
-	}
-	tx := w.current
-
-	// This should split our sole output in two, leaving one in the current tx
-	// and adding the other to pendingOutputs.
-	if err := w.splitLastOutput(); err != nil {
-		t.Fatal(err)
-	}
-
-	// splitLastOutput() does not finalize the tx as that's the responsibility
-	// of its caller.
-	if len(w.transactions) != 0 {
-		t.Fatalf("Wrong number of finalized transactions; got %d, want 0", len(w.transactions))
-	}
-
-	if len(tx.inputs) != 1 {
-		t.Fatalf("Wrong number of tx inputs; got %d, want 1", len(tx.inputs))
-	}
-	if len(tx.outputs) != 2 {
-		t.Fatalf("Wrong number of tx outputs; got %d, want 2", len(tx.outputs))
-	}
-	if tx.outputs[0].Amount() != output1Amount {
-		t.Fatalf("Wrong amount in first tx output; got %s, want %s", tx.outputs[0].Amount(),
-			output1Amount)
-	}
-	if len(w.pendingOutputs) != 1 {
-		t.Fatalf("Wrong number of pending outputs; got %d, want 1", len(w.pendingOutputs))
-	}
-
-	splitRequest := w.pendingOutputs[0]
-	newAmount := tx.inputTotal() - output1Amount - tx.calculateFee()
-	checkLastOutputWasSplit(t, w, w.current, splitRequest, output2Amount, newAmount)
-}
-
 // TestOutputSplittingNotEnoughInputs checks that an output will get split if we
 // don't have enough inputs to fulfil it.
 func TestOutputSplittingNotEnoughInputs(t *testing.T) {
