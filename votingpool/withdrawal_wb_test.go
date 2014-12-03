@@ -69,8 +69,8 @@ func TestOutputSplittingNotEnoughInputs(t *testing.T) {
 
 	// The first output should've been left untouched.
 	if tx.outputs[0].Amount() != output1Amount {
-		t.Fatalf("Wrong amount for first tx output; got %v, want %v", tx.outputs[0].Amount(),
-			output1Amount)
+		t.Fatalf("Wrong amount for first tx output; got %v, want %v",
+			tx.outputs[0].Amount(), output1Amount)
 	}
 
 	splitRequest := w.pendingOutputs[0]
