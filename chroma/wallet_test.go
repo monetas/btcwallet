@@ -6,6 +6,7 @@ import (
 
 	"github.com/monetas/btcnet"
 	"github.com/monetas/btcutil"
+	"github.com/monetas/btcutil/hdkeychain"
 	"github.com/monetas/btcwallet/chroma"
 	"github.com/monetas/btcwallet/waddrmgr"
 	"github.com/monetas/btcwallet/walletdb"
@@ -142,27 +143,27 @@ func TestNewAddressError(t *testing.T) {
 
 	tests := []struct {
 		desc string
-		acct uint32
+		acct []uint32
 		err  chroma.ErrorCode
 	}{
 		{
 			desc: "child key too big",
-			acct: 1<<31 + 1,
+			acct: []uint32{1<<31 + 1},
 			err:  chroma.ErrHDKey,
 		},
 		{
 			desc: "account does not exist",
-			acct: 2,
+			acct: []uint32{2},
 			err:  chroma.ErrAcct,
 		},
 		{
 			desc: "sub key too big",
-			acct: 0,
+			acct: []uint32{0},
 			err:  chroma.ErrHDKey,
 		},
 		{
 			desc: "error on store",
-			acct: 1,
+			acct: []uint32{1},
 			err:  chroma.ErrWriteDB,
 		},
 	}
@@ -366,7 +367,7 @@ func TestNewAddress(t *testing.T) {
 		t.Fatalf("unexpected addr: want %v, got %v", want, got)
 	}
 	got = cAddr.String()
-	want = "1DGraPworg3JGNVRFRMgZ6AYmenwdTo3ay"
+	want = "13XztZ8AnqRMaHsKSRoqMfGky6tyUWfxTj"
 	if got != want {
 		t.Fatalf("unexpected addr: want %v, got %v", want, got)
 	}
@@ -748,15 +749,18 @@ func TestNewColorOutPointError(t *testing.T) {
 
 func TestSignError(t *testing.T) {
 	tests := []struct {
-		desc   string
-		lookup []byte
-		script []byte
-		acct   uint32
-		index  uint32
-		err    chroma.ErrorCode
+		desc    string
+		privKey string
+		lookup  []byte
+		script  []byte
+		acct    uint32
+		index   uint32
+		err     chroma.ErrorCode
 	}{
 		{
-			desc:   "fail on lookup",
+			desc:    "fail on lookup",
+			privKey: "xprv9s21ZrQH143K3D8TXfvAJgHVfTEeQNW5Ys9wZtnUZkqPzFzSjbEJrWC1vZ4GnXCvR7rQL2UFX3RSuYeU9MrERm1XBvACow7c36vnz5iYyj2",
+			//			privKey: "xpub661MyMwAqRbcFhCvdhTAfpEEDV58oqDvv65YNHC686NNs4KbH8YZQJWVmrfbve7aAVHzxw8bKFxA7MLeDK6BbLfkE3bqkvHLPgaGHHtYGeY",
 			lookup: nil,
 			script: []byte("nonsense"),
 			acct:   0,
@@ -764,12 +768,40 @@ func TestSignError(t *testing.T) {
 			err:    chroma.ErrScript,
 		},
 		{
-			desc:   "fail on lookup",
-			lookup: []byte{1},
-			script: []byte{1},
-			acct:   0,
-			index:  0,
-			err:    chroma.ErrScript,
+			desc:    "fail on first child",
+			privKey: "xpub661MyMwAqRbcFhCvdhTAfpEEDV58oqDvv65YNHC686NNs4KbH8YZQJWVmrfbve7aAVHzxw8bKFxA7MLeDK6BbLfkE3bqkvHLPgaGHHtYGeY",
+			lookup:  []byte{1},
+			script:  []byte{1},
+			acct:    1<<31 + 1,
+			index:   0,
+			err:     chroma.ErrHDKey,
+		},
+		{
+			desc:    "fail on second child",
+			privKey: "xpub661MyMwAqRbcFhCvdhTAfpEEDV58oqDvv65YNHC686NNs4KbH8YZQJWVmrfbve7aAVHzxw8bKFxA7MLeDK6BbLfkE3bqkvHLPgaGHHtYGeY",
+			lookup:  []byte{1},
+			script:  []byte{1},
+			acct:    0,
+			index:   1<<31 + 1,
+			err:     chroma.ErrHDKey,
+		},
+		{
+			desc:    "fail on private key generation",
+			privKey: "xpub661MyMwAqRbcFhCvdhTAfpEEDV58oqDvv65YNHC686NNs4KbH8YZQJWVmrfbve7aAVHzxw8bKFxA7MLeDK6BbLfkE3bqkvHLPgaGHHtYGeY",
+			lookup:  []byte{1},
+			script:  []byte{1},
+			acct:    0,
+			index:   0,
+			err:     chroma.ErrHDKey,
+		},
+		{
+			desc:    "fail on signing",
+			privKey: "xprv9s21ZrQH143K3D8TXfvAJgHVfTEeQNW5Ys9wZtnUZkqPzFzSjbEJrWC1vZ4GnXCvR7rQL2UFX3RSuYeU9MrERm1XBvACow7c36vnz5iYyj2",
+			lookup:  []byte{1},
+			script:  []byte{1},
+			acct:    0,
+			index:   0,
+			err:     chroma.ErrScript,
 		},
 	}
 
@@ -807,15 +839,19 @@ func TestSignError(t *testing.T) {
 			t.Errorf("%v: failed to get tx %v", test.desc, err)
 			continue
 		}
-		acct := chroma.SerializeUint32(test.acct)
-		index := chroma.SerializeUint32(test.index)
+		val := append(chroma.SerializeUint32(test.acct), chroma.SerializeUint32(test.index)...)
 		testNS := chromaNamespace.(*chroma.TstNamespace)
 		bucket := testNS.Tx.RootBucket().Bucket(chroma.ScriptToAccountIndexBucketName)
-		err = bucket.Put(test.script, append(acct, index...))
+		err = bucket.Put(test.script, val)
 		if err != nil {
 			t.Errorf("%v: failed to put script %v", test.desc, err)
 			continue
 		}
+		priv, err := hdkeychain.NewKeyFromString(test.privKey)
+		if err != nil {
+			t.Errorf("%v: failed to make private key %v", test.desc, err)
+		}
+		w.SetPrivKey(priv)
 
 		// execute
 		err = w.Sign(test.lookup, tx.MsgTx(), 0)
@@ -831,6 +867,69 @@ func TestSignError(t *testing.T) {
 			t.Errorf("%v: want %v, got %v", test.desc, want, err)
 			continue
 		}
+	}
+}
+
+func TestFetchSpendable(t *testing.T) {
+	// setup
+	db, err := walletdb.Create("test")
+	if err != nil {
+		t.Fatalf("Failed to create wallet DB: %v", err)
+	}
+	mgrNamespace, err := db.Namespace([]byte("waddrmgr"))
+	if err != nil {
+		t.Fatalf("Failed to create addr manager DB namespace: %v", err)
+	}
+	seed := make([]byte, 32)
+	mgr, err := waddrmgr.Create(mgrNamespace, seed, []byte("test"),
+		[]byte("test"), &btcnet.MainNetParams, fastScrypt)
+	if err != nil {
+		t.Fatalf("Failed to create addr manager: %v", err)
+	}
+	chromaNamespace, err := db.Namespace([]byte("chroma"))
+	if err != nil {
+		t.Fatalf("Failed to create Chroma DB namespace: %v", err)
+	}
+	w, err := chroma.Create(chromaNamespace, mgr, seed)
+	if err != nil {
+		t.Fatalf("Chroma Wallet creation failed: %v", err)
+	}
+	blockReaderWriter := &TstBlockReaderWriter{
+		block:       [][]byte{rawBlock},
+		txBlockHash: [][]byte{blockHash},
+		rawTx:       [][]byte{specialTx, specialTx, specialTx, specialTx, specialTx, specialTx, specialTx},
+		txOutSpents: []bool{false, false, false},
+		sendHash:    [][]byte{txHash},
+	}
+	b := &gochroma.BlockExplorer{blockReaderWriter}
+
+	shaHash, err := gochroma.NewShaHash(txHash)
+	if err != nil {
+		t.Fatalf("failed to convert hash %v: %v", txHash, err)
+	}
+	outPoint := btcwire.NewOutPoint(shaHash, 0)
+	_, err = w.NewUncoloredOutPoint(b, outPoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testNS := chromaNamespace.(*chroma.TstNamespace)
+	bucket := testNS.Tx.RootBucket().Bucket(chroma.ColorOutPointBucketName)
+	err = bucket.Put(chroma.SerializeUint32(1), chroma.SerializeUint32(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// execute
+	_, err = w.FetchSpendable(b, chroma.SerializeUint32(0), gochroma.ColorValue(100))
+
+	// validate
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	rerr := err.(chroma.ChromaError)
+	want := chroma.ErrorCode(chroma.ErrSerialization)
+	if rerr.ErrorCode != want {
+		t.Fatalf("want %v, got %v", want, err)
 	}
 }
 

@@ -57,15 +57,21 @@ func (w *Wallet) Close() error {
 	return w.manager.Close()
 }
 
-func (w *Wallet) newAddress(acct uint32) (btcutil.Address, error) {
-	subKey, err := w.pubKey.Child(acct)
-	if err != nil {
-		str := fmt.Sprintf("%v:%v", w.pubKey, acct)
-		return nil, MakeError(ErrHDKey, str, err)
+func (w *Wallet) newAddress(acctList []uint32) (btcutil.Address, error) {
+	curKey := w.pubKey
+	var err error
+	var acctKey []byte
+	for _, acct := range acctList {
+		curKey, err = curKey.Child(acct)
+		if err != nil {
+			str := fmt.Sprintf("%v:%v", w.pubKey, acctList)
+			return nil, MakeError(ErrHDKey, str, err)
+		}
+		acctKey = append(acctKey, SerializeUint32(acct)...)
 	}
 	var index *uint32
 	err = w.namespace.View(func(tx walletdb.Tx) error {
-		tmp, err := fetchAcctIndex(tx, acct)
+		tmp, err := fetchAcctIndex(tx, acctKey)
 		if err != nil {
 			return err
 		}
@@ -76,9 +82,9 @@ func (w *Wallet) newAddress(acct uint32) (btcutil.Address, error) {
 		return nil, err
 	}
 
-	key, err := subKey.Child(*index)
+	key, err := curKey.Child(*index)
 	if err != nil {
-		str := fmt.Sprintf("%v:%v", subKey, *index)
+		str := fmt.Sprintf("%v:%v", curKey, *index)
 		return nil, MakeError(ErrHDKey, str, err)
 	}
 	addr, err := key.Address(w.manager.Net())
@@ -88,11 +94,11 @@ func (w *Wallet) newAddress(acct uint32) (btcutil.Address, error) {
 	}
 
 	err = w.namespace.Update(func(tx walletdb.Tx) error {
-		err := storeAcctIndex(tx, acct, *index+1)
+		err := storeAcctIndex(tx, acctKey, *index+1)
 		if err != nil {
 			return err
 		}
-		return storeScriptIndex(tx, acct, *index, addr)
+		return storeScriptIndex(tx, acctKey, *index, addr)
 	})
 	if err != nil {
 		return nil, err
@@ -102,15 +108,15 @@ func (w *Wallet) newAddress(acct uint32) (btcutil.Address, error) {
 }
 
 func (w *Wallet) NewUncoloredAddress() (btcutil.Address, error) {
-	return w.newAddress(uncoloredAcctNum)
+	return w.newAddress([]uint32{uncoloredAcctNum})
 }
 
 func (w *Wallet) NewIssuingAddress() (btcutil.Address, error) {
-	return w.newAddress(issuingAcctNum)
+	return w.newAddress([]uint32{issuingAcctNum})
 }
 
 func (w *Wallet) NewColorAddress(cd *gochroma.ColorDefinition) (btcutil.Address, error) {
-	return w.newAddress(cd.AccountNumber())
+	return w.newAddress(cd.BIP32Branch())
 }
 
 func (w *Wallet) FetchColorId(cd *gochroma.ColorDefinition) (ColorId, error) {

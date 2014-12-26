@@ -56,11 +56,11 @@ func FetchKeys(tx walletdb.Tx) (*hdkeychain.ExtendedKey, *hdkeychain.ExtendedKey
 	return fetchKeys(tx)
 }
 
-func FetchAcctIndex(tx walletdb.Tx, acct uint32) (*uint32, error) {
+func FetchAcctIndex(tx walletdb.Tx, acct []byte) (*uint32, error) {
 	return fetchAcctIndex(tx, acct)
 }
 
-func StoreScriptIndex(tx walletdb.Tx, acct, index uint32, addr btcutil.Address) error {
+func StoreScriptIndex(tx walletdb.Tx, acct []byte, index uint32, addr btcutil.Address) error {
 	return storeScriptIndex(tx, acct, index, addr)
 }
 
@@ -76,6 +76,15 @@ func LookupScript(tx walletdb.Tx, pkScript []byte) (*uint32, *uint32, error) {
 	return lookupScript(tx, pkScript)
 }
 
-func (w *Wallet) NewAddress(acct uint32) (btcutil.Address, error) {
+func (w *Wallet) NewAddress(acct []uint32) (btcutil.Address, error) {
 	return w.newAddress(acct)
+}
+
+func (w *Wallet) SetPrivKey(p *hdkeychain.ExtendedKey) {
+	w.privKey = p
+	return
+}
+
+func (w *Wallet) FetchSpendable(b *gochroma.BlockExplorer, colorId ColorId, needed gochroma.ColorValue) ([]*ColorOutPoint, error) {
+	return w.fetchSpendable(b, colorId, needed)
 }

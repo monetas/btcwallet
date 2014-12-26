@@ -321,7 +321,7 @@ func TestFetchAcctIndex(t *testing.T) {
 	}
 
 	// execute
-	_, err = chroma.FetchAcctIndex(testTx, 999)
+	_, err = chroma.FetchAcctIndex(testTx, []byte("blah"))
 
 	// validate
 	if err == nil {
@@ -343,7 +343,7 @@ func TestStoreScriptIndex1(t *testing.T) {
 	}
 
 	// execute
-	err = chroma.StoreScriptIndex(testTx, 0, 0, nil)
+	err = chroma.StoreScriptIndex(testTx, []byte{0}, 0, nil)
 
 	// validate
 	if err == nil {
@@ -375,7 +375,7 @@ func TestStoreScriptIndex2(t *testing.T) {
 	}
 
 	// execute
-	err = chroma.StoreScriptIndex(testTx, 0, 0, addr)
+	err = chroma.StoreScriptIndex(testTx, []byte{0}, 0, addr)
 
 	// validate
 	if err == nil {

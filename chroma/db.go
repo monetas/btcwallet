@@ -130,9 +130,9 @@ func fetchColorId(tx walletdb.Tx, cd *gochroma.ColorDefinition) (ColorId, error)
 
 	// add this color to the proper account
 	b2 := tx.RootBucket().Bucket(accountBucketName)
-	err = b2.Put(serializeUint32(cd.AccountNumber()), serializeUint32(0))
+	err = b2.Put(cd.Account(), serializeUint32(0))
 	if err != nil {
-		str := fmt.Sprintf("%v:%x", cd.AccountNumber(), serializeUint32(0))
+		str := fmt.Sprintf("%x:%x", cd.Account(), serializeUint32(0))
 		return nil, MakeError(ErrWriteDB, str, err)
 	}
 
@@ -255,30 +255,30 @@ func initialize(tx walletdb.Tx, seed []byte) error {
 	return nil
 }
 
-func fetchAcctIndex(tx walletdb.Tx, acct uint32) (*uint32, error) {
+func fetchAcctIndex(tx walletdb.Tx, acct []byte) (*uint32, error) {
 	b := tx.RootBucket().Bucket(accountBucketName)
-	raw := b.Get(serializeUint32(acct))
+	raw := b.Get(acct)
 	if len(raw) == 0 {
-		str := fmt.Sprintf("%v", acct)
+		str := fmt.Sprintf("%x", acct)
 		return nil, MakeError(ErrAcct, str, nil)
 	}
 	index := deserializeUint32(raw)
 	return &index, nil
 }
 
-func storeAcctIndex(tx walletdb.Tx, acct, index uint32) error {
+func storeAcctIndex(tx walletdb.Tx, acct []byte, index uint32) error {
 	b := tx.RootBucket().Bucket(accountBucketName)
-	err := b.Put(serializeUint32(acct), serializeUint32(index))
+	err := b.Put(acct, serializeUint32(index))
 	if err != nil {
-		str := fmt.Sprintf("%v:%x", acct, serializeUint32(index))
+		str := fmt.Sprintf("%x:%x", acct, serializeUint32(index))
 		return MakeError(ErrWriteDB, str, err)
 	}
 	return nil
 }
 
-func storeScriptIndex(tx walletdb.Tx, acct, index uint32, addr btcutil.Address) error {
+func storeScriptIndex(tx walletdb.Tx, acct []byte, index uint32, addr btcutil.Address) error {
 	b := tx.RootBucket().Bucket(scriptToAccountIndexBucketName)
-	val := append(serializeUint32(acct), serializeUint32(index)...)
+	val := append(acct, serializeUint32(index)...)
 	pkScript, err := btcscript.PayToAddrScript(addr)
 	if err != nil {
 		str := fmt.Sprintf("%v", addr)
