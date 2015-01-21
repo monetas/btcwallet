@@ -36,12 +36,12 @@ import (
 
 	"golang.org/x/crypto/ripemd160"
 
-	"github.com/btcsuite/btcec"
-	"github.com/btcsuite/btcnet"
-	"github.com/btcsuite/btcscript"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/rename"
-	"github.com/btcsuite/btcwire"
+	"github.com/monetas/btcec"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/rename"
+	"github.com/monetas/btcwire"
 )
 
 const (

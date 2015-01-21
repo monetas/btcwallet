@@ -21,13 +21,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/btcsuite/btcnet"
-	"github.com/btcsuite/btcrpcclient"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/keystore"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwire"
-	"github.com/btcsuite/btcws"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcrpcclient"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/keystore"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwire"
+	"github.com/monetas/btcws"
 )
 
 type Client struct {

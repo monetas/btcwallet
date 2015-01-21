@@ -26,14 +26,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/btcsuite/btcchain"
-	"github.com/btcsuite/btcjson"
-	"github.com/btcsuite/btcnet"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/keystore"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwire"
+	"github.com/monetas/btcchain"
+	"github.com/monetas/btcjson"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/chain"
+	"github.com/monetas/btcwallet/keystore"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwire"
 )
 
 var (

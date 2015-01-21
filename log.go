@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/btcsuite/btclog"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/seelog"
+	"github.com/monetas/btclog"
+	"github.com/monetas/btcwallet/chain"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/seelog"
 )
 
 const (

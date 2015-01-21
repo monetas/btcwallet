@@ -24,11 +24,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/btcsuite/btcchain"
-	"github.com/btcsuite/btcnet"
-	"github.com/btcsuite/btcscript"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwire"
+	"github.com/monetas/btcchain"
+	"github.com/monetas/btcnet"
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
 )
 
 var (

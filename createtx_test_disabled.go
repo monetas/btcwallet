@@ -12,10 +12,10 @@ package main
 import (
 	"testing"
 
-	"github.com/btcsuite/btcscript"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/tx"
-	"github.com/btcsuite/btcwire"
+	"github.com/monetas/btcscript"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwallet/tx"
+	"github.com/monetas/btcwire"
 )
 
 func init() {

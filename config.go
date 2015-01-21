@@ -24,9 +24,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwire"
-	flags "github.com/btcsuite/go-flags"
+	"github.com/monetas/btcutil"
+	"github.com/monetas/btcwire"
+	flags "github.com/monetas/go-flags"
 )
 
 const (
