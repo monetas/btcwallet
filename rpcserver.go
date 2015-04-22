@@ -44,10 +44,10 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcrpcclient"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/wallet"
+	"github.com/monetas/btcwallet/chain"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwallet/waddrmgr"
+	"github.com/monetas/btcwallet/wallet"
 	"github.com/btcsuite/websocket"
 )
 

@@ -22,7 +22,7 @@ import (
 
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	vp "github.com/btcsuite/btcwallet/votingpool"
+	vp "github.com/monetas/btcwallet/votingpool"
 )
 
 func TestStartWithdrawal(t *testing.T) {

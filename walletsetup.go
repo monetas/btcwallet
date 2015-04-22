@@ -30,12 +30,12 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/legacy/keystore"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/wallet"
-	"github.com/btcsuite/btcwallet/walletdb"
-	_ "github.com/btcsuite/btcwallet/walletdb/bdb"
+	"github.com/monetas/btcwallet/legacy/keystore"
+	"github.com/monetas/btcwallet/txstore"
+	"github.com/monetas/btcwallet/waddrmgr"
+	"github.com/monetas/btcwallet/wallet"
+	"github.com/monetas/btcwallet/walletdb"
+	_ "github.com/monetas/btcwallet/walletdb/bdb"
 	"github.com/btcsuite/golangcrypto/ssh/terminal"
 )
 

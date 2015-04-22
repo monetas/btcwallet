@@ -24,7 +24,7 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/internal/zero"
+	"github.com/monetas/btcwallet/internal/zero"
 )
 
 // ManagedAddress is an interface that provides acces to information regarding

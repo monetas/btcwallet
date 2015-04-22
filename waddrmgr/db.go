@@ -24,7 +24,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/monetas/btcwallet/walletdb"
 	"github.com/btcsuite/fastsha256"
 )
 

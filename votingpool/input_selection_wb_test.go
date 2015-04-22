@@ -24,7 +24,7 @@ import (
 
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/txstore"
+	"github.com/monetas/btcwallet/txstore"
 )
 
 var (

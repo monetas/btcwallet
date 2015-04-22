@@ -21,8 +21,8 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/btcsuite/btcwallet/snacl"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/monetas/btcwallet/snacl"
+	"github.com/monetas/btcwallet/walletdb"
 )
 
 // These constants define the serialized length for a given encrypted extended

@@ -24,7 +24,7 @@ import (
 
 	"github.com/btcsuite/btclog"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/waddrmgr"
+	"github.com/monetas/btcwallet/waddrmgr"
 )
 
 func init() {

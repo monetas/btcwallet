@@ -27,9 +27,9 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/internal/zero"
-	"github.com/btcsuite/btcwallet/snacl"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/monetas/btcwallet/internal/zero"
+	"github.com/monetas/btcwallet/snacl"
+	"github.com/monetas/btcwallet/walletdb"
 )
 
 const (

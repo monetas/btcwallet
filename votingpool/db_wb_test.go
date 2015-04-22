@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/monetas/btcwallet/walletdb"
 )
 
 func TestPutUsedAddrHash(t *testing.T) {
